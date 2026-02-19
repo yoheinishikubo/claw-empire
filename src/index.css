@@ -234,3 +234,56 @@ body {
   50%      { box-shadow: 0 0 12px rgba(249,115,22,0.6), 0 0 24px rgba(249,115,22,0.2); }
 }
 .animate-neon-pulse-orange { animation: neon-pulse-orange 2s ease-in-out infinite; }
+
+/* Skills learn squad animations */
+@keyframes learn-avatar-bob {
+  0%, 100% { transform: translateY(0); }
+  35% { transform: translateY(-3px) rotate(-1deg); }
+  70% { transform: translateY(-1px) rotate(1deg); }
+}
+
+@keyframes learn-book-drop {
+  0% {
+    transform: translateY(-26px) rotate(-16deg) scale(0.9);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(82px) rotate(20deg) scale(1.05);
+    opacity: 0;
+  }
+}
+
+@keyframes learn-reading-pop {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translateY(-4px) rotate(-5deg);
+    opacity: 1;
+  }
+}
+
+.learn-avatar-reading {
+  animation: learn-avatar-bob 0.9s ease-in-out infinite;
+}
+
+.learn-reading-book {
+  position: absolute;
+  right: -6px;
+  bottom: -8px;
+  font-size: 14px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  animation: learn-reading-pop 0.9s ease-in-out infinite;
+}
+
+.learn-book-drop {
+  position: absolute;
+  top: -22px;
+  font-size: 14px;
+  opacity: 0;
+  animation: learn-book-drop 1.35s linear infinite;
+}

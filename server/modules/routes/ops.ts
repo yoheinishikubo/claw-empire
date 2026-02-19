@@ -1813,6 +1813,185 @@ app.get("/api/skills/detail", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Skill learn jobs (background `npx skills add ...`)
+// ---------------------------------------------------------------------------
+
+type SkillLearnProvider = "claude" | "codex" | "gemini" | "opencode";
+type SkillLearnStatus = "queued" | "running" | "succeeded" | "failed";
+
+interface SkillLearnJob {
+  id: string;
+  repo: string;
+  skillId: string;
+  providers: SkillLearnProvider[];
+  agents: string[];
+  status: SkillLearnStatus;
+  command: string;
+  createdAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
+  updatedAt: number;
+  exitCode: number | null;
+  logTail: string[];
+  error: string | null;
+}
+
+const SKILL_LEARN_PROVIDER_TO_AGENT: Record<SkillLearnProvider, string> = {
+  claude: "claude-code",
+  codex: "codex",
+  gemini: "gemini-cli",
+  opencode: "opencode",
+};
+
+const SKILL_LEARN_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/;
+const SKILL_LEARN_MAX_LOG_LINES = 120;
+const SKILL_LEARN_JOB_TTL_MS = 30 * 60 * 1000;
+const SKILL_LEARN_MAX_JOBS = 200;
+const skillLearnJobs = new Map<string, SkillLearnJob>();
+
+function normalizeSkillLearnProviders(input: unknown): SkillLearnProvider[] {
+  if (!Array.isArray(input)) return [];
+  const out: SkillLearnProvider[] = [];
+  for (const raw of input) {
+    const value = String(raw ?? "").trim().toLowerCase();
+    if (
+      (value === "claude" || value === "codex" || value === "gemini" || value === "opencode")
+      && !out.includes(value as SkillLearnProvider)
+    ) {
+      out.push(value as SkillLearnProvider);
+    }
+  }
+  return out;
+}
+
+function pruneSkillLearnJobs(now = Date.now()): void {
+  if (skillLearnJobs.size === 0) return;
+  for (const [id, job] of skillLearnJobs.entries()) {
+    const end = job.completedAt ?? job.updatedAt;
+    const expired = job.status !== "running" && now - end > SKILL_LEARN_JOB_TTL_MS;
+    if (expired) skillLearnJobs.delete(id);
+  }
+  if (skillLearnJobs.size <= SKILL_LEARN_MAX_JOBS) return;
+  const oldest = [...skillLearnJobs.values()]
+    .sort((a, b) => a.updatedAt - b.updatedAt)
+    .slice(0, Math.max(0, skillLearnJobs.size - SKILL_LEARN_MAX_JOBS));
+  for (const job of oldest) {
+    if (job.status === "running") continue;
+    skillLearnJobs.delete(job.id);
+  }
+}
+
+function appendSkillLearnLogs(job: SkillLearnJob, chunk: string): void {
+  for (const rawLine of chunk.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (!line) continue;
+    job.logTail.push(line);
+  }
+  if (job.logTail.length > SKILL_LEARN_MAX_LOG_LINES) {
+    job.logTail.splice(0, job.logTail.length - SKILL_LEARN_MAX_LOG_LINES);
+  }
+  job.updatedAt = Date.now();
+}
+
+function createSkillLearnJob(repo: string, skillId: string, providers: SkillLearnProvider[]): SkillLearnJob {
+  const id = randomUUID();
+  const agents = providers
+    .map((provider) => SKILL_LEARN_PROVIDER_TO_AGENT[provider])
+    .filter((value, index, arr) => arr.indexOf(value) === index);
+  const args = ["--yes", "skills@latest", "add", repo, "--yes", "--agent", ...agents];
+  const job: SkillLearnJob = {
+    id,
+    repo,
+    skillId,
+    providers,
+    agents,
+    status: "queued",
+    command: `npx ${args.join(" ")}`,
+    createdAt: Date.now(),
+    startedAt: null,
+    completedAt: null,
+    updatedAt: Date.now(),
+    exitCode: null,
+    logTail: [],
+    error: null,
+  };
+  skillLearnJobs.set(id, job);
+
+  setTimeout(() => {
+    job.status = "running";
+    job.startedAt = Date.now();
+    job.updatedAt = job.startedAt;
+
+    const child = spawn("npx", args, {
+      cwd: process.cwd(),
+      env: { ...process.env, FORCE_COLOR: "0" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string | Buffer) => {
+      appendSkillLearnLogs(job, String(chunk));
+    });
+    child.stderr?.on("data", (chunk: string | Buffer) => {
+      appendSkillLearnLogs(job, String(chunk));
+    });
+    child.on("error", (err: Error) => {
+      job.status = "failed";
+      job.error = err.message || String(err);
+      job.completedAt = Date.now();
+      job.updatedAt = job.completedAt;
+      appendSkillLearnLogs(job, `ERROR: ${job.error}`);
+      pruneSkillLearnJobs();
+    });
+    child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
+      job.exitCode = code;
+      job.completedAt = Date.now();
+      job.updatedAt = job.completedAt;
+      if (code === 0) {
+        job.status = "succeeded";
+      } else {
+        job.status = "failed";
+        job.error = signal ? `process terminated by ${signal}` : `process exited with code ${String(code)}`;
+      }
+      pruneSkillLearnJobs();
+    });
+  }, 0);
+
+  return job;
+}
+
+app.post("/api/skills/learn", (req, res) => {
+  pruneSkillLearnJobs();
+  const repo = String(req.body?.repo ?? "").trim();
+  const skillId = String(req.body?.skillId ?? "").trim();
+  const providers = normalizeSkillLearnProviders(req.body?.providers);
+
+  if (!repo) {
+    return res.status(400).json({ error: "repo required" });
+  }
+  if (!SKILL_LEARN_REPO_RE.test(repo)) {
+    return res.status(400).json({ error: "invalid repo format" });
+  }
+  if (providers.length === 0) {
+    return res.status(400).json({ error: "providers required" });
+  }
+
+  const job = createSkillLearnJob(repo, skillId, providers);
+  res.status(202).json({ ok: true, job });
+});
+
+app.get("/api/skills/learn/:jobId", (req, res) => {
+  pruneSkillLearnJobs();
+  const jobId = String(req.params.jobId ?? "").trim();
+  const job = skillLearnJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ error: "job_not_found" });
+  }
+  res.json({ ok: true, job });
+});
+
+// ---------------------------------------------------------------------------
 // Git Worktree management endpoints
 // ---------------------------------------------------------------------------
 

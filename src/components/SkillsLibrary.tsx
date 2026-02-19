@@ -1,5 +1,16 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { getSkills, getSkillDetail, type SkillEntry, type SkillDetail } from "../api";
+import {
+  getSkills,
+  getSkillDetail,
+  getSkillLearningJob,
+  startSkillLearning,
+  type SkillEntry,
+  type SkillDetail,
+  type SkillLearnJob,
+  type SkillLearnProvider,
+} from "../api";
+import type { Agent, AgentRole } from "../types";
+import AgentAvatar from "./AgentAvatar";
 
 /* ================================================================== */
 /*  Skills data from skills.sh (loaded dynamically via /api/skills)    */
@@ -357,11 +368,57 @@ function localizeAuditStatus(status: string, t: TFunction): string {
   return status;
 }
 
+const LEARN_PROVIDER_ORDER: SkillLearnProvider[] = ["claude", "codex", "gemini", "opencode"];
+const ROLE_ORDER: Record<AgentRole, number> = {
+  team_leader: 0,
+  senior: 1,
+  junior: 2,
+  intern: 3,
+};
+
+function roleLabel(role: AgentRole, t: TFunction): string {
+  if (role === "team_leader") return t({ ko: "팀장", en: "Team Lead", ja: "チームリード", zh: "团队负责人" });
+  if (role === "senior") return t({ ko: "시니어", en: "Senior", ja: "シニア", zh: "资深" });
+  if (role === "junior") return t({ ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级" });
+  return t({ ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生" });
+}
+
+function providerLabel(provider: SkillLearnProvider): string {
+  if (provider === "claude") return "Claude Code";
+  if (provider === "codex") return "Codex";
+  if (provider === "gemini") return "Gemini";
+  return "OpenCode";
+}
+
+function learningStatusLabel(status: SkillLearnJob["status"] | null, t: TFunction): string {
+  if (status === "queued") return t({ ko: "대기중", en: "Queued", ja: "待機中", zh: "排队中" });
+  if (status === "running") return t({ ko: "학습중", en: "Running", ja: "学習中", zh: "学习中" });
+  if (status === "succeeded") return t({ ko: "완료", en: "Succeeded", ja: "完了", zh: "完成" });
+  if (status === "failed") return t({ ko: "실패", en: "Failed", ja: "失敗", zh: "失败" });
+  return "-";
+}
+
+function pickRepresentativeForProvider(agents: Agent[], provider: SkillLearnProvider): Agent | null {
+  const candidates = agents.filter((agent) => agent.cli_provider === provider);
+  if (candidates.length === 0) return null;
+  const sorted = [...candidates].sort((a, b) => {
+    const roleGap = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];
+    if (roleGap !== 0) return roleGap;
+    if (b.stats_xp !== a.stats_xp) return b.stats_xp - a.stats_xp;
+    return a.id.localeCompare(b.id);
+  });
+  return sorted[0];
+}
+
 /* ================================================================== */
 /*  Component                                                          */
 /* ================================================================== */
 
-export default function SkillsLibrary() {
+interface SkillsLibraryProps {
+  agents: Agent[];
+}
+
+export default function SkillsLibrary({ agents }: SkillsLibraryProps) {
   const { t, localeTag } = useI18n();
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -374,6 +431,11 @@ export default function SkillsLibrary() {
   const [detailCache, setDetailCache] = useState<Record<string, SkillDetail | "loading" | "error">>({});
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const [learningSkill, setLearningSkill] = useState<CategorizedSkill | null>(null);
+  const [selectedProviders, setSelectedProviders] = useState<SkillLearnProvider[]>([]);
+  const [learnJob, setLearnJob] = useState<SkillLearnJob | null>(null);
+  const [learnSubmitting, setLearnSubmitting] = useState(false);
+  const [learnError, setLearnError] = useState<string | null>(null);
 
   const handleCardMouseEnter = useCallback((skill: CategorizedSkill) => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
@@ -450,6 +512,91 @@ export default function SkillsLibrary() {
     }
     return counts;
   }, [categorizedSkills]);
+
+  const representatives = useMemo(
+    () =>
+      LEARN_PROVIDER_ORDER.map((provider) => ({
+        provider,
+        agent: pickRepresentativeForProvider(agents, provider),
+      })),
+    [agents]
+  );
+
+  const defaultSelectedProviders = useMemo(
+    () => representatives.filter((row) => row.agent).map((row) => row.provider),
+    [representatives]
+  );
+
+  const learnInProgress =
+    learnJob?.status === "queued" || learnJob?.status === "running";
+  const preferKoreanName = localeTag.startsWith("ko");
+
+  useEffect(() => {
+    if (!learnJob || (learnJob.status !== "queued" && learnJob.status !== "running")) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      getSkillLearningJob(learnJob.id)
+        .then((job) => {
+          if (!cancelled) {
+            setLearnJob(job);
+          }
+        })
+        .catch((e: Error) => {
+          if (!cancelled) {
+            setLearnError(e.message);
+          }
+        });
+    }, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [learnJob]);
+
+  function openLearningModal(skill: CategorizedSkill) {
+    setLearningSkill(skill);
+    setSelectedProviders(defaultSelectedProviders);
+    setLearnJob(null);
+    setLearnError(null);
+  }
+
+  function closeLearningModal() {
+    if (learnInProgress) return;
+    setLearningSkill(null);
+    setSelectedProviders([]);
+    setLearnJob(null);
+    setLearnError(null);
+  }
+
+  function toggleProvider(provider: SkillLearnProvider) {
+    if (learnInProgress) return;
+    setSelectedProviders((prev) => (
+      prev.includes(provider)
+        ? prev.filter((item) => item !== provider)
+        : [...prev, provider]
+    ));
+  }
+
+  async function handleStartLearning() {
+    if (!learningSkill || selectedProviders.length === 0 || learnSubmitting || learnInProgress) return;
+    setLearnSubmitting(true);
+    setLearnError(null);
+    try {
+      const job = await startSkillLearning({
+        repo: learningSkill.repo,
+        skillId: learningSkill.skillId || learningSkill.name,
+        providers: selectedProviders,
+      });
+      setLearnJob(job);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setLearnError(message);
+    } finally {
+      setLearnSubmitting(false);
+    }
+  }
 
   function handleCopy(skill: CategorizedSkill) {
     const cmd = `npx skills add ${skill.repo}`;
@@ -646,29 +793,43 @@ export default function SkillsLibrary() {
                 </div>
               </div>
 
-              {/* Bottom row: category + installs + copy */}
-              <div className="flex items-center justify-between">
+              {/* Bottom row: category + installs + learn/copy */}
+              <div className="flex items-center justify-between gap-2">
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full border ${catColor}`}
                 >
                   {CATEGORY_ICONS[skill.category]} {categoryLabel(skill.category, t)}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <span className="text-xs text-slate-400">
                     <span className="text-empire-green font-medium">
                       {skill.installsDisplay}
                     </span>{" "}
                     {t({ ko: "설치", en: "installs", ja: "インストール", zh: "安装" })}
                   </span>
-                  <button
-                    onClick={() => handleCopy(skill)}
-                    className="px-2 py-1 text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-md hover:bg-blue-600/30 transition-all"
-                    title={`npx skills add ${skill.repo}`}
-                  >
-                    {copiedSkill === skill.name
-                      ? t({ ko: "복사됨", en: "Copied", ja: "コピー済み", zh: "已复制" })
-                      : t({ ko: "복사", en: "Copy", ja: "コピー", zh: "复制" })}
-                  </button>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => openLearningModal(skill)}
+                      className="px-2 py-1 text-[10px] bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-md hover:bg-emerald-600/30 transition-all"
+                      title={t({
+                        ko: "CLI 대표자에게 스킬 학습시키기",
+                        en: "Teach this skill to selected CLI leaders",
+                        ja: "選択したCLI代表にこのスキルを学習させる",
+                        zh: "让所选 CLI 代表学习此技能",
+                      })}
+                    >
+                      {t({ ko: "학습", en: "Learn", ja: "学習", zh: "学习" })}
+                    </button>
+                    <button
+                      onClick={() => handleCopy(skill)}
+                      className="px-2 py-1 text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-md hover:bg-blue-600/30 transition-all"
+                      title={`npx skills add ${skill.repo}`}
+                    >
+                      {copiedSkill === skill.name
+                        ? t({ ko: "복사됨", en: "Copied", ja: "コピー済み", zh: "已复制" })
+                        : t({ ko: "복사", en: "Copy", ja: "コピー", zh: "复制" })}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -806,6 +967,252 @@ export default function SkillsLibrary() {
               ja: "別のキーワードで検索してください",
               zh: "请尝试其他关键词",
             })}
+          </div>
+        </div>
+      )}
+
+      {learningSkill && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/95 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-700/60 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-white">
+                  {t({
+                    ko: "스킬 학습 스쿼드",
+                    en: "Skill Learning Squad",
+                    ja: "スキル学習スクワッド",
+                    zh: "技能学习小队",
+                  })}
+                </h3>
+                <div className="mt-1 text-xs text-slate-400">
+                  {learningSkill.name} · {learningSkill.repo}
+                </div>
+              </div>
+              <button
+                onClick={closeLearningModal}
+                disabled={learnInProgress}
+                className={`rounded-lg border px-2.5 py-1 text-xs transition-all ${
+                  learnInProgress
+                    ? "cursor-not-allowed border-slate-700 text-slate-600"
+                    : "border-slate-600 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                {learnInProgress
+                  ? t({ ko: "학습중", en: "Running", ja: "実行中", zh: "进行中" })
+                  : t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭" })}
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto px-5 py-4 max-h-[calc(90vh-72px)]">
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-3 py-2">
+                <div className="text-[11px] text-emerald-200">
+                  {t({
+                    ko: "실행 명령",
+                    en: "Install command",
+                    ja: "実行コマンド",
+                    zh: "执行命令",
+                  })}
+                </div>
+                <div className="mt-1 text-[11px] font-mono text-emerald-300 break-all">
+                  npx skills add {learningSkill.repo}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-slate-400">
+                  {t({
+                    ko: "CLI 대표자를 선택하세요 (복수 선택 가능)",
+                    en: "Select CLI representatives (multi-select)",
+                    ja: "CLI代表を選択してください（複数選択可）",
+                    zh: "选择 CLI 代表（可多选）",
+                  })}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  {selectedProviders.length}
+                  {t({
+                    ko: "명 선택됨",
+                    en: " selected",
+                    ja: "名を選択",
+                    zh: " 已选择",
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {representatives.map((row) => {
+                  const isSelected = selectedProviders.includes(row.provider);
+                  const hasAgent = !!row.agent;
+                  const isAnimating = learnInProgress && isSelected && hasAgent;
+                  const displayName = row.agent
+                    ? (preferKoreanName ? row.agent.name_ko || row.agent.name : row.agent.name || row.agent.name_ko)
+                    : t({
+                        ko: "배치된 인원 없음",
+                        en: "No assigned member",
+                        ja: "担当メンバーなし",
+                        zh: "暂无成员",
+                      });
+                  return (
+                    <button
+                      key={row.provider}
+                      type="button"
+                      onClick={() => toggleProvider(row.provider)}
+                      disabled={!hasAgent || learnInProgress}
+                      className={`relative overflow-hidden rounded-xl border p-3 text-left transition-all ${
+                        !hasAgent
+                          ? "cursor-not-allowed border-slate-700/80 bg-slate-800/40 opacity-60"
+                          : isSelected
+                            ? "border-emerald-500/50 bg-emerald-500/10"
+                            : "border-slate-700/70 bg-slate-800/60 hover:border-slate-500/80 hover:bg-slate-800/80"
+                      }`}
+                    >
+                      {isAnimating && (
+                        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                          {Array.from({ length: 6 }).map((_, idx) => (
+                            <span
+                              key={`${row.provider}-book-${idx}`}
+                              className="learn-book-drop"
+                              style={{
+                                left: `${8 + idx * 15}%`,
+                                animationDelay: `${idx * 0.15}s`,
+                              }}
+                            >
+                              {idx % 2 === 0 ? "📘" : "📙"}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative z-10 flex items-center gap-3">
+                        <div className={`relative ${isAnimating ? "learn-avatar-reading" : ""}`}>
+                          <AgentAvatar
+                            agent={row.agent ?? undefined}
+                            agents={agents}
+                            size={50}
+                            rounded="xl"
+                          />
+                          {isAnimating && (
+                            <span className="learn-reading-book">📖</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11px] text-slate-400">{providerLabel(row.provider)}</div>
+                          <div className="text-sm font-medium text-white truncate">{displayName}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {row.agent
+                              ? roleLabel(row.agent.role, t)
+                              : t({
+                                  ko: "사용 불가",
+                                  en: "Unavailable",
+                                  ja: "利用不可",
+                                  zh: "不可用",
+                                })}
+                          </div>
+                        </div>
+                        <div
+                          className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                            isSelected
+                              ? "border-emerald-400/50 text-emerald-300 bg-emerald-500/15"
+                              : "border-slate-600 text-slate-400 bg-slate-700/40"
+                          }`}
+                        >
+                          {isSelected
+                            ? t({ ko: "선택됨", en: "Selected", ja: "選択", zh: "已选" })
+                            : t({ ko: "대기", en: "Idle", ja: "待機", zh: "待命" })}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-xl border border-slate-700/70 bg-slate-800/55 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="text-slate-300">
+                    {t({ ko: "작업 상태", en: "Job status", ja: "ジョブ状態", zh: "任务状态" })}:{" "}
+                    <span
+                      className={`font-medium ${
+                        learnJob?.status === "succeeded"
+                          ? "text-emerald-300"
+                          : learnJob?.status === "failed"
+                            ? "text-rose-300"
+                            : learnJob?.status === "running" || learnJob?.status === "queued"
+                              ? "text-amber-300"
+                              : "text-slate-500"
+                      }`}
+                    >
+                      {learningStatusLabel(learnJob?.status ?? null, t)}
+                    </span>
+                  </div>
+                  {learnJob?.completedAt && (
+                    <div className="text-[11px] text-slate-500">
+                      {new Intl.DateTimeFormat(localeTag, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      }).format(new Date(learnJob.completedAt))}
+                    </div>
+                  )}
+                </div>
+
+                {learnError && (
+                  <div className="mt-2 text-[11px] text-rose-300">{learnError}</div>
+                )}
+                {learnJob?.error && (
+                  <div className="mt-2 text-[11px] text-rose-300">{learnJob.error}</div>
+                )}
+
+                {learnJob && (
+                  <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900/70 p-2 font-mono text-[10px] text-slate-300 max-h-32 overflow-y-auto space-y-1">
+                    <div className="text-slate-500">$ {learnJob.command}</div>
+                    {learnJob.logTail.length > 0 ? (
+                      learnJob.logTail.slice(-10).map((line, idx) => (
+                        <div key={`${learnJob.id}-log-${idx}`}>{line}</div>
+                      ))
+                    ) : (
+                      <div className="text-slate-600">
+                        {t({
+                          ko: "로그가 아직 없습니다",
+                          en: "No logs yet",
+                          ja: "ログはまだありません",
+                          zh: "暂无日志",
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={closeLearningModal}
+                  disabled={learnInProgress}
+                  className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                    learnInProgress
+                      ? "cursor-not-allowed border-slate-700 text-slate-600"
+                      : "border-slate-600 text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消" })}
+                </button>
+                <button
+                  onClick={handleStartLearning}
+                  disabled={
+                    selectedProviders.length === 0 ||
+                    learnSubmitting ||
+                    learnInProgress ||
+                    defaultSelectedProviders.length === 0
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                    selectedProviders.length === 0 || learnInProgress || defaultSelectedProviders.length === 0
+                      ? "cursor-not-allowed border-slate-700 text-slate-600"
+                      : "border-emerald-500/50 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
+                  }`}
+                >
+                  {learnSubmitting || learnInProgress
+                    ? t({ ko: "학습중...", en: "Learning...", ja: "学習中...", zh: "学习中..." })
+                    : t({ ko: "학습 시작", en: "Start Learning", ja: "学習開始", zh: "开始学习" })}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

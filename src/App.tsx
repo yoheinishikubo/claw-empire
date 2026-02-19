@@ -808,7 +808,7 @@ export default function App() {
               />
             )}
 
-            {view === "skills" && <SkillsLibrary />}
+            {view === "skills" && <SkillsLibrary agents={agents} />}
 
             {view === "settings" && (
               <SettingsPanel

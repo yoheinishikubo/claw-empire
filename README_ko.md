@@ -64,6 +64,7 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 - 기존 클론 사용자가 `v1.0.5`를 `git pull`만 한 경우에도 첫 `pnpm dev*` / `pnpm start*` 실행 시 1회 자동 마이그레이션 적용
 - AGENTS 오케스트레이션에 `INBOX_SECRET_DISCOVERY_V2`를 추가해 쉘 env, `.env`, `.env.clone`, 공통 프로젝트 루트에서 시크릿 자동 탐색 지원
 - 에이전트 1:1 채팅에서 장문 응답 잘림을 보완하고, 동일 문구 반복 출력 사이클을 축소
+- Skills Library에 Learn Squad 플로우 추가: `Copy` 위 `Learn` 버튼, 역할 우선순위(팀장 > 시니어 > 주니어 > 인턴) 기반 CLI 대표자 자동 선출, 복수 선택 후 백그라운드 `npx skills add <owner/repo>` 설치 + 실시간 상태/로그/캐릭터 애니메이션 제공
 - 상세 문서: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---

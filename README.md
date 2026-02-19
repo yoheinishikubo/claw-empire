@@ -64,6 +64,7 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 - Existing clones that pull `v1.0.5` now run a one-time auto-migration on first `pnpm dev*` / `pnpm start*`
 - AGENTS orchestration now includes `INBOX_SECRET_DISCOVERY_V2` to resolve inbox secrets from shell env, `.env`, `.env.clone`, and common project roots
 - Direct agent chat replies no longer get prematurely truncated, and cyclic duplicate phrases are collapsed
+- Skills Library now includes a Learn Squad flow: click `Learn` above `Copy`, select CLI representatives (role priority: team leader > senior > junior > intern), then run background `npx skills add <owner/repo>` installs with live status/logs and character animations
 - Full notes: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---

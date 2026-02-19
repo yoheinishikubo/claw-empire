@@ -650,6 +650,42 @@ export async function getSkillDetail(source: string, skillId: string): Promise<S
   return j.detail;
 }
 
+export type SkillLearnProvider = 'claude' | 'codex' | 'gemini' | 'opencode';
+export type SkillLearnStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface SkillLearnJob {
+  id: string;
+  repo: string;
+  skillId: string;
+  providers: SkillLearnProvider[];
+  agents: string[];
+  status: SkillLearnStatus;
+  command: string;
+  createdAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
+  updatedAt: number;
+  exitCode: number | null;
+  logTail: string[];
+  error: string | null;
+}
+
+export async function startSkillLearning(input: {
+  repo: string;
+  skillId?: string;
+  providers: SkillLearnProvider[];
+}): Promise<SkillLearnJob> {
+  const j = await post('/api/skills/learn', input) as { ok: boolean; job: SkillLearnJob };
+  return j.job;
+}
+
+export async function getSkillLearningJob(jobId: string): Promise<SkillLearnJob> {
+  const j = await request<{ ok: boolean; job: SkillLearnJob }>(
+    `/api/skills/learn/${encodeURIComponent(jobId)}`
+  );
+  return j.job;
+}
+
 // Gateway Channel Messaging
 export type GatewayTarget = {
   sessionKey: string;

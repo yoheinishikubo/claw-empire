@@ -64,6 +64,7 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 - 既存クローンが `v1.0.5` を `git pull` した場合も、初回 `pnpm dev*` / `pnpm start*` 実行時に1回だけ自動マイグレーションを適用
 - AGENTS オーケストレーションに `INBOX_SECRET_DISCOVERY_V2` を追加し、シェル環境変数・`.env`・`.env.clone`・代表的なプロジェクトルートからシークレット自動探索を実施
 - エージェントとの1:1チャットで長文応答の過度な切り詰めを改善し、同一文言の循環重複を抑制
+- Skills Library に Learn Squad フローを追加: `Copy` の上にある `Learn` から、役職優先（チームリーダー > シニア > ジュニア > インターン）で CLI 代表を選定し、複数選択でバックグラウンド `npx skills add <owner/repo>` インストールを実行（進行状況/ログ/キャラクター演出を表示）
 - 詳細: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---

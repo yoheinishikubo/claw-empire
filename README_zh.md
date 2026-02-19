@@ -64,6 +64,7 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 - 现有克隆仓库在 `git pull v1.0.5` 后，首次执行 `pnpm dev*` / `pnpm start*` 时也会自动执行一次迁移修复
 - AGENTS 编排规则新增 `INBOX_SECRET_DISCOVERY_V2`，可从 shell 环境变量、`.env`、`.env.clone` 及常见项目根目录自动发现密钥
 - 修复代理一对一聊天中长回复被过早截断的问题，并抑制同一句式循环重复输出
+- Skills Library 新增 Learn Squad 流程：在 `Copy` 上方点击 `Learn`，按角色优先级（团队负责人 > 资深 > 初级 > 实习生）自动选出各 CLI 代表，可多选并在后台执行 `npx skills add <owner/repo>` 安装，同时显示实时状态/日志/角色动画
 - 详细说明：[`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---
