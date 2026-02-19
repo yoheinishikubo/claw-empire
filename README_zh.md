@@ -592,7 +592,10 @@ Claw-Empire 在设计上充分考虑了安全性：
 2. 创建功能分支（`git checkout -b feature/amazing-feature`）
 3. 提交您的更改（`git commit -m 'Add amazing feature'`）
 4. 推送到分支（`git push origin feature/amazing-feature`）
-5. 发起 Pull Request
+5. Pull Request 默认请提交到 `dev` 分支（外部贡献集成分支）
+6. `main` 仅用于维护者批准的紧急 hotfix，随后必须执行 `main -> dev` 回合并
+
+完整策略：[`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ---
 

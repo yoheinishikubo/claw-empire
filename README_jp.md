@@ -592,7 +592,10 @@ Claw-Empireはセキュリティを重視した設計になっています：
 2. フィーチャーブランチを作成（`git checkout -b feature/amazing-feature`）
 3. 変更をコミット（`git commit -m 'Add amazing feature'`）
 4. ブランチにプッシュ（`git push origin feature/amazing-feature`）
-5. Pull Requestを作成
+5. Pull Request は原則 `dev` ブランチ宛てで作成（外部コントリビューター向け統合ブランチ）
+6. `main` はメンテナー承認済みの緊急ホットフィックス時のみ使用し、その後 `main -> dev` をバックマージ
+
+詳細ポリシー: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ---
 

@@ -592,7 +592,10 @@ Claw-Empire는 보안을 최우선으로 설계되었습니다:
 2. 기능 브랜치를 생성합니다 (`git checkout -b feature/amazing-feature`)
 3. 변경 사항을 커밋합니다 (`git commit -m 'Add amazing feature'`)
 4. 브랜치에 푸시합니다 (`git push origin feature/amazing-feature`)
-5. Pull Request를 엽니다
+5. Pull Request는 기본적으로 `dev` 브랜치로 엽니다 (외부 기여 통합 브랜치)
+6. `main`은 유지보수자 승인 긴급 핫픽스에만 사용하고, 이후 `main -> dev` 역병합을 수행합니다
+
+상세 정책: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ---
 
