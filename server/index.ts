@@ -1,9 +1,9 @@
-import express from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "node:fs";
 import os from "node:os";
-import { randomUUID, createHash, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
+import { randomUUID, createHash, randomBytes, createCipheriv, createDecipheriv, timingSafeEqual } from "node:crypto";
 import { spawn, execFile, execFileSync, type ChildProcess } from "node:child_process";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { WebSocketServer, WebSocket } from "ws";
@@ -49,13 +49,202 @@ const PORT = Number(process.env.PORT ?? 8790);
 const HOST = process.env.HOST ?? "127.0.0.1";
 const OAUTH_BASE_HOST = HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST;
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG ?? "";
+const SESSION_COOKIE_NAME = "claw_session";
+
+function normalizeSecret(raw: string | undefined): string {
+  const trimmed = (raw ?? "").trim().replace(/^['"]|['"]$/g, "");
+  if (!trimmed || trimmed === "__CHANGE_ME__") return "";
+  return trimmed;
+}
+
+const API_AUTH_TOKEN = normalizeSecret(process.env.API_AUTH_TOKEN);
+const INBOX_WEBHOOK_SECRET = normalizeSecret(process.env.INBOX_WEBHOOK_SECRET);
+const SESSION_AUTH_TOKEN = API_AUTH_TOKEN || randomBytes(32).toString("hex");
+const ALLOWED_ORIGIN_SUFFIXES = (process.env.ALLOWED_ORIGIN_SUFFIXES ?? ".ts.net")
+  .split(",")
+  .map((v) => v.trim())
+  .filter(Boolean);
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((v) => v.trim())
+  .filter(Boolean);
+
+function isLoopbackHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+}
+
+function isLoopbackAddress(remoteAddress: string | undefined): boolean {
+  if (!remoteAddress) return false;
+  return (
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1"
+  );
+}
+
+function isLoopbackRequest(req: { socket?: { remoteAddress?: string } }): boolean {
+  return isLoopbackAddress(req.socket?.remoteAddress);
+}
+
+function isTrustedOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    if (isLoopbackHostname(u.hostname)) return true;
+    if (ALLOWED_ORIGINS.includes(origin)) return true;
+    return ALLOWED_ORIGIN_SUFFIXES.some((suffix) => u.hostname.endsWith(suffix));
+  } catch {
+    return false;
+  }
+}
+
+function parseCookies(headerValue: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!headerValue) return out;
+  for (const part of headerValue.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(value);
+    } catch {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function bearerToken(req: Request): string | null {
+  const raw = req.header("authorization");
+  if (!raw) return null;
+  const m = raw.match(/^Bearer\s+(.+)$/i);
+  return m?.[1]?.trim() ?? null;
+}
+
+function cookieToken(req: Request): string | null {
+  const cookies = parseCookies(req.header("cookie"));
+  const token = cookies[SESSION_COOKIE_NAME];
+  return typeof token === "string" && token.length > 0 ? token : null;
+}
+
+function isAuthenticated(req: Request): boolean {
+  const bearer = bearerToken(req);
+  if (bearer && bearer === SESSION_AUTH_TOKEN) return true;
+  const token = cookieToken(req);
+  return token === SESSION_AUTH_TOKEN;
+}
+
+function shouldUseSecureCookie(req: Request): boolean {
+  const xfProto = req.header("x-forwarded-proto");
+  return Boolean(req.secure || xfProto === "https");
+}
+
+function issueSessionCookie(req: Request, res: Response): void {
+  if (cookieToken(req) === SESSION_AUTH_TOKEN) return;
+  const cookie = [
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(SESSION_AUTH_TOKEN)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict",
+  ];
+  if (shouldUseSecureCookie(req)) cookie.push("Secure");
+  res.append("Set-Cookie", cookie.join("; "));
+}
+
+function isPublicApiPath(pathname: string): boolean {
+  if (pathname === "/api/health") return true;
+  if (pathname === "/api/auth/session") return true;
+  if (pathname === "/api/inbox") return true;
+  if (pathname === "/api/oauth/start") return true;
+  if (pathname.startsWith("/api/oauth/callback/")) return true;
+  return false;
+}
+
+function safeSecretEquals(input: string, expected: string): boolean {
+  const a = Buffer.from(input, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function incomingMessageBearerToken(req: IncomingMessage): string | null {
+  const raw = req.headers.authorization;
+  if (!raw || Array.isArray(raw)) return null;
+  const m = raw.match(/^Bearer\s+(.+)$/i);
+  return m?.[1]?.trim() ?? null;
+}
+
+function incomingMessageCookieToken(req: IncomingMessage): string | null {
+  const raw = req.headers.cookie;
+  if (!raw || Array.isArray(raw)) return null;
+  const cookies = parseCookies(raw);
+  const token = cookies[SESSION_COOKIE_NAME];
+  return typeof token === "string" && token.length > 0 ? token : null;
+}
+
+function isIncomingMessageAuthenticated(req: IncomingMessage): boolean {
+  const bearer = incomingMessageBearerToken(req);
+  if (bearer && bearer === SESSION_AUTH_TOKEN) return true;
+  const cookie = incomingMessageCookieToken(req);
+  return cookie === SESSION_AUTH_TOKEN;
+}
+
+function isIncomingMessageOriginTrusted(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin || Array.isArray(origin)) return true;
+  return isTrustedOrigin(origin);
+}
 
 // ---------------------------------------------------------------------------
 // Express setup
 // ---------------------------------------------------------------------------
 const app = express();
-app.use(cors());
+
+const corsMiddleware = cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (isTrustedOrigin(origin)) return callback(null, true);
+    return callback(new Error("origin_not_allowed"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["content-type", "authorization", "x-inbox-secret"],
+  maxAge: 600,
+});
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  corsMiddleware(req, res, (err) => {
+    if (err) {
+      return res.status(403).json({ error: "origin_not_allowed" });
+    }
+    next();
+  });
+});
+
 app.use(express.json({ limit: "2mb" }));
+
+app.get("/api/auth/session", (req, res) => {
+  const bearer = bearerToken(req);
+  const hasBearerAuth = bearer === SESSION_AUTH_TOKEN;
+  if (!isLoopbackRequest(req) && !hasBearerAuth) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  issueSessionCookie(req, res);
+  res.json({ ok: true });
+});
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api/")) return next();
+  if (isPublicApiPath(req.path)) return next();
+  if (!isAuthenticated(req)) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  issueSessionCookie(req, res);
+  return next();
+});
 
 // ---------------------------------------------------------------------------
 // OAuth encryption helpers
@@ -11339,6 +11528,32 @@ app.post("/api/directives", async (req, res) => {
 app.post("/api/inbox", async (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const idempotencyKey = resolveMessageIdempotencyKey(req, body, "api.inbox");
+  if (!INBOX_WEBHOOK_SECRET) {
+    if (!recordMessageIngressAuditOr503(res, {
+      endpoint: "/api/inbox",
+      req,
+      body,
+      idempotencyKey,
+      outcome: "validation_error",
+      statusCode: 503,
+      detail: "inbox_webhook_secret_not_configured",
+    })) return;
+    return res.status(503).json({ error: "inbox_webhook_secret_not_configured" });
+  }
+  const providedSecret = req.header("x-inbox-secret") ?? "";
+  if (!safeSecretEquals(providedSecret, INBOX_WEBHOOK_SECRET)) {
+    if (!recordMessageIngressAuditOr503(res, {
+      endpoint: "/api/inbox",
+      req,
+      body,
+      idempotencyKey,
+      outcome: "validation_error",
+      statusCode: 401,
+      detail: "invalid_webhook_secret",
+    })) return;
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
   const text = body.text;
   if (!text || typeof text !== "string" || !text.trim()) {
     if (!recordMessageIngressAuditOr503(res, {
@@ -13433,7 +13648,11 @@ setInterval(async () => {
 // WebSocket server on same HTTP server
 const wss = new WebSocketServer({ server });
 
-wss.on("connection", (ws: WebSocket, _req: IncomingMessage) => {
+wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+  if (!isIncomingMessageOriginTrusted(req) || !isIncomingMessageAuthenticated(req)) {
+    ws.close(1008, "unauthorized");
+    return;
+  }
   wsClients.add(ws);
   console.log(`[Claw-Empire] WebSocket client connected (total: ${wsClients.size})`);
 

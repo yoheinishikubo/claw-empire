@@ -8,10 +8,58 @@ import type {
 } from './types';
 
 const base = '';
+const SESSION_BOOTSTRAP_PATH = '/api/auth/session';
+const API_AUTH_TOKEN_SESSION_KEY = 'claw_api_auth_token';
 const POST_RETRY_LIMIT = 2;
 const POST_TIMEOUT_MS = 12_000;
 const POST_BACKOFF_BASE_MS = 250;
 const POST_BACKOFF_MAX_MS = 2_000;
+let runtimeApiAuthToken: string | undefined;
+let sessionBootstrapPromise: Promise<boolean> | null = null;
+
+function normalizeApiAuthToken(raw: string | null | undefined): string {
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function readStoredApiAuthToken(): string {
+  if (runtimeApiAuthToken !== undefined) return runtimeApiAuthToken;
+  if (typeof window === 'undefined') {
+    runtimeApiAuthToken = '';
+    return runtimeApiAuthToken;
+  }
+  try {
+    runtimeApiAuthToken = normalizeApiAuthToken(window.sessionStorage.getItem(API_AUTH_TOKEN_SESSION_KEY));
+  } catch {
+    runtimeApiAuthToken = '';
+  }
+  return runtimeApiAuthToken;
+}
+
+function writeStoredApiAuthToken(token: string): void {
+  runtimeApiAuthToken = token;
+  if (typeof window === 'undefined') return;
+  try {
+    if (token) {
+      window.sessionStorage.setItem(API_AUTH_TOKEN_SESSION_KEY, token);
+    } else {
+      window.sessionStorage.removeItem(API_AUTH_TOKEN_SESSION_KEY);
+    }
+  } catch {
+    // ignore storage write errors
+  }
+}
+
+function promptForApiAuthToken(hasExistingToken: boolean): string {
+  if (typeof window === 'undefined') return '';
+  const promptText = hasExistingToken
+    ? 'Stored API token was rejected. Enter a new API token:'
+    : 'Enter API token for this server:';
+  return normalizeApiAuthToken(window.prompt(promptText));
+}
+
+export function setApiAuthToken(token?: string | null): void {
+  writeStoredApiAuthToken(normalizeApiAuthToken(token));
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -43,9 +91,10 @@ async function postWithIdempotency<T>(
   url: string,
   body: Record<string, unknown>,
   idempotencyKey: string,
+  canRetryAuth = true,
 ): Promise<T> {
   const payload = { ...body, idempotency_key: idempotencyKey };
-  const headers: HeadersInit = {
+  const baseHeaders: HeadersInit = {
     'content-type': 'application/json',
     'x-idempotency-key': idempotencyKey,
   };
@@ -55,12 +104,18 @@ async function postWithIdempotency<T>(
     const timeout = setTimeout(() => controller.abort(), POST_TIMEOUT_MS);
 
     try {
+      const headers = withAuthHeaders(baseHeaders);
       const r = await fetch(`${base}${url}`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
         signal: controller.signal,
+        credentials: 'same-origin',
       });
+      if (r.status === 401 && canRetryAuth && url !== SESSION_BOOTSTRAP_PATH) {
+        await bootstrapSession();
+        return postWithIdempotency<T>(url, body, idempotencyKey, false);
+      }
       if (r.ok) {
         return r.json();
       }
@@ -101,8 +156,57 @@ function extractMessageId(payload: unknown): string {
   throw new Error('message_id_missing');
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(`${base}${url}`, init);
+function withAuthHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  const runtimeToken = readStoredApiAuthToken();
+  if (runtimeToken && !headers.has('authorization')) {
+    headers.set('authorization', `Bearer ${runtimeToken}`);
+  }
+  return headers;
+}
+
+async function doBootstrapSession(promptOnUnauthorized: boolean): Promise<boolean> {
+  try {
+    const response = await fetch(`${base}${SESSION_BOOTSTRAP_PATH}`, {
+      method: 'GET',
+      headers: withAuthHeaders(),
+      credentials: 'same-origin',
+    });
+    if (response.ok) return true;
+    if (response.status === 401 && promptOnUnauthorized) {
+      const nextToken = promptForApiAuthToken(Boolean(readStoredApiAuthToken()));
+      if (nextToken) {
+        writeStoredApiAuthToken(nextToken);
+        return doBootstrapSession(false);
+      }
+    }
+  } catch {
+    // ignore bootstrap failures; main request will surface any errors
+  }
+  return false;
+}
+
+export async function bootstrapSession(options?: { promptOnUnauthorized?: boolean }): Promise<boolean> {
+  const promptOnUnauthorized = options?.promptOnUnauthorized ?? true;
+  if (!sessionBootstrapPromise) {
+    sessionBootstrapPromise = doBootstrapSession(promptOnUnauthorized).finally(() => {
+      sessionBootstrapPromise = null;
+    });
+  }
+  return sessionBootstrapPromise;
+}
+
+async function request<T>(url: string, init?: RequestInit, canRetryAuth = true): Promise<T> {
+  const headers = withAuthHeaders(init?.headers);
+  const r = await fetch(`${base}${url}`, {
+    credentials: 'same-origin',
+    ...init,
+    headers,
+  });
+  if (r.status === 401 && canRetryAuth && url !== SESSION_BOOTSTRAP_PATH) {
+    await bootstrapSession();
+    return request<T>(url, init, false);
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => null);
     throw new Error(body?.error ?? body?.message ?? `Request failed: ${r.status}`);
@@ -536,19 +640,16 @@ export type GatewayTarget = {
 };
 
 export async function getGatewayTargets(): Promise<GatewayTarget[]> {
-  const r = await fetch(`${base}/api/gateway/targets`);
-  if (!r.ok) return [];
-  const data = await r.json();
-  return data?.targets ?? [];
+  try {
+    const data = await request<{ targets?: GatewayTarget[] }>('/api/gateway/targets');
+    return data?.targets ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function sendGatewayMessage(sessionKey: string, text: string): Promise<{ ok: boolean; error?: string }> {
-  const r = await fetch(`${base}/api/gateway/send`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ sessionKey, text }),
-  });
-  return r.json();
+  return post('/api/gateway/send', { sessionKey, text }) as Promise<{ ok: boolean; error?: string }>;
 }
 
 // SubTasks

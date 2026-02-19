@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import { bootstrapSession } from "../api";
 import type { WSEvent, WSEventType } from "../types";
 
 type Listener = (payload: unknown) => void;
@@ -15,8 +16,19 @@ export function useWebSocket() {
     let ws: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
-    function connect() {
+    async function connect() {
       if (!alive) return;
+      try {
+        const bootstrapped = await bootstrapSession({ promptOnUnauthorized: false });
+        if (!bootstrapped) {
+          reconnectTimer = setTimeout(() => { void connect(); }, 2000);
+          return;
+        }
+      } catch {
+        // ignore bootstrap errors; ws connect result will drive retry
+        reconnectTimer = setTimeout(() => { void connect(); }, 2000);
+        return;
+      }
       ws = new WebSocket(url);
       wsRef.current = ws;
 
@@ -26,7 +38,7 @@ export function useWebSocket() {
       ws.onclose = () => {
         if (!alive) return;
         setConnected(false);
-        reconnectTimer = setTimeout(connect, 2000);
+        reconnectTimer = setTimeout(() => { void connect(); }, 2000);
       };
       ws.onerror = () => ws.close();
       ws.onmessage = (e) => {
@@ -41,7 +53,7 @@ export function useWebSocket() {
       };
     }
 
-    connect();
+    void connect();
     return () => {
       alive = false;
       clearTimeout(reconnectTimer);
