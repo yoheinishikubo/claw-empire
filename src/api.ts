@@ -622,6 +622,7 @@ export async function refreshCliUsage(): Promise<{ ok: boolean; usage: Record<st
 export interface SkillEntry {
   rank: number;
   name: string;
+  skillId: string;
   repo: string;
   installs: number;
 }
@@ -629,6 +630,24 @@ export interface SkillEntry {
 export async function getSkills(): Promise<SkillEntry[]> {
   const j = await request<{ skills: SkillEntry[] }>('/api/skills');
   return j.skills;
+}
+
+export interface SkillDetail {
+  title: string;
+  description: string;
+  whenToUse: string[];
+  weeklyInstalls: string;
+  firstSeen: string;
+  installCommand: string;
+  platforms: Array<{ name: string; installs: string }>;
+  audits: Array<{ name: string; status: string }>;
+}
+
+export async function getSkillDetail(source: string, skillId: string): Promise<SkillDetail | null> {
+  const j = await request<{ ok: boolean; detail: SkillDetail | null }>(
+    `/api/skills/detail?source=${encodeURIComponent(source)}&skillId=${encodeURIComponent(skillId)}`
+  );
+  return j.detail;
 }
 
 // Gateway Channel Messaging

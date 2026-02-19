@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { getSkills, type SkillEntry } from "../api";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { getSkills, getSkillDetail, type SkillEntry, type SkillDetail } from "../api";
 
 /* ================================================================== */
 /*  Skills data from skills.sh (loaded dynamically via /api/skills)    */
@@ -329,6 +329,34 @@ function getRankBadge(rank: number) {
   return { icon: "", color: "text-slate-500" };
 }
 
+function formatFirstSeen(value: string, localeTag: string): string {
+  if (!value) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat(localeTag, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(parsed);
+}
+
+function localizeAuditStatus(status: string, t: TFunction): string {
+  const normalized = status.toLowerCase();
+  if (normalized === "pass") {
+    return t({ ko: "통과", en: "Pass", ja: "合格", zh: "通过" });
+  }
+  if (normalized === "warn") {
+    return t({ ko: "경고", en: "Warn", ja: "警告", zh: "警告" });
+  }
+  if (normalized === "pending") {
+    return t({ ko: "대기", en: "Pending", ja: "保留", zh: "待处理" });
+  }
+  if (normalized === "fail") {
+    return t({ ko: "실패", en: "Fail", ja: "失敗", zh: "失败" });
+  }
+  return status;
+}
+
 /* ================================================================== */
 /*  Component                                                          */
 /* ================================================================== */
@@ -342,6 +370,34 @@ export default function SkillsLibrary() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [sortBy, setSortBy] = useState<"rank" | "name" | "installs">("rank");
   const [copiedSkill, setCopiedSkill] = useState<string | null>(null);
+  const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
+  const [detailCache, setDetailCache] = useState<Record<string, SkillDetail | "loading" | "error">>({});
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+
+  const handleCardMouseEnter = useCallback((skill: CategorizedSkill) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      const detailId = skill.skillId || skill.name;
+      const key = `${skill.repo}/${detailId}`;
+      setHoveredSkill(key);
+      if (!detailCache[key]) {
+        setDetailCache((prev) => ({ ...prev, [key]: "loading" }));
+        getSkillDetail(skill.repo, detailId)
+          .then((detail) => {
+            setDetailCache((prev) => ({ ...prev, [key]: detail ?? "error" }));
+          })
+          .catch(() => {
+            setDetailCache((prev) => ({ ...prev, [key]: "error" }));
+          });
+      }
+    }, 300);
+  }, [detailCache]);
+
+  const handleCardMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    setHoveredSkill(null);
+  }, []);
 
   useEffect(() => {
     getSkills()
@@ -560,10 +616,16 @@ export default function SkillsLibrary() {
           const badge = getRankBadge(skill.rank);
           const catColor =
             CATEGORY_COLORS[skill.category] || CATEGORY_COLORS.Other;
+          const detailId = skill.skillId || skill.name;
+          const detailKey = `${skill.repo}/${detailId}`;
+          const isHovered = hoveredSkill === detailKey;
+          const detail = detailCache[detailKey];
           return (
             <div
-              key={`${skill.rank}-${skill.name}`}
-              className="bg-slate-800/50 border border-slate-700/40 rounded-xl p-4 hover:bg-slate-800/70 hover:border-slate-600/50 transition-all group"
+              key={`${skill.rank}-${detailId}`}
+              className="relative bg-slate-800/50 border border-slate-700/40 rounded-xl p-4 hover:bg-slate-800/70 hover:border-slate-600/50 transition-all group"
+              onMouseEnter={() => handleCardMouseEnter(skill)}
+              onMouseLeave={handleCardMouseLeave}
             >
               {/* Top row: rank + name */}
               <div className="flex items-start gap-3 mb-3">
@@ -609,6 +671,122 @@ export default function SkillsLibrary() {
                   </button>
                 </div>
               </div>
+
+              {/* Hover Detail Tooltip */}
+              {isHovered && (
+                <div
+                  ref={tooltipRef}
+                  className="absolute z-50 left-0 right-0 top-full mt-2 bg-slate-900/95 backdrop-blur-md border border-slate-600/60 rounded-xl p-4 shadow-2xl shadow-black/40 animate-in fade-in slide-in-from-top-1 duration-200"
+                  onMouseEnter={() => {
+                    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+                    setHoveredSkill(detailKey);
+                  }}
+                  onMouseLeave={handleCardMouseLeave}
+                >
+                  {detail === "loading" && (
+                    <div className="flex items-center gap-2 text-slate-400 text-xs">
+                      <div className="animate-spin w-3 h-3 border border-blue-500 border-t-transparent rounded-full" />
+                      {t({ ko: "상세정보 로딩중...", en: "Loading details...", ja: "詳細を読み込み中...", zh: "加载详情..." })}
+                    </div>
+                  )}
+                  {detail === "error" && (
+                    <div className="text-slate-500 text-xs">
+                      {t({ ko: "상세정보를 불러올 수 없습니다", en: "Could not load details", ja: "詳細を読み込めません", zh: "无法加载详情" })}
+                    </div>
+                  )}
+                  {detail && typeof detail === "object" && (
+                    <div className="space-y-3">
+                      {detail.title && (
+                        <div className="text-sm font-semibold text-white">
+                          {detail.title}
+                        </div>
+                      )}
+
+                      {/* Description */}
+                      {detail.description && (
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          {detail.description}
+                        </p>
+                      )}
+
+                      {/* When to use */}
+                      {detail.whenToUse.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                            {t({ ko: "사용 시점", en: "When to Use", ja: "使うタイミング", zh: "适用场景" })}
+                          </div>
+                          <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-300">
+                            {detail.whenToUse.slice(0, 6).map((item, idx) => (
+                              <li key={`${detailKey}-when-${idx}`}>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Meta row */}
+                      <div className="flex flex-wrap gap-3 text-[11px]">
+                        {detail.weeklyInstalls && (
+                          <span className="text-slate-400">
+                            <span className="text-empire-green font-medium">{detail.weeklyInstalls}</span>
+                            {" "}{t({ ko: "주간 설치", en: "weekly", ja: "週間", zh: "周安装" })}
+                          </span>
+                        )}
+                        {detail.firstSeen && (
+                          <span className="text-slate-500">
+                            {t({ ko: "최초 등록", en: "First seen", ja: "初登録", zh: "首次发现" })}: {formatFirstSeen(detail.firstSeen, localeTag)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Platform installs */}
+                      {detail.platforms.length > 0 && (
+                        <div>
+                          <div className="text-[10px] text-slate-500 mb-1.5 uppercase tracking-wider">
+                            {t({ ko: "플랫폼별 설치", en: "Platform Installs", ja: "プラットフォーム別", zh: "平台安装量" })}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {detail.platforms.slice(0, 6).map((p) => (
+                              <span
+                                key={p.name}
+                                className="text-[10px] px-2 py-0.5 bg-slate-800/80 border border-slate-700/50 rounded-md text-slate-400"
+                              >
+                                {p.name} <span className="text-empire-green">{p.installs}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Audits */}
+                      {detail.audits.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {detail.audits.map((a) => (
+                            <span
+                              key={a.name}
+                              className={`text-[10px] px-2 py-0.5 rounded-md border ${
+                                a.status.toLowerCase() === "pass"
+                                  ? "text-green-400 bg-green-500/10 border-green-500/30"
+                                  : a.status.toLowerCase() === "warn" || a.status.toLowerCase() === "pending"
+                                  ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
+                                  : "text-red-400 bg-red-500/10 border-red-500/30"
+                              }`}
+                            >
+                              {a.name}: {localizeAuditStatus(a.status, t)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Install command */}
+                      <div className="text-[10px] text-slate-500 font-mono bg-slate-800/60 rounded-md px-2 py-1.5 truncate">
+                        $ {detail.installCommand}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
