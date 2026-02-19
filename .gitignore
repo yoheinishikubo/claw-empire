@@ -30,6 +30,7 @@ secrets*.json
 # Local reports/worktrees
 docs/reports/
 .climpire-worktrees/
+.climpire/
 
 # IDE / Editor
 .vscode/
