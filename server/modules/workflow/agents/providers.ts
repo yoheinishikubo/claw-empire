@@ -572,11 +572,10 @@ function createSafeLogStreamOps(logStream: any): {
 // Parse OpenAI-compatible SSE stream (for Copilot)
 async function parseSSEStream(
   body: ReadableStream<Uint8Array>,
-  logStream: fs.WriteStream,
   signal: AbortSignal,
+  safeWrite: (text: string) => boolean,
   taskId?: string,
 ): Promise<void> {
-  const { safeWrite } = createSafeLogStreamOps(logStream);
   const decoder = new TextDecoder();
   let buffer = "";
   const subtaskAccum = { buf: "" };
@@ -613,11 +612,10 @@ async function parseSSEStream(
 // Parse Gemini/Antigravity SSE stream
 async function parseGeminiSSEStream(
   body: ReadableStream<Uint8Array>,
-  logStream: fs.WriteStream,
   signal: AbortSignal,
+  safeWrite: (text: string) => boolean,
   taskId?: string,
 ): Promise<void> {
-  const { safeWrite } = createSafeLogStreamOps(logStream);
   const decoder = new TextDecoder();
   let buffer = "";
   const subtaskAccum = { buf: "" };
@@ -680,8 +678,9 @@ async function executeCopilotAgent(
   signal: AbortSignal,
   taskId?: string,
   preferredAccountId?: string | null,
+  safeWriteOverride?: (text: string) => boolean,
 ): Promise<void> {
-  const { safeWrite } = createSafeLogStreamOps(logStream);
+  const safeWrite = safeWriteOverride ?? createSafeLogStreamOps(logStream).safeWrite;
   const modelConfig = getProviderModelConfig();
   const defaultRawModel = modelConfig.copilot?.model || "github-copilot/gpt-4o";
   const autoSwap = getOAuthAutoSwapEnabled();
@@ -738,7 +737,7 @@ async function executeCopilotAgent(
         throw new Error(`Copilot API error (${resp.status}): ${text}`);
       }
 
-      await parseSSEStream(resp.body!, logStream, signal, taskId);
+      await parseSSEStream(resp.body!, signal, safeWrite, taskId);
       markOAuthAccountSuccess(account.id!);
       if (i > 0 && autoSwap && account.id) {
         setActiveOAuthAccount("github", account.id);
@@ -775,8 +774,9 @@ async function executeAntigravityAgent(
   signal: AbortSignal,
   taskId?: string,
   preferredAccountId?: string | null,
+  safeWriteOverride?: (text: string) => boolean,
 ): Promise<void> {
-  const { safeWrite } = createSafeLogStreamOps(logStream);
+  const safeWrite = safeWriteOverride ?? createSafeLogStreamOps(logStream).safeWrite;
   const modelConfig = getProviderModelConfig();
   const defaultRawModel = modelConfig.antigravity?.model || "google/antigravity-gemini-2.5-pro";
   const autoSwap = getOAuthAutoSwapEnabled();
@@ -843,7 +843,7 @@ async function executeAntigravityAgent(
         throw new Error(`Antigravity API error (${resp.status}): ${text}`);
       }
 
-      await parseGeminiSSEStream(resp.body!, logStream, signal, taskId);
+      await parseGeminiSSEStream(resp.body!, signal, safeWrite, taskId);
       markOAuthAccountSuccess(account.id!);
       if (i > 0 && autoSwap && account.id) {
         setActiveOAuthAccount("google_antigravity", account.id);
@@ -908,6 +908,7 @@ function launchHttpAgent(
           controller.signal,
           taskId,
           preferredOAuthAccountId ?? null,
+          safeWrite,
         );
       } else {
         await executeAntigravityAgent(
@@ -916,6 +917,7 @@ function launchHttpAgent(
           controller.signal,
           taskId,
           preferredOAuthAccountId ?? null,
+          safeWrite,
         );
       }
     } catch (err: any) {

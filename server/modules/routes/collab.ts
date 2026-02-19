@@ -1929,7 +1929,7 @@ function scheduleAgentReply(agentId: string, ceoMessage: string, messageType: st
         || (activeTask ? resolveProjectPath(activeTask) : process.cwd());
 
       const built = buildDirectReplyPrompt(agent, ceoMessage, messageType);
-      const run = await runAgentOneShot(agent, built.prompt, { projectPath });
+      const run = await runAgentOneShot(agent, built.prompt, { projectPath, rawOutput: true });
       const reply = chooseSafeReply(run, built.lang, "direct", agent);
       sendAgentMessage(agent, reply);
     })();

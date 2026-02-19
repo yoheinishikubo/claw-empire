@@ -1003,7 +1003,11 @@ function localeInstruction(lang: string): string {
   }
 }
 
-function normalizeConversationReply(raw: string, maxChars = 420): string {
+function normalizeConversationReply(
+  raw: string,
+  maxChars = 420,
+  opts: { maxSentences?: number } = {},
+): string {
   if (!raw.trim()) return "";
   const parsed = prettyStreamJson(raw);
   let text = parsed.trim() ? parsed : raw;
@@ -1024,17 +1028,22 @@ function normalizeConversationReply(raw: string, maxChars = 420): string {
     .trim();
   if (!text) return "";
 
-  const sentenceParts = text
-    .split(/(?<=[.!?。！？])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const uniqueParts: string[] = [];
-  for (const part of sentenceParts) {
-    if (!uniqueParts.includes(part)) uniqueParts.push(part);
-    if (uniqueParts.length >= 2) break;
-  }
-  if (uniqueParts.length > 0) {
-    text = uniqueParts.join(" ");
+  const sentenceLimit = typeof opts.maxSentences === "number"
+    ? Math.max(0, Math.floor(opts.maxSentences))
+    : 2;
+  if (sentenceLimit !== 0) {
+    const sentenceParts = text
+      .split(/(?<=[.!?。！？])\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const uniqueParts: string[] = [];
+    for (const part of sentenceParts) {
+      if (!uniqueParts.includes(part)) uniqueParts.push(part);
+      if (uniqueParts.length >= sentenceLimit) break;
+    }
+    if (uniqueParts.length > 0) {
+      text = uniqueParts.join(" ");
+    }
   }
 
   if (text.length > maxChars) {
@@ -1087,7 +1096,7 @@ function chooseSafeReply(
   kind: ReplyKind,
   agent?: AgentRow,
 ): string {
-  const cleaned = normalizeConversationReply(run.text || "", 360);
+  const cleaned = normalizeConversationReply(run.text || "", 2000, { maxSentences: 0 });
   if (!cleaned) return fallbackTurnReply(kind, lang, agent);
   if (/timeout after|CLI 응답 생성에 실패|response failed|one-shot-error/i.test(cleaned)) {
     return fallbackTurnReply(kind, lang, agent);
@@ -1344,6 +1353,7 @@ async function runAgentOneShot(
             controller.signal,
             streamTaskId ?? undefined,
             agent.oauth_account_id ?? null,
+            safeWrite,
           );
         } else {
           await executeAntigravityAgent(
@@ -1352,6 +1362,7 @@ async function runAgentOneShot(
             controller.signal,
             streamTaskId ?? undefined,
             agent.oauth_account_id ?? null,
+            safeWrite,
           );
         }
       } finally {
