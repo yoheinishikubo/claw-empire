@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.4-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.5-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.0.4.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.0.5.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,19 +53,14 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 
 ---
 
-## 最新リリース (v1.0.4)
+## 最新リリース (v1.0.5)
 
-- レビューフローを3段階に固定: Round1は1回の一括補完、Round2は統合/マージ、Round3は最終判定
-- タスクごとの補完要請は1回に制限し、Round1の反復ループを停止
-- サブタスク生成直後に企画リーダーが部署配分を再判定・再配置
-- 同一部署サブタスクは `1.`, `2.`, `3.` の順次チェックリスト付き一括委任で処理
-- バッチ完了時に紐づくサブタスクをまとめて完了/失敗処理し、再レビュー往復を削減
-- レビュー/最終報告で、補完事項と協業事項の完了数を明示するように更新
-- 一時停止はブレーク（SIGINT相当）で中断し、再開時は同一セッション文脈で継続
-- 協業子タスクは `review` で待機し、全子タスクがレビュー到達後に親タスク側で1回の会議で最終マージ判定
-- 実行プロセスが存在しない孤立 `in_progress` 状態を自動回復するウォッチドッグを追加
-- Planned 協業サブタスクは会議補完ノートで実際に識別された部署のみ生成（単純言及による誤検出を防止）
-- 詳細: [`docs/releases/v1.0.4.md`](docs/releases/v1.0.4.md)
+- サーバー実行フローをさらにモジュール化し、ルーティング/ワークフロー/ランタイム結合部の保守性を強化
+- `/api/inbox` 連携ドキュメントを統一: `x-inbox-secret` ヘッダーは必須で、不一致/欠落時は `401`
+- AIインストールガイドとクイックスタートに `INBOX_WEBHOOK_SECRET` と `OPENCLAW_CONFIG` の検証手順を追加
+- `OPENCLAW_CONFIG` の取り扱いを強化: ランタイムで外側の引用符と先頭 `~` を正規化
+- OpenClaw設定ドキュメントに `.env` の絶対パス運用（引用符なし推奨）を明確化
+- 詳細: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---
 
@@ -223,6 +218,9 @@ macOS/Linux:
 
 # AGENTSオーケストレーションルール確認
 grep -R "BEGIN claw-empire orchestration rules" ~/.openclaw/workspace/AGENTS.md AGENTS.md 2>/dev/null || true
+
+# OpenClaw inbox 必須 .env 項目確認
+grep -E '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)=' .env || true
 ```
 
 Windows PowerShell:
@@ -231,6 +229,9 @@ Windows PowerShell:
 if ((Test-Path .\.env) -and (Test-Path .\scripts\setup.mjs)) { "setup files ok" }
 $agentCandidates = @("$env:USERPROFILE\.openclaw\workspace\AGENTS.md", ".\AGENTS.md")
 $agentCandidates | ForEach-Object { if (Test-Path $_) { Select-String -Path $_ -Pattern "BEGIN claw-empire orchestration rules" } }
+
+# OpenClaw inbox 必須 .env 項目確認
+Get-Content .\.env | Select-String -Pattern '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)='
 ```
 
 ### ステップ3: 起動とヘルスチェック
@@ -247,13 +248,24 @@ curl -s http://127.0.0.1:8790/healthz
 
 期待値: `{"ok":true,...}`
 
-### ステップ4: OpenClawゲートウェイ（任意）検証
+`.env` の `OPENCLAW_CONFIG` は絶対パスを推奨します（ドキュメントでは引用符なし推奨）。`v1.0.5` では引用符と先頭 `~` もランタイムで正規化されます。
+
+### ステップ4: OpenClawゲートウェイ + inbox（任意）検証
 
 ```bash
 curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 `OPENCLAW_CONFIG` が有効なら、利用可能なメッセンジャーセッションが返ります。
+
+```bash
+curl -X POST http://127.0.0.1:8790/api/inbox \
+  -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.5 inbox 検証","skipPlannedMeeting":true}'
+```
+
+期待値: `INBOX_WEBHOOK_SECRET` と `x-inbox-secret` が一致すれば `401` 以外の応答
 
 ---
 
@@ -280,6 +292,15 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 |------------------|----------|
 | **macOS / Linux** | `bash scripts/openclaw-setup.sh` |
 | **Windows (PowerShell)** | `powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
+
+### OpenClaw `.env` 必須設定（`/api/inbox` 利用時）
+
+チャットWebhook連携の前に、`.env` に次の2項目を設定してください。
+
+- `INBOX_WEBHOOK_SECRET=<十分に長いランダムシークレット>`
+- `OPENCLAW_CONFIG=<openclaw.json の絶対パス>`（引用符なし推奨）
+
+`/api/inbox` は `x-inbox-secret` ヘッダーが `INBOX_WEBHOOK_SECRET` と完全一致しない場合、`401` を返します。
 
 ### 手動セットアップ（代替）
 
@@ -371,6 +392,9 @@ pnpm setup -- --port 8790
 
 `install.sh` / `install.ps1`（または `scripts/openclaw-setup.*`）は、可能な場合に `OPENCLAW_CONFIG` を自動検出して `.env` に設定します。
 
+推奨 `.env` 形式: `OPENCLAW_CONFIG` は絶対パス（引用符なし推奨）。
+`v1.0.5` では互換性のため、引用符と先頭 `~` もランタイムで正規化します。
+
 デフォルトパス:
 
 | OS | パス |
@@ -403,15 +427,18 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 
 1. オーケストレーターがチームリーダー会議を開くか確認します。
 2. オーケストレーターが作業対象のプロジェクト（`project_path` または `project_context`）を確認します。
-3. `$` プレフィックス付きのメッセージを `POST /api/inbox` に送信します。
+3. `$` プレフィックス付きのメッセージを `x-inbox-secret` ヘッダー付きで `POST /api/inbox` に送信します。
 4. 会議を省略する場合は `"skipPlannedMeeting": true` を付けます。
 5. サーバーは `directive` として保存し、全社共有後に企画チーム（およびメンション部門）へ委任します。
+
+`x-inbox-secret` が欠落、または `INBOX_WEBHOOK_SECRET` と不一致の場合、サーバーは `401` を返します。
 
 会議あり:
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
   -d '{"source":"telegram","author":"ceo","text":"$金曜までにQA承認付きでv0.2をリリース","project_path":"/Users/me/Projects/climpire"}'
 ```
 
@@ -420,6 +447,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
   -d '{"source":"telegram","author":"ceo","text":"$本番ログイン不具合を今すぐホットフィックス","skipPlannedMeeting":true,"project_context":"既存の climpire プロジェクト"}'
 ```
 
@@ -441,6 +469,9 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_ENCRYPTION_SECRET` | **必須** | SQLite内のOAuthトークンを暗号化 |
 | `PORT` | 任意 | サーバーポート（デフォルト: `8790`） |
 | `HOST` | 任意 | バインドアドレス（デフォルト: `127.0.0.1`） |
+| `API_AUTH_TOKEN` | 推奨 | ループバック以外のAPI/WebSocketアクセス向けBearerトークン |
+| `INBOX_WEBHOOK_SECRET` | **`/api/inbox` 利用時必須** | `x-inbox-secret` ヘッダーと一致させる共有シークレット |
+| `OPENCLAW_CONFIG` | OpenClaw利用時推奨 | ゲートウェイターゲット検出/チャット連携で使う `openclaw.json` の絶対パス |
 | `DB_PATH` | 任意 | SQLiteデータベースパス（デフォルト: `./claw-empire.sqlite`） |
 | `LOGS_DIR` | 任意 | ログディレクトリ（デフォルト: `./logs`） |
 | `OAUTH_GITHUB_CLIENT_ID` | 任意 | GitHub OAuth Appクライアント ID |
@@ -448,6 +479,9 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID` | 任意 | Google OAuthクライアントID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 任意 | Google OAuthクライアントシークレット |
 | `OPENAI_API_KEY` | 任意 | OpenAI APIキー（Codex用） |
+
+`API_AUTH_TOKEN` を有効化した場合、リモートブラウザクライアントは実行時にトークンを入力します。トークンは `sessionStorage` のみに保存され、Viteビルド成果物には埋め込まれません。
+`OPENCLAW_CONFIG` は絶対パス推奨で、`v1.0.5` では引用符/先頭 `~` も自動正規化されます。
 
 ---
 

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.4-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.5-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.0.4.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.0.5.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -53,19 +53,14 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 
 ---
 
-## 최신 릴리즈 (v1.0.4)
+## 최신 릴리즈 (v1.0.5)
 
-- 리뷰 워크플로우를 3단계로 고정: 라운드1 1회 일괄 보완, 라운드2 취합/머지, 라운드3 최종 판정
-- 태스크당 보완요청은 1회 일괄만 허용하여 라운드1 반복 루프를 차단
-- 서브태스크 생성 직후 기획팀장이 부서 분배를 재판정/재배치하도록 추가
-- 같은 부서 서브태스크는 `1.`, `2.`, `3.` 순차 체크리스트를 포함한 일괄 위임으로 처리
-- 배치 작업 완료 시 연결된 서브태스크를 함께 완료/실패 처리해 재리뷰 왕복 감소
-- 리뷰/최종 보고에 보완사항 vs 협업사항 완료 수치를 명시하도록 추가
-- 일시중지는 브레이크(SIGINT 유사) 방식으로 처리하고, 재개 시 동일 세션 맥락으로 이어서 수행
-- 협업 하위 태스크는 `review`에서 대기하고, 모든 협업 하위가 리뷰 체크포인트에 도달한 뒤 상위에서 1회 회의로 최종 머지/판정
-- 실행 프로세스가 없는 고아 `in_progress` 상태를 자동 복구하는 워치독 추가
-- Planned 협업 서브태스크는 회의 보완노트에서 실제 식별된 부서만 생성하도록 정밀화(단순 언급 오탐 방지)
-- 상세 문서: [`docs/releases/v1.0.4.md`](docs/releases/v1.0.4.md)
+- 서버 런타임 흐름을 추가 모듈화하여 라우트/워크플로우/런타임 결합부 유지보수성을 강화
+- `/api/inbox` 연동 문서를 통일: `x-inbox-secret` 헤더는 필수이며 누락/불일치 시 `401` 반환
+- AI 설치 가이드와 빠른 시작에 `INBOX_WEBHOOK_SECRET`, `OPENCLAW_CONFIG` 검증 절차를 명시
+- `OPENCLAW_CONFIG` 처리 보강: 런타임에서 따옴표/선행 `~` 값을 정규화
+- OpenClaw 설정 문서에 `.env` 절대경로(따옴표 없이 권장) 규칙을 명확히 반영
+- 상세 문서: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---
 
@@ -223,6 +218,9 @@ macOS/Linux:
 
 # AGENTS 오케스트레이션 규칙 확인
 grep -R "BEGIN claw-empire orchestration rules" ~/.openclaw/workspace/AGENTS.md AGENTS.md 2>/dev/null || true
+
+# OpenClaw inbox 필수 .env 항목 확인
+grep -E '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)=' .env || true
 ```
 
 Windows PowerShell:
@@ -231,6 +229,9 @@ Windows PowerShell:
 if ((Test-Path .\.env) -and (Test-Path .\scripts\setup.mjs)) { "setup files ok" }
 $agentCandidates = @("$env:USERPROFILE\.openclaw\workspace\AGENTS.md", ".\AGENTS.md")
 $agentCandidates | ForEach-Object { if (Test-Path $_) { Select-String -Path $_ -Pattern "BEGIN claw-empire orchestration rules" } }
+
+# OpenClaw inbox 필수 .env 항목 확인
+Get-Content .\.env | Select-String -Pattern '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)='
 ```
 
 ### 3단계: 실행 및 헬스체크
@@ -247,13 +248,24 @@ curl -s http://127.0.0.1:8790/healthz
 
 예상 응답: `{"ok":true,...}`
 
-### 4단계: OpenClaw 게이트웨이(선택) 검증
+`.env`의 `OPENCLAW_CONFIG`는 절대경로 사용을 권장합니다(문서 기준 따옴표 없이 권장). `v1.0.5`에서는 따옴표/선행 `~` 값도 런타임에서 정규화합니다.
+
+### 4단계: OpenClaw 게이트웨이 + inbox(선택) 검증
 
 ```bash
 curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 `OPENCLAW_CONFIG`가 올바르면 사용 가능한 메신저 세션 목록이 반환됩니다.
+
+```bash
+curl -X POST http://127.0.0.1:8790/api/inbox \
+  -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.5 inbox 점검","skipPlannedMeeting":true}'
+```
+
+예상 응답: `INBOX_WEBHOOK_SECRET`와 `x-inbox-secret`이 일치하면 `401`이 아닌 응답
 
 ---
 
@@ -280,6 +292,15 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 |--------|--------|
 | **macOS / Linux** | `bash scripts/openclaw-setup.sh` |
 | **Windows (PowerShell)** | `powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
+
+### OpenClaw `.env` 필수값 (`/api/inbox` 사용 시)
+
+채팅 웹훅 연동 전 `.env`에 아래 두 값을 설정하세요.
+
+- `INBOX_WEBHOOK_SECRET=<충분히 긴 랜덤 시크릿>`
+- `OPENCLAW_CONFIG=<openclaw.json 절대경로>` (따옴표 없이 권장)
+
+`/api/inbox`는 `x-inbox-secret` 헤더가 `INBOX_WEBHOOK_SECRET`와 정확히 같아야 하며, 다르면 `401`로 거절됩니다.
 
 ### 수동 셋업 (대체 경로)
 
@@ -371,6 +392,9 @@ pnpm setup -- --port 8790
 
 `install.sh` / `install.ps1` (또는 `scripts/openclaw-setup.*`)은 가능한 경우 `OPENCLAW_CONFIG`를 자동 감지하여 `.env`에 기록합니다.
 
+권장 `.env` 형식: `OPENCLAW_CONFIG`는 절대경로(따옴표 없이 권장).
+`v1.0.5`에서는 호환성을 위해 따옴표/선행 `~` 값도 런타임에서 정규화됩니다.
+
 기본 경로:
 
 | OS | 경로 |
@@ -403,15 +427,18 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 
 1. 오케스트레이터가 팀장 회의 진행 여부를 먼저 확인합니다.
 2. 오케스트레이터가 작업 프로젝트 경로/컨텍스트(`project_path` 또는 `project_context`)를 확인합니다.
-3. `$` 접두사가 포함된 메시지를 `POST /api/inbox`로 전달합니다.
+3. `$` 접두사가 포함된 메시지를 `x-inbox-secret` 헤더와 함께 `POST /api/inbox`로 전달합니다.
 4. 회의를 생략하면 `"skipPlannedMeeting": true`를 함께 보냅니다.
 5. 서버는 이를 `directive`로 저장하고 전체 공지 후 기획팀(및 멘션된 부서)에 위임합니다.
+
+`x-inbox-secret`가 없거나 `INBOX_WEBHOOK_SECRET`와 불일치하면 서버는 `401`을 반환합니다.
 
 회의 포함:
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
   -d '{"source":"telegram","author":"ceo","text":"$금요일까지 QA 승인 포함 v0.2 배포 준비","project_path":"/Users/me/Projects/climpire"}'
 ```
 
@@ -420,6 +447,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
   -d '{"source":"telegram","author":"ceo","text":"$프로덕션 로그인 버그 즉시 핫픽스","skipPlannedMeeting":true,"project_context":"기존 작업하던 climpire 프로젝트"}'
 ```
 
@@ -441,6 +469,9 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_ENCRYPTION_SECRET` | **필수** | SQLite의 OAuth 토큰 암호화에 사용 |
 | `PORT` | 선택 | 서버 포트 (기본값: `8790`) |
 | `HOST` | 선택 | 바인드 주소 (기본값: `127.0.0.1`) |
+| `API_AUTH_TOKEN` | 권장 | 루프백 외부 API/WebSocket 접근용 Bearer 토큰 |
+| `INBOX_WEBHOOK_SECRET` | **`/api/inbox` 사용 시 필수** | `x-inbox-secret` 헤더와 일치해야 하는 공유 시크릿 |
+| `OPENCLAW_CONFIG` | OpenClaw 사용 시 권장 | 게이트웨이 타깃 조회/채팅 릴레이에 사용하는 `openclaw.json` 절대경로 |
 | `DB_PATH` | 선택 | SQLite 데이터베이스 경로 (기본값: `./claw-empire.sqlite`) |
 | `LOGS_DIR` | 선택 | 로그 디렉토리 (기본값: `./logs`) |
 | `OAUTH_GITHUB_CLIENT_ID` | 선택 | GitHub OAuth 앱 클라이언트 ID |
@@ -448,6 +479,9 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID` | 선택 | Google OAuth 클라이언트 ID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 선택 | Google OAuth 클라이언트 시크릿 |
 | `OPENAI_API_KEY` | 선택 | OpenAI API 키 (Codex용) |
+
+`API_AUTH_TOKEN`을 활성화하면 원격 브라우저 클라이언트는 런타임에 토큰을 입력합니다. 토큰은 `sessionStorage`에만 저장되며 Vite 빌드 산출물에는 포함되지 않습니다.
+`OPENCLAW_CONFIG`는 절대경로를 권장하며, `v1.0.5`에서는 따옴표/선행 `~` 값도 자동 정규화됩니다.
 
 ---
 

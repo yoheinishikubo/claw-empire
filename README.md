@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.4-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.5-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.0.4.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.0.5.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,19 +53,14 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 
 ---
 
-## Latest Release (v1.0.4)
+## Latest Release (v1.0.5)
 
-- Review workflow is fixed to 3 stages: Round1 single remediation batch, Round2 merge synthesis, Round3 final decision
-- Remediation requests are capped to one batch per task to stop repeated Round1 loops
-- Planning team leader now re-judges and reroutes subtask department assignments after subtask creation
-- Same-department subtasks are delegated as one batched request with ordered checklist execution (`1.`, `2.`, `3.`)
-- Batch completion updates linked subtasks together, reducing repeated review/rework cycles
-- Review/final reports now explicitly show remediation vs collaboration completion counts
-- Pause now applies a break-style interrupt (SIGINT-like), and resume continues with task-session continuity
-- Collaboration child tasks now wait in `review`; parent review starts once all collaboration children reach review checkpoints, then finalizes merge in one decision
-- Added an orphan `in_progress` watchdog to auto-recover tasks when no live process exists
-- Planned collaboration subtasks are now seeded only from concrete planning notes (prevents mention-only false department inclusion)
-- Full notes: [`docs/releases/v1.0.4.md`](docs/releases/v1.0.4.md)
+- Server runtime flow is further modularized (routes/workflow/runtime wiring split for maintainability)
+- `/api/inbox` integration docs are now consistent: `x-inbox-secret` header is mandatory, and missing/invalid values return `401`
+- AI install guide and Quick Start now explicitly validate `INBOX_WEBHOOK_SECRET` and `OPENCLAW_CONFIG`
+- `OPENCLAW_CONFIG` handling is hardened: runtime now normalizes surrounding quotes and leading `~`
+- OpenClaw setup docs now recommend absolute `.env` paths (unquoted preferred) to avoid path-parsing ambiguity
+- Full notes: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---
 
@@ -223,6 +218,9 @@ macOS/Linux:
 
 # AGENTS orchestration rules installed
 grep -R "BEGIN claw-empire orchestration rules" ~/.openclaw/workspace/AGENTS.md AGENTS.md 2>/dev/null || true
+
+# OpenClaw inbox requirements in .env
+grep -E '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)=' .env || true
 ```
 
 Windows PowerShell:
@@ -231,6 +229,9 @@ Windows PowerShell:
 if ((Test-Path .\.env) -and (Test-Path .\scripts\setup.mjs)) { "setup files ok" }
 $agentCandidates = @("$env:USERPROFILE\.openclaw\workspace\AGENTS.md", ".\AGENTS.md")
 $agentCandidates | ForEach-Object { if (Test-Path $_) { Select-String -Path $_ -Pattern "BEGIN claw-empire orchestration rules" } }
+
+# OpenClaw inbox requirements in .env
+Get-Content .\.env | Select-String -Pattern '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)='
 ```
 
 ### Step 3: Start and health-check
@@ -247,13 +248,24 @@ curl -s http://127.0.0.1:8790/healthz
 
 Expected: `{"ok":true,...}`
 
-### Step 4: Optional OpenClaw gateway verification
+`OPENCLAW_CONFIG` should be an absolute path in `.env` (unquoted preferred in docs). In `v1.0.5`, quoted values and leading `~` are also normalized at runtime.
+
+### Step 4: Optional OpenClaw gateway + inbox verification
 
 ```bash
 curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
+
+```bash
+curl -X POST http://127.0.0.1:8790/api/inbox \
+  -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.5 inbox smoke test","skipPlannedMeeting":true}'
+```
+
+Expected: non-`401` response when `INBOX_WEBHOOK_SECRET` and `x-inbox-secret` match.
 
 ---
 
@@ -280,6 +292,15 @@ If the repo is already cloned:
 |----------|---------|
 | **macOS / Linux** | `bash scripts/openclaw-setup.sh` |
 | **Windows (PowerShell)** | `powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
+
+### OpenClaw `.env` Requirements (for `/api/inbox`)
+
+Set both values in `.env` before sending chat webhooks:
+
+- `INBOX_WEBHOOK_SECRET=<long-random-secret>`
+- `OPENCLAW_CONFIG=<absolute-path-to-openclaw.json>` (unquoted preferred)
+
+`/api/inbox` requires the `x-inbox-secret` header to exactly match `INBOX_WEBHOOK_SECRET`; otherwise the request is rejected with `401`.
 
 ### Manual Setup (Fallback)
 
@@ -378,6 +399,9 @@ pnpm setup -- --port 8790
 
 `install.sh` / `install.ps1` (or `scripts/openclaw-setup.*`) will auto-detect and write `OPENCLAW_CONFIG` when possible.
 
+Recommended `.env` format: absolute path for `OPENCLAW_CONFIG` (unquoted preferred).
+`v1.0.5` also normalizes surrounding quotes and leading `~` at runtime for compatibility.
+
 Default config paths:
 
 | OS | Path |
@@ -410,9 +434,11 @@ When a chat message starts with `$`, Claw-Empire handles it as a CEO directive:
 
 1. Orchestrator asks whether to hold a team-leader meeting first.
 2. Orchestrator asks for project path/context (`project_path` or `project_context`).
-3. It sends the directive to `POST /api/inbox` with the `$` prefix.
+3. It sends the directive to `POST /api/inbox` with the `$` prefix and `x-inbox-secret` header.
 4. If meeting is skipped, include `"skipPlannedMeeting": true`.
 5. Server stores it as `directive`, broadcasts company-wide, then delegates to Planning (and mentioned departments when included).
+
+If `x-inbox-secret` is missing or does not match `INBOX_WEBHOOK_SECRET`, the request is rejected with `401`.
 
 With meeting:
 
@@ -445,6 +471,7 @@ Copy `.env.example` to `.env`. All secrets stay local — never commit `.env`.
 | `HOST` | No | Bind address (default: `127.0.0.1`) |
 | `API_AUTH_TOKEN` | Recommended | Bearer token for non-loopback API/WebSocket access |
 | `INBOX_WEBHOOK_SECRET` | **Yes for `/api/inbox`** | Shared secret required in `x-inbox-secret` header |
+| `OPENCLAW_CONFIG` | Recommended for OpenClaw | Absolute path to `openclaw.json` used for gateway target discovery/chat relay |
 | `DB_PATH` | No | SQLite database path (default: `./claw-empire.sqlite`) |
 | `LOGS_DIR` | No | Log directory (default: `./logs`) |
 | `OAUTH_GITHUB_CLIENT_ID` | No | GitHub OAuth App client ID |
@@ -454,6 +481,7 @@ Copy `.env.example` to `.env`. All secrets stay local — never commit `.env`.
 | `OPENAI_API_KEY` | No | OpenAI API key (for Codex) |
 
 When `API_AUTH_TOKEN` is enabled, remote browser clients enter it at runtime. The token is stored only in `sessionStorage` and is not embedded in Vite build artifacts.
+For `OPENCLAW_CONFIG`, absolute path is recommended. In `v1.0.5`, quoted values and leading `~` are normalized automatically.
 
 ---
 

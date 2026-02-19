@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.4-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.5-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.4.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.5.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,19 +53,14 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.4)
+## 最新发布 (v1.0.5)
 
-- 评审流程固定为三阶段：Round1 单次批量整改、Round2 汇总/合并、Round3 最终判定
-- 每个任务的整改请求上限为 1 次批量，避免 Round1 反复循环
-- 子任务创建后由规划负责人再次判定并重分配部门归属
-- 同一部门子任务改为一次批量委派，并按 `1.`、`2.`、`3.` 顺序清单执行
-- 批量任务完成时会统一回写关联子任务状态，减少反复评审与返工
-- 评审/最终报告现会显式展示整改事项与协作事项的完成数量
-- 暂停改为“中断式（SIGINT 类）”处理，恢复时保持同一任务会话上下文继续执行
-- 协作子任务会停在 `review`，待全部协作子任务到达评审检查点后，由父任务一次会议完成最终合并判定
-- 新增孤立 `in_progress` 看门狗：当无存活执行进程时自动恢复任务状态
-- Planned 协作子任务仅基于会议补充项中实际识别到的部门生成（避免仅因文本提及产生误分配）
-- 详细说明：[`docs/releases/v1.0.4.md`](docs/releases/v1.0.4.md)
+- 服务器运行流程进一步模块化，便于路由/工作流/运行时装配的后续维护
+- 统一 `/api/inbox` 文档要求：`x-inbox-secret` 为必填头，缺失或不匹配返回 `401`
+- AI 安装指南与快速开始新增 `INBOX_WEBHOOK_SECRET`、`OPENCLAW_CONFIG` 校验步骤
+- 强化 `OPENCLAW_CONFIG` 处理：运行时会规范化外层引号与前导 `~`
+- OpenClaw 配置文档明确建议 `.env` 使用绝对路径（推荐不加引号）
+- 详细说明：[`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---
 
@@ -223,6 +218,9 @@ macOS/Linux:
 
 # 检查 AGENTS 编排规则
 grep -R "BEGIN claw-empire orchestration rules" ~/.openclaw/workspace/AGENTS.md AGENTS.md 2>/dev/null || true
+
+# 检查 OpenClaw inbox 必要 .env 项
+grep -E '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)=' .env || true
 ```
 
 Windows PowerShell:
@@ -231,6 +229,9 @@ Windows PowerShell:
 if ((Test-Path .\.env) -and (Test-Path .\scripts\setup.mjs)) { "setup files ok" }
 $agentCandidates = @("$env:USERPROFILE\.openclaw\workspace\AGENTS.md", ".\AGENTS.md")
 $agentCandidates | ForEach-Object { if (Test-Path $_) { Select-String -Path $_ -Pattern "BEGIN claw-empire orchestration rules" } }
+
+# 检查 OpenClaw inbox 必要 .env 项
+Get-Content .\.env | Select-String -Pattern '^(INBOX_WEBHOOK_SECRET|OPENCLAW_CONFIG)='
 ```
 
 ### 第 3 步：启动并健康检查
@@ -247,13 +248,24 @@ curl -s http://127.0.0.1:8790/healthz
 
 期望结果：`{"ok":true,...}`
 
-### 第 4 步：可选 OpenClaw 网关验证
+`.env` 中的 `OPENCLAW_CONFIG` 建议使用绝对路径（文档建议不加引号）。在 `v1.0.5` 中，外层引号和前导 `~` 也会在运行时自动规范化。
+
+### 第 4 步：可选 OpenClaw 网关 + inbox 验证
 
 ```bash
 curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 当 `OPENCLAW_CONFIG` 有效时，将返回可用的消息会话列表。
+
+```bash
+curl -X POST http://127.0.0.1:8790/api/inbox \
+  -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.5 inbox 校验","skipPlannedMeeting":true}'
+```
+
+期望结果：当 `INBOX_WEBHOOK_SECRET` 与 `x-inbox-secret` 一致时，响应应为非 `401`。
 
 ---
 
@@ -280,6 +292,15 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 |------|------|
 | **macOS / Linux** | `bash scripts/openclaw-setup.sh` |
 | **Windows (PowerShell)** | `powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
+
+### OpenClaw `.env` 必填项（使用 `/api/inbox` 时）
+
+发送聊天 Webhook 前，请在 `.env` 设置以下两项：
+
+- `INBOX_WEBHOOK_SECRET=<足够长的随机密钥>`
+- `OPENCLAW_CONFIG=<openclaw.json 绝对路径>`（推荐不加引号）
+
+`/api/inbox` 要求 `x-inbox-secret` 头与 `INBOX_WEBHOOK_SECRET` 完全一致，否则会返回 `401`。
 
 ### 手动安装（备用）
 
@@ -371,6 +392,9 @@ pnpm setup -- --port 8790
 
 `install.sh` / `install.ps1`（或 `scripts/openclaw-setup.*`）会在可用时自动检测并写入 `OPENCLAW_CONFIG` 到 `.env`。
 
+推荐 `.env` 形式：`OPENCLAW_CONFIG` 使用绝对路径（推荐不加引号）。
+`v1.0.5` 为兼容性也支持在运行时规范化外层引号与前导 `~`。
+
 默认路径：
 
 | OS | 路径 |
@@ -403,15 +427,18 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 
 1. 编排器先询问是否召开组长会议。
 2. 编排器会再确认项目路径/上下文（`project_path` 或 `project_context`）。
-3. 将带 `$` 前缀的消息发送到 `POST /api/inbox`。
+3. 将带 `$` 前缀的消息携带 `x-inbox-secret` 头发送到 `POST /api/inbox`。
 4. 若跳过会议，则附带 `"skipPlannedMeeting": true`。
 5. 服务器按 `directive` 存储并全员广播，然后委派给企划组（以及被提及的部门）。
+
+若 `x-inbox-secret` 缺失，或与 `INBOX_WEBHOOK_SECRET` 不一致，服务器将返回 `401`。
 
 召开会议：
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
   -d '{"source":"telegram","author":"ceo","text":"$请在周五前完成带 QA 签核的 v0.2 发布","project_path":"/Users/me/Projects/climpire"}'
 ```
 
@@ -420,6 +447,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
+  -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
   -d '{"source":"telegram","author":"ceo","text":"$立即修复生产环境登录故障","skipPlannedMeeting":true,"project_context":"之前在做的 climpire 项目"}'
 ```
 
@@ -441,6 +469,9 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_ENCRYPTION_SECRET` | **必填** | 用于加密 SQLite 中的 OAuth 令牌 |
 | `PORT` | 否 | 服务器端口（默认：`8790`） |
 | `HOST` | 否 | 绑定地址（默认：`127.0.0.1`） |
+| `API_AUTH_TOKEN` | 推荐 | 非 loopback API/WebSocket 访问使用的 Bearer 令牌 |
+| `INBOX_WEBHOOK_SECRET` | **使用 `/api/inbox` 时必填** | 必须与 `x-inbox-secret` 请求头一致的共享密钥 |
+| `OPENCLAW_CONFIG` | 使用 OpenClaw 时推荐 | 网关目标发现/聊天转发使用的 `openclaw.json` 绝对路径 |
 | `DB_PATH` | 否 | SQLite 数据库路径（默认：`./claw-empire.sqlite`） |
 | `LOGS_DIR` | 否 | 日志目录（默认：`./logs`） |
 | `OAUTH_GITHUB_CLIENT_ID` | 否 | GitHub OAuth 应用客户端 ID |
@@ -448,6 +479,9 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID` | 否 | Google OAuth 客户端 ID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 否 | Google OAuth 客户端密钥 |
 | `OPENAI_API_KEY` | 否 | OpenAI API 密钥（用于 Codex） |
+
+启用 `API_AUTH_TOKEN` 后，远程浏览器客户端会在运行时输入令牌。该令牌仅保存在 `sessionStorage`，不会嵌入 Vite 构建产物。
+`OPENCLAW_CONFIG` 建议使用绝对路径；在 `v1.0.5` 中，外层引号和前导 `~` 也会自动规范化。
 
 ---
 
