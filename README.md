@@ -56,12 +56,14 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 ## Latest Release (v1.0.5)
 
 - Server runtime flow is further modularized (routes/workflow/runtime wiring split for maintainability)
+- Runtime language alignment is hardened: task prompts and workflow/status messages now consistently follow the selected language
 - `/api/inbox` integration docs are now consistent: `x-inbox-secret` header is mandatory, and missing/invalid values return `401`
 - AI install guide and Quick Start now explicitly validate `INBOX_WEBHOOK_SECRET` and `OPENCLAW_CONFIG`
 - `OPENCLAW_CONFIG` handling is hardened: runtime now normalizes surrounding quotes and leading `~`
 - OpenClaw setup docs now recommend absolute `.env` paths (unquoted preferred) to avoid path-parsing ambiguity
 - Existing clones that pull `v1.0.5` now run a one-time auto-migration on first `pnpm dev*` / `pnpm start*`
 - AGENTS orchestration now includes `INBOX_SECRET_DISCOVERY_V2` to resolve inbox secrets from shell env, `.env`, `.env.clone`, and common project roots
+- Direct agent chat replies no longer get prematurely truncated in the chat stream
 - Full notes: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---

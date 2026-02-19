@@ -937,8 +937,13 @@ function findTeamLeader(deptId: string | null): AgentRow | null {
 }
 
 function getDeptName(deptId: string): string {
-  const d = db.prepare("SELECT name_ko FROM departments WHERE id = ?").get(deptId) as { name_ko: string } | undefined;
-  return d?.name_ko ?? deptId;
+  const lang = getPreferredLanguage();
+  const d = db.prepare("SELECT name, name_ko FROM departments WHERE id = ?").get(deptId) as {
+    name: string;
+    name_ko: string;
+  } | undefined;
+  if (!d) return deptId;
+  return lang === "ko" ? (d.name_ko || d.name) : (d.name || d.name_ko || deptId);
 }
 
 // Role enforcement: restrict agents to their department's domain

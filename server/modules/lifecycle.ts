@@ -37,6 +37,7 @@ export function startLifecycle(ctx: any): void {
     processSubtaskDelegations,
     reconcileCrossDeptSubtasks,
     refreshGoogleToken,
+    resolveLang,
     rollbackTaskWorktree,
     runInTransaction,
     stopProgressTimer,
@@ -235,11 +236,16 @@ function recoverOrphanInProgressTasks(reason: InProgressRecoveryReason): void {
 
     const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(task.id);
     broadcast("task_update", updatedTask);
-    notifyTaskStatus(task.id, task.title, "inbox");
-    notifyCeo(
-      `[WATCHDOG] '${task.title}' 작업이 in_progress 상태였지만 실행 프로세스가 없어 inbox로 복구했습니다.`,
-      task.id,
-    );
+    const lang = resolveLang(task.title);
+    notifyTaskStatus(task.id, task.title, "inbox", lang);
+    const watchdogMessage = lang === "en"
+      ? `[WATCHDOG] '${task.title}' was in progress but had no active process. Recovered to inbox.`
+      : lang === "ja"
+        ? `[WATCHDOG] '${task.title}' は in_progress でしたが実行プロセスが存在しないため inbox に復旧しました。`
+        : lang === "zh"
+          ? `[WATCHDOG] '${task.title}' 处于 in_progress，但未发现执行进程，已恢复到 inbox。`
+          : `[WATCHDOG] '${task.title}' 작업이 in_progress 상태였지만 실행 프로세스가 없어 inbox로 복구했습니다.`;
+    notifyCeo(watchdogMessage, task.id);
   }
 }
 

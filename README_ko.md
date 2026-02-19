@@ -56,12 +56,14 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 ## 최신 릴리즈 (v1.0.5)
 
 - 서버 런타임 흐름을 추가 모듈화하여 라우트/워크플로우/런타임 결합부 유지보수성을 강화
+- 런타임 언어 정합성 강화: 업무 실행 프롬프트와 워크플로우/상태 메시지가 선택 언어를 일관되게 따르도록 개선
 - `/api/inbox` 연동 문서를 통일: `x-inbox-secret` 헤더는 필수이며 누락/불일치 시 `401` 반환
 - AI 설치 가이드와 빠른 시작에 `INBOX_WEBHOOK_SECRET`, `OPENCLAW_CONFIG` 검증 절차를 명시
 - `OPENCLAW_CONFIG` 처리 보강: 런타임에서 따옴표/선행 `~` 값을 정규화
 - OpenClaw 설정 문서에 `.env` 절대경로(따옴표 없이 권장) 규칙을 명확히 반영
 - 기존 클론 사용자가 `v1.0.5`를 `git pull`만 한 경우에도 첫 `pnpm dev*` / `pnpm start*` 실행 시 1회 자동 마이그레이션 적용
 - AGENTS 오케스트레이션에 `INBOX_SECRET_DISCOVERY_V2`를 추가해 쉘 env, `.env`, `.env.clone`, 공통 프로젝트 루트에서 시크릿 자동 탐색 지원
+- 에이전트 1:1 채팅에서 장문 응답이 중간에 과도하게 잘리는 문제를 보완
 - 상세 문서: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---

@@ -454,6 +454,7 @@ app.post("/api/agents/:id/spawn", (req, res) => {
   if (!task) {
     return res.status(400).json({ error: "task_not_found" });
   }
+  const taskLang = resolveLang(task.description ?? task.title);
 
   const projectPath = task.project_path || process.cwd();
   const logPath = path.join(logsDir, `${taskId}.log`);
@@ -464,7 +465,12 @@ app.post("/api/agents/:id/spawn", (req, res) => {
     "This session is scoped to this task only.",
     `[Task] ${task.title}`,
     task.description ? `\n${task.description}` : "",
-    "Please complete the task above thoroughly.",
+    pickL(l(
+      ["위 작업을 충분히 완수하세요."],
+      ["Please complete the task above thoroughly."],
+      ["上記タスクを丁寧に完了してください。"],
+      ["请完整地完成上述任务。"],
+    ), taskLang),
   ], {
     allowWarningFix: hasExplicitWarningFixRequest(task.title, task.description),
   });
@@ -485,7 +491,7 @@ app.post("/api/agents/:id/spawn", (req, res) => {
     const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
     broadcast("agent_status", updatedAgent);
     broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
-    notifyTaskStatus(taskId, task.title, "in_progress");
+    notifyTaskStatus(taskId, task.title, "in_progress", taskLang);
     launchHttpAgent(taskId, provider, prompt, projectPath, logPath, controller, fakePid, agent.oauth_account_id ?? null);
     return res.json({ ok: true, pid: fakePid, logPath, cwd: projectPath });
   }
@@ -504,7 +510,7 @@ app.post("/api/agents/:id/spawn", (req, res) => {
   const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
   broadcast("agent_status", updatedAgent);
   broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
-  notifyTaskStatus(taskId, task.title, "in_progress");
+  notifyTaskStatus(taskId, task.title, "in_progress", taskLang);
 
   res.json({ ok: true, pid: child.pid ?? null, logPath, cwd: projectPath });
 });
@@ -946,11 +952,18 @@ app.post("/api/tasks/:id/assign", (req, res) => {
   // B4: Notify CEO about assignment via team leader
   const leader = findTeamLeader(agent.department_id);
   if (leader) {
+    const lang = resolveLang(task.title);
     const agentRow = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId) as AgentRow | undefined;
-    const agentName = agentRow?.name_ko || agent.name;
+    const agentName = agentRow ? getAgentDisplayName(agentRow, lang) : agent.name;
+    const leaderName = getAgentDisplayName(leader, lang);
     sendAgentMessage(
       leader,
-      `${leader.name_ko || leader.name}이(가) ${agentName}에게 '${task.title}' 업무를 할당했습니다.`,
+      pickL(l(
+        [`${leaderName}이(가) ${agentName}에게 '${task.title}' 업무를 할당했습니다.`],
+        [`${leaderName} assigned '${task.title}' to ${agentName}.`],
+        [`${leaderName}が '${task.title}' を${agentName}に割り当てました。`],
+        [`${leaderName} 已将 '${task.title}' 分配给 ${agentName}。`],
+      ), lang),
       "status_update",
       "all",
       null,
@@ -972,6 +985,7 @@ app.post("/api/tasks/:id/run", (req, res) => {
     status: string;
   } | undefined;
   if (!task) return res.status(404).json({ error: "not_found" });
+  const taskLang = resolveLang(task.description ?? task.title);
 
   if (task.status === "in_progress" || task.status === "collaborating") {
     return res.status(400).json({ error: "already_running" });
@@ -1047,8 +1061,18 @@ app.post("/api/tasks/:id/run", (req, res) => {
   const conversationCtx = getRecentConversationContext(agentId);
   const continuationCtx = getTaskContinuationContext(id);
   const continuationInstruction = continuationCtx
-    ? "Continuation run: keep the same ownership context, avoid re-reading unrelated files, and apply only unresolved deltas."
-    : "Execute directly without repeated kickoff narration.";
+    ? pickL(l(
+      ["연속 실행: 동일 소유 컨텍스트를 유지하고, 불필요한 파일 재탐색 없이 미해결 항목만 반영하세요."],
+      ["Continuation run: keep the same ownership context, avoid re-reading unrelated files, and apply only unresolved deltas."],
+      ["継続実行: 同一オーナーシップを維持し、不要な再探索を避けて未解決差分のみ反映してください。"],
+      ["连续执行：保持同一责任上下文，避免重复阅读无关文件，仅处理未解决差异。"],
+    ), taskLang)
+    : pickL(l(
+      ["반복적인 착수 멘트 없이 바로 실행하세요."],
+      ["Execute directly without repeated kickoff narration."],
+      ["繰り返しの開始ナレーションなしで直ちに実行してください。"],
+      ["无需重复开场说明，直接执行。"],
+    ), taskLang);
   const projectStructureBlock = continuationCtx
     ? ""
     : (projectContext
@@ -1056,9 +1080,9 @@ app.post("/api/tasks/:id/run", (req, res) => {
       : "");
   // Non-CLI or non-multi-agent providers: instruct agent to output subtask plan as JSON
   const needsPlanInstruction = provider === "gemini" || provider === "copilot" || provider === "antigravity";
-  const subtaskInstruction = needsPlanInstruction ? `
-
-[작업 계획 출력 규칙]
+  const subtaskInstruction = needsPlanInstruction
+    ? `\n\n${pickL(l(
+      [`[작업 계획 출력 규칙]
 작업을 시작하기 전에 아래 JSON 형식으로 계획을 출력하세요:
 \`\`\`json
 {"subtasks": [{"title": "서브태스크 제목1"}, {"title": "서브태스크 제목2"}]}
@@ -1066,8 +1090,36 @@ app.post("/api/tasks/:id/run", (req, res) => {
 각 서브태스크를 완료할 때마다 아래 형식으로 보고하세요:
 \`\`\`json
 {"subtask_done": "완료된 서브태스크 제목"}
+\`\`\``],
+      [`[Task Plan Output Rules]
+Before starting work, print a plan in the JSON format below:
+\`\`\`json
+{"subtasks": [{"title": "Subtask title 1"}, {"title": "Subtask title 2"}]}
 \`\`\`
-` : "";
+Whenever you complete a subtask, report it in this format:
+\`\`\`json
+{"subtask_done": "Completed subtask title"}
+\`\`\``],
+      [`[作業計画の出力ルール]
+作業開始前に、次の JSON 形式で計画を出力してください:
+\`\`\`json
+{"subtasks": [{"title": "サブタスク1"}, {"title": "サブタスク2"}]}
+\`\`\`
+各サブタスクを完了するたびに、次の形式で報告してください:
+\`\`\`json
+{"subtask_done": "完了したサブタスク"}
+\`\`\``],
+      [`[任务计划输出规则]
+开始工作前，请按下述 JSON 格式输出计划:
+\`\`\`json
+{"subtasks": [{"title": "子任务1"}, {"title": "子任务2"}]}
+\`\`\`
+每完成一个子任务，请按下述格式汇报:
+\`\`\`json
+{"subtask_done": "已完成的子任务"}
+\`\`\``],
+    ), taskLang)}\n`
+    : "";
 
   // Resolve model config for this provider
   const modelConfig = getProviderModelConfig();
@@ -1080,6 +1132,12 @@ app.post("/api/tasks/:id/run", (req, res) => {
   const subModelHint = subModel && (provider === "claude" || provider === "codex")
     ? `\n[Sub-agent model preference] When spawning sub-agents (Task tool), prefer using model: ${subModel}${subReasoningLevel ? ` with reasoning effort: ${subReasoningLevel}` : ""}`
     : "";
+  const runInstruction = pickL(l(
+    ["위 작업을 충분히 완수하세요. 위 대화 맥락과 프로젝트 구조를 참고해도 좋지만, 프로젝트 구조 탐색에 시간을 쓰지 마세요. 필요한 구조는 이미 제공되었습니다."],
+    ["Please complete the task above thoroughly. Use the continuation brief, conversation context, and project structure above if relevant. Do NOT spend time exploring the project structure again unless required by unresolved checklist items."],
+    ["上記タスクを丁寧に完了してください。必要に応じて継続要約・会話コンテキスト・プロジェクト構成を参照できますが、未解決チェックリストに必要な場合を除き、構成探索に時間を使わないでください。"],
+    ["请完整地完成上述任务。可按需参考连续执行摘要、会话上下文和项目结构，但除非未解决清单确有需要，不要再次花时间探索项目结构。"],
+  ), taskLang);
 
   const prompt = buildTaskExecutionPrompt([
     `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
@@ -1098,7 +1156,7 @@ app.post("/api/tasks/:id/run", (req, res) => {
     subtaskInstruction,
     subModelHint,
     continuationInstruction,
-    `Please complete the task above thoroughly. Use the continuation brief, conversation context, and project structure above if relevant. Do NOT spend time exploring the project structure again unless required by unresolved checklist items.`,
+    runInstruction,
   ], {
     allowWarningFix: hasExplicitWarningFixRequest(task.title, task.description),
   });
@@ -1120,10 +1178,23 @@ app.post("/api/tasks/:id/run", (req, res) => {
     const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
     broadcast("task_update", updatedTask);
     broadcast("agent_status", updatedAgent);
-    notifyTaskStatus(id, task.title, "in_progress");
+    notifyTaskStatus(id, task.title, "in_progress", taskLang);
 
-    const worktreeNote = worktreePath ? ` (격리 브랜치: climpire/${id.slice(0, 8)})` : "";
-    notifyCeo(`${agent.name_ko || agent.name}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`, id);
+    const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
+    const worktreeNote = worktreePath
+      ? pickL(l(
+        [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+        [` (isolated branch: climpire/${id.slice(0, 8)})`],
+        [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+        [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+      ), taskLang)
+      : "";
+    notifyCeo(pickL(l(
+      [`${assigneeName}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`],
+      [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
+      [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
+      [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+    ), taskLang), id);
 
     const taskRow = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(id) as { department_id: string | null } | undefined;
     startProgressTimer(id, task.title, taskRow?.department_id ?? null);
@@ -1152,11 +1223,24 @@ app.post("/api/tasks/:id/run", (req, res) => {
   const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
   broadcast("task_update", updatedTask);
   broadcast("agent_status", updatedAgent);
-  notifyTaskStatus(id, task.title, "in_progress");
+  notifyTaskStatus(id, task.title, "in_progress", taskLang);
 
   // B4: Notify CEO that task started
-  const worktreeNote = worktreePath ? ` (격리 브랜치: climpire/${id.slice(0, 8)})` : "";
-  notifyCeo(`${agent.name_ko || agent.name}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`, id);
+  const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
+  const worktreeNote = worktreePath
+    ? pickL(l(
+      [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+      [` (isolated branch: climpire/${id.slice(0, 8)})`],
+      [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+      [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+    ), taskLang)
+    : "";
+  notifyCeo(pickL(l(
+    [`${assigneeName}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`],
+    [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
+    [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
+    [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+  ), taskLang), id);
 
   // B2: Start progress report timer for long-running tasks
   const taskRow = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(id) as { department_id: string | null } | undefined;
@@ -1178,6 +1262,7 @@ app.post("/api/tasks/:id/stop", (req, res) => {
     department_id: string | null;
   } | undefined;
   if (!task) return res.status(404).json({ error: "not_found" });
+  const lang = resolveLang(task.title);
 
   stopProgressTimer(id);
 
@@ -1199,9 +1284,19 @@ app.post("/api/tasks/:id/stop", (req, res) => {
     const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
     broadcast("task_update", updatedTask);
     if (targetStatus === "pending") {
-      notifyCeo(`'${task.title}' 작업이 보류 상태로 전환되었습니다. 세션은 유지되며 재개 시 이어서 진행됩니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
+      notifyCeo(pickL(l(
+        [`'${task.title}' 작업이 보류 상태로 전환되었습니다. 세션은 유지되며 재개 시 이어서 진행됩니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`],
+        [`'${task.title}' was moved to pending. The session is preserved and will continue on resume.${rolledBack ? " Code changes were rolled back via git." : ""}`],
+        [`'${task.title}' は保留状態に変更されました。セッションは維持され、再開時に継続します。${rolledBack ? " コード変更は git でロールバックされました。" : ""}`],
+        [`'${task.title}' 已转为待处理状态。会话会被保留，恢复后将继续执行。${rolledBack ? " 代码变更已通过 git 回滚。" : ""}`],
+      ), lang), id);
     } else {
-      notifyCeo(`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
+      notifyCeo(pickL(l(
+        [`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`],
+        [`'${task.title}' was cancelled.${rolledBack ? " Code changes were rolled back via git." : ""}`],
+        [`'${task.title}' はキャンセルされました。${rolledBack ? " コード変更は git でロールバックされました。" : ""}`],
+        [`'${task.title}' 已取消。${rolledBack ? " 代码变更已通过 git 回滚。" : ""}`],
+      ), lang), id);
     }
     return res.json({
       ok: true,
@@ -1260,9 +1355,19 @@ app.post("/api/tasks/:id/stop", (req, res) => {
 
   // CEO notification
   if (targetStatus === "pending") {
-    notifyCeo(`'${task.title}' 작업이 보류 상태로 전환되었습니다. 인터럽트(SIGINT)로 브레이크를 걸었고 세션은 유지됩니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
+    notifyCeo(pickL(l(
+      [`'${task.title}' 작업이 보류 상태로 전환되었습니다. 인터럽트(SIGINT)로 브레이크를 걸었고 세션은 유지됩니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`],
+      [`'${task.title}' was moved to pending. A graceful interrupt (SIGINT) was sent and the session is preserved.${rolledBack ? " Code changes were rolled back via git." : ""}`],
+      [`'${task.title}' は保留状態に変更されました。SIGINT による中断を送り、セッションは維持されます。${rolledBack ? " コード変更は git でロールバックされました。" : ""}`],
+      [`'${task.title}' 已转为待处理状态。已发送 SIGINT 中断，且会话将被保留。${rolledBack ? " 代码变更已通过 git 回滚。" : ""}`],
+    ), lang), id);
   } else {
-    notifyCeo(`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
+    notifyCeo(pickL(l(
+      [`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`],
+      [`'${task.title}' was cancelled.${rolledBack ? " Code changes were rolled back via git." : ""}`],
+      [`'${task.title}' はキャンセルされました。${rolledBack ? " コード変更は git でロールバックされました。" : ""}`],
+      [`'${task.title}' 已取消。${rolledBack ? " 代码变更已通过 git 回滚。" : ""}`],
+    ), lang), id);
   }
 
   res.json({ ok: true, stopped: true, status: targetStatus, pid: activeChild.pid, rolled_back: rolledBack });
@@ -1278,6 +1383,7 @@ app.post("/api/tasks/:id/resume", (req, res) => {
     assigned_agent_id: string | null;
   } | undefined;
   if (!task) return res.status(404).json({ error: "not_found" });
+  const lang = resolveLang(task.title);
   if (activeProcesses.has(id)) {
     return res.status(409).json({
       error: "already_running",
@@ -1320,12 +1426,19 @@ app.post("/api/tasks/:id/resume", (req, res) => {
   }
 
   if (autoResumed) {
-    notifyCeo(
-      `'${task.title}' 작업이 복구되었습니다. (${targetStatus}) 기존 세션을 유지한 채 자동 재개를 시작합니다.`,
-      id,
-    );
+    notifyCeo(pickL(l(
+      [`'${task.title}' 작업이 복구되었습니다. (${targetStatus}) 기존 세션을 유지한 채 자동 재개를 시작합니다.`],
+      [`'${task.title}' was resumed. (${targetStatus}) Auto-resume is starting with the existing session preserved.`],
+      [`'${task.title}' が復旧されました。(${targetStatus}) 既存セッションを保持したまま自動再開します。`],
+      [`'${task.title}' 已恢复。(${targetStatus}) 将在保留原会话的情况下自动继续执行。`],
+    ), lang), id);
   } else {
-    notifyCeo(`'${task.title}' 작업이 복구되었습니다. (${targetStatus})`, id);
+    notifyCeo(pickL(l(
+      [`'${task.title}' 작업이 복구되었습니다. (${targetStatus})`],
+      [`'${task.title}' was resumed. (${targetStatus})`],
+      [`'${task.title}' が復旧されました。(${targetStatus})`],
+      [`'${task.title}' 已恢复。(${targetStatus})`],
+    ), lang), id);
   }
 
   res.json({ ok: true, status: targetStatus, auto_resumed: autoResumed, session_id: existingSession?.sessionId ?? null });

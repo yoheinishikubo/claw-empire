@@ -86,6 +86,7 @@ export function initializeWorkflowPartC(ctx: any): any {
   const TASK_RUN_HARD_TIMEOUT_MS = __ctx.TASK_RUN_HARD_TIMEOUT_MS;
   const isGitRepo = __ctx.isGitRepo;
   const getWorktreeDiffSummary = __ctx.getWorktreeDiffSummary;
+  const hasVisibleDiffSummary = __ctx.hasVisibleDiffSummary;
   const MVP_CODE_REVIEW_POLICY_BASE_LINES = __ctx.MVP_CODE_REVIEW_POLICY_BASE_LINES;
   const EXECUTION_CONTINUITY_POLICY_LINES = __ctx.EXECUTION_CONTINUITY_POLICY_LINES;
   const WARNING_FIX_OVERRIDE_LINE = __ctx.WARNING_FIX_OVERRIDE_LINE;
@@ -332,9 +333,15 @@ function startProgressTimer(taskId: string, taskTitle: string, departmentId: str
     }
     const leader = findTeamLeader(departmentId);
     if (leader) {
+      const lang = resolveLang(taskTitle);
       sendAgentMessage(
         leader,
-        `대표님, '${taskTitle}' 작업 진행 중입니다. 현재 순조롭게 진행되고 있어요.`,
+        pickL(l(
+          [`대표님, '${taskTitle}' 작업 진행 중입니다. 현재 순조롭게 진행되고 있어요.`],
+          [`CEO, '${taskTitle}' is in progress and currently going smoothly.`],
+          [`CEO、'${taskTitle}' は進行中で、現在は順調です。`],
+          [`CEO，'${taskTitle}' 正在进行中，目前进展顺利。`],
+        ), lang),
         "report",
         "all",
         null,
@@ -442,7 +449,8 @@ function startTaskExecutionForAgent(
     project_path: string | null;
   } | undefined;
   if (!taskData) return;
-  notifyTaskStatus(taskId, taskData.title, "in_progress");
+  const taskLang = resolveLang(taskData.description ?? taskData.title);
+  notifyTaskStatus(taskId, taskData.title, "in_progress", taskLang);
 
   const projPath = resolveProjectPath(taskData);
   const logFilePath = path.join(logsDir, `${taskId}.log`);
@@ -452,8 +460,24 @@ function startTaskExecutionForAgent(
   const continuationCtx = getTaskContinuationContext(taskId);
   const recentChanges = getRecentChanges(projPath, taskId);
   const continuationInstruction = continuationCtx
-    ? "Continuation run: keep ownership, skip greetings/kickoff narration, and execute unresolved review items immediately."
-    : "Execute directly without long preamble and keep messages concise.";
+    ? pickL(l(
+      ["연속 실행: 소유 컨텍스트를 유지하고 인사/착수 멘트 없이 미해결 검토 항목을 즉시 반영하세요."],
+      ["Continuation run: keep ownership, skip greetings/kickoff narration, and execute unresolved review items immediately."],
+      ["継続実行: オーナーシップを維持し、挨拶/開始ナレーションなしで未解決レビュー項目を即時反映してください。"],
+      ["连续执行：保持责任上下文，跳过问候/开场说明，立即处理未解决评审项。"],
+    ), taskLang)
+    : pickL(l(
+      ["긴 서론 없이 바로 실행하고, 메시지는 간결하게 유지하세요."],
+      ["Execute directly without long preamble and keep messages concise."],
+      ["長い前置きなしで直ちに実行し、メッセージは簡潔にしてください。"],
+      ["无需冗长前言，直接执行并保持消息简洁。"],
+    ), taskLang);
+  const runInstruction = pickL(l(
+    ["위 작업을 충분히 완수하세요. 필요 시 연속 실행 요약과 대화 맥락을 참고하세요."],
+    ["Please complete the task above thoroughly. Use the continuation brief and conversation context above if relevant."],
+    ["上記タスクを丁寧に完了してください。必要に応じて継続要約と会話コンテキストを参照してください。"],
+    ["请完整地完成上述任务。可按需参考连续执行摘要与会话上下文。"],
+  ), taskLang);
   const spawnPrompt = buildTaskExecutionPrompt([
     `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
     "This session is scoped to this task only. Keep context continuity inside this task session and do not mix with other projects.",
@@ -467,7 +491,7 @@ function startTaskExecutionForAgent(
     execAgent.personality ? `Personality: ${execAgent.personality}` : "",
     deptConstraint,
     continuationInstruction,
-    `Please complete the task above thoroughly. Use the continuation brief and conversation context above if relevant.`,
+    runInstruction,
   ], {
     allowWarningFix: hasExplicitWarningFixRequest(taskData.title, taskData.description),
   });
@@ -496,13 +520,12 @@ function startTaskExecutionForAgent(
     });
   }
 
-  const lang = resolveLang(taskData.description ?? taskData.title);
   notifyCeo(pickL(l(
     [`${execName}가 '${taskData.title}' 작업을 시작했습니다.`],
     [`${execName} started work on '${taskData.title}'.`],
     [`${execName}が '${taskData.title}' の作業を開始しました。`],
     [`${execName} 已开始处理 '${taskData.title}'。`],
-  ), lang), taskId);
+  ), taskLang), taskId);
   startProgressTimer(taskId, taskData.title, deptId);
 }
 
@@ -577,7 +600,7 @@ function startPlannedApprovalMeeting(
         if (isTaskWorkflowInterrupted(taskId)) return;
         sendAgentMessage(leader, content, messageType, receiverType, receiverId, taskId);
         const seatIndex = seatIndexByAgent.get(leader.id) ?? 0;
-        emitMeetingSpeech(leader.id, seatIndex, "kickoff", taskId, content);
+        emitMeetingSpeech(leader.id, seatIndex, "kickoff", taskId, content, lang);
         pushTranscript(leader, content);
         if (meetingId) {
           appendMeetingMinuteEntry(meetingId, minuteSeq++, leader, lang, messageType, content);
@@ -826,7 +849,7 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
 
     const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
     broadcast("task_update", updatedTask);
-    if (task) notifyTaskStatus(taskId, task.title, "review");
+    if (task) notifyTaskStatus(taskId, task.title, "review", resolveLang(task.description ?? task.title));
 
     // Collaboration child tasks should wait in review until parent consolidation meeting.
     // Queue continuation is still triggered so sequential delegation does not stall.
@@ -898,17 +921,27 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
       let diffSummary = "";
       if (wtInfo) {
         diffSummary = getWorktreeDiffSummary(wtInfo.projectPath, taskId);
-        if (diffSummary && diffSummary !== "변경사항 없음") {
+        if (hasVisibleDiffSummary(diffSummary)) {
           appendTaskLog(taskId, "system", `Worktree diff summary:\n${diffSummary}`);
         }
       }
 
       // Team leader sends completion report with actual result content + diff
-      let reportContent = reportBody
-        ? `대표님, '${task.title}' 업무 완료 보고드립니다.\n\n📋 결과:\n${reportBody}`
-        : `대표님, '${task.title}' 업무 완료 보고드립니다. 작업이 성공적으로 마무리되었습니다.`;
-
       const reportLang = resolveLang(task.description ?? task.title);
+      let reportContent = reportBody
+        ? pickL(l(
+          [`대표님, '${task.title}' 업무 완료 보고드립니다.\n\n📋 결과:\n${reportBody}`],
+          [`CEO, reporting completion for '${task.title}'.\n\n📋 Result:\n${reportBody}`],
+          [`CEO、'${task.title}' の完了をご報告します。\n\n📋 結果:\n${reportBody}`],
+          [`CEO，汇报 '${task.title}' 已完成。\n\n📋 结果:\n${reportBody}`],
+        ), reportLang)
+        : pickL(l(
+          [`대표님, '${task.title}' 업무 완료 보고드립니다. 작업이 성공적으로 마무리되었습니다.`],
+          [`CEO, reporting completion for '${task.title}'. The work has been finished successfully.`],
+          [`CEO、'${task.title}' の完了をご報告します。作業は正常に完了しました。`],
+          [`CEO，汇报 '${task.title}' 已完成。任务已成功结束。`],
+        ), reportLang);
+
       const subtaskProgressLabel = pickL(l(
         ["📌 보완/협업 진행 요약"],
         ["📌 Remediation/Collaboration Progress"],
@@ -920,8 +953,13 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
         reportContent += `\n\n${subtaskProgressLabel}\n${subtaskProgress}`;
       }
 
-      if (diffSummary && diffSummary !== "변경사항 없음" && diffSummary !== "diff 조회 실패") {
-        reportContent += `\n\n📝 변경사항 (branch: ${wtInfo?.branchName}):\n${diffSummary}`;
+      if (hasVisibleDiffSummary(diffSummary)) {
+        reportContent += pickL(l(
+          [`\n\n📝 변경사항 (branch: ${wtInfo?.branchName}):\n${diffSummary}`],
+          [`\n\n📝 Changes (branch: ${wtInfo?.branchName}):\n${diffSummary}`],
+          [`\n\n📝 変更点 (branch: ${wtInfo?.branchName}):\n${diffSummary}`],
+          [`\n\n📝 变更内容 (branch: ${wtInfo?.branchName}):\n${diffSummary}`],
+        ), reportLang);
       }
 
       sendAgentMessage(
@@ -970,9 +1008,20 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
             }
           } catch { /* ignore */ }
 
+          const failLang = resolveLang(task.description ?? task.title);
           const failContent = errorBody
-            ? `대표님, '${task.title}' 작업에 문제가 발생했습니다 (종료코드: ${exitCode}).\n\n❌ 오류 내용:\n${errorBody}\n\n재배정하거나 업무 내용을 수정한 후 다시 시도해주세요.`
-            : `대표님, '${task.title}' 작업에 문제가 발생했습니다 (종료코드: ${exitCode}). 에이전트를 재배정하거나 업무 내용을 수정한 후 다시 시도해주세요.`;
+            ? pickL(l(
+              [`대표님, '${task.title}' 작업에 문제가 발생했습니다 (종료코드: ${exitCode}).\n\n❌ 오류 내용:\n${errorBody}\n\n재배정하거나 업무 내용을 수정한 후 다시 시도해주세요.`],
+              [`CEO, '${task.title}' failed with an issue (exit code: ${exitCode}).\n\n❌ Error:\n${errorBody}\n\nPlease reassign the agent or revise the task, then try again.`],
+              [`CEO、'${task.title}' の処理中に問題が発生しました (終了コード: ${exitCode})。\n\n❌ エラー内容:\n${errorBody}\n\n担当再割り当てまたはタスク内容を修正して再試行してください。`],
+              [`CEO，'${task.title}' 执行时发生问题（退出码：${exitCode}）。\n\n❌ 错误内容:\n${errorBody}\n\n请重新分配代理或修改任务后重试。`],
+            ), failLang)
+            : pickL(l(
+              [`대표님, '${task.title}' 작업에 문제가 발생했습니다 (종료코드: ${exitCode}). 에이전트를 재배정하거나 업무 내용을 수정한 후 다시 시도해주세요.`],
+              [`CEO, '${task.title}' failed with an issue (exit code: ${exitCode}). Please reassign the agent or revise the task, then try again.`],
+              [`CEO、'${task.title}' の処理中に問題が発生しました (終了コード: ${exitCode})。担当再割り当てまたはタスク内容を修正して再試行してください。`],
+              [`CEO，'${task.title}' 执行时发生问题（退出码：${exitCode}）。请重新分配代理或修改任务后重试。`],
+            ), failLang);
 
           sendAgentMessage(
             leader,
@@ -984,7 +1033,13 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
           );
         }, 1500);
       }
-      notifyCeo(`'${task.title}' 작업 실패 (exit code: ${exitCode}).`, taskId);
+      const failLang = resolveLang(task.description ?? task.title);
+      notifyCeo(pickL(l(
+        [`'${task.title}' 작업 실패 (exit code: ${exitCode}).`],
+        [`Task '${task.title}' failed (exit code: ${exitCode}).`],
+        [`'${task.title}' のタスクが失敗しました (exit code: ${exitCode})。`],
+        [`任务 '${task.title}' 失败（exit code: ${exitCode}）。`],
+      ), failLang), taskId);
     }
 
     // Even on failure, trigger next cross-dept cooperation so the queue doesn't stall
@@ -1066,25 +1121,46 @@ function finishReview(taskId: string, taskTitle: string): void {
       const mergeResult = mergeWorktree(wtInfo.projectPath, taskId);
 
       if (mergeResult.success) {
-        appendTaskLog(taskId, "system", `Git merge 완료: ${mergeResult.message}`);
+        appendTaskLog(taskId, "system", `Git merge completed: ${mergeResult.message}`);
         cleanupWorktree(wtInfo.projectPath, taskId);
         appendTaskLog(taskId, "system", "Worktree cleaned up after successful merge");
-        mergeNote = " (병합 완료)";
+        mergeNote = pickL(l(
+          [" (병합 완료)"],
+          [" (merged)"],
+          [" (マージ完了)"],
+          ["（已合并）"],
+        ), lang);
       } else {
-        appendTaskLog(taskId, "system", `Git merge 실패: ${mergeResult.message}`);
+        appendTaskLog(taskId, "system", `Git merge failed: ${mergeResult.message}`);
 
         const conflictLeader = findTeamLeader(latestTask.department_id);
-        const conflictLeaderName = conflictLeader?.name_ko || conflictLeader?.name || "팀장";
+        const conflictLeaderName = conflictLeader
+          ? getAgentDisplayName(conflictLeader, lang)
+          : pickL(l(["팀장"], ["Team Lead"], ["チームリーダー"], ["组长"]), lang);
         const conflictFiles = mergeResult.conflicts?.length
-          ? `\n충돌 파일: ${mergeResult.conflicts.join(", ")}`
+          ? pickL(l(
+            [`\n충돌 파일: ${mergeResult.conflicts.join(", ")}`],
+            [`\nConflicting files: ${mergeResult.conflicts.join(", ")}`],
+            [`\n競合ファイル: ${mergeResult.conflicts.join(", ")}`],
+            [`\n冲突文件: ${mergeResult.conflicts.join(", ")}`],
+          ), lang)
           : "";
         notifyCeo(
-          `${conflictLeaderName}: '${taskTitle}' 병합 중 충돌이 발생했습니다. 수동 해결이 필요합니다.${conflictFiles}\n` +
-          `브랜치: ${wtInfo.branchName}`,
+          pickL(l(
+            [`${conflictLeaderName}: '${taskTitle}' 병합 중 충돌이 발생했습니다. 수동 해결이 필요합니다.${conflictFiles}\n브랜치: ${wtInfo.branchName}`],
+            [`${conflictLeaderName}: Merge conflict while merging '${taskTitle}'. Manual resolution is required.${conflictFiles}\nBranch: ${wtInfo.branchName}`],
+            [`${conflictLeaderName}: '${taskTitle}' のマージ中に競合が発生しました。手動解決が必要です。${conflictFiles}\nブランチ: ${wtInfo.branchName}`],
+            [`${conflictLeaderName}：合并 '${taskTitle}' 时发生冲突，需要手动解决。${conflictFiles}\n分支: ${wtInfo.branchName}`],
+          ), lang),
           taskId,
         );
 
-        mergeNote = " (병합 충돌 - 수동 해결 필요)";
+        mergeNote = pickL(l(
+          [" (병합 충돌 - 수동 해결 필요)"],
+          [" (merge conflict - manual resolution required)"],
+          [" (マージ競合 - 手動解決が必要)"],
+          ["（合并冲突 - 需要手动解决）"],
+        ), lang);
       }
     }
 
@@ -1097,7 +1173,7 @@ function finishReview(taskId: string, taskTitle: string): void {
 
     const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
     broadcast("task_update", updatedTask);
-    notifyTaskStatus(taskId, taskTitle, "done");
+    notifyTaskStatus(taskId, taskTitle, "done", lang);
 
     refreshCliUsageData().then((usage) => broadcast("cli_usage_update", usage)).catch(() => {});
 

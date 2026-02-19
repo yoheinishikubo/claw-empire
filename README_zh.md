@@ -56,12 +56,14 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 ## 最新发布 (v1.0.5)
 
 - 服务器运行流程进一步模块化，便于路由/工作流/运行时装配的后续维护
+- 强化运行时语言一致性：任务执行提示与工作流/状态消息统一遵循所选语言
 - 统一 `/api/inbox` 文档要求：`x-inbox-secret` 为必填头，缺失或不匹配返回 `401`
 - AI 安装指南与快速开始新增 `INBOX_WEBHOOK_SECRET`、`OPENCLAW_CONFIG` 校验步骤
 - 强化 `OPENCLAW_CONFIG` 处理：运行时会规范化外层引号与前导 `~`
 - OpenClaw 配置文档明确建议 `.env` 使用绝对路径（推荐不加引号）
 - 现有克隆仓库在 `git pull v1.0.5` 后，首次执行 `pnpm dev*` / `pnpm start*` 时也会自动执行一次迁移修复
 - AGENTS 编排规则新增 `INBOX_SECRET_DISCOVERY_V2`，可从 shell 环境变量、`.env`、`.env.clone` 及常见项目根目录自动发现密钥
+- 修复代理一对一聊天中长回复被过早截断的问题
 - 详细说明：[`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
 
 ---

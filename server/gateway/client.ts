@@ -175,10 +175,57 @@ function queueWake(params: { key: string; text: string; debounceMs?: number }) {
   });
 }
 
-export function notifyTaskStatus(taskId: string, title: string, status: string): void {
+type GatewayLang = "ko" | "en" | "ja" | "zh";
+
+function detectGatewayLang(text: string): GatewayLang {
+  const ko = text.match(/[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g)?.length ?? 0;
+  const ja = text.match(/[\u3040-\u309F\u30A0-\u30FF]/g)?.length ?? 0;
+  const zh = text.match(/[\u4E00-\u9FFF]/g)?.length ?? 0;
+  const total = text.replace(/\s/g, "").length || 1;
+  if (ko / total > 0.15) return "ko";
+  if (ja / total > 0.15) return "ja";
+  if (zh / total > 0.3) return "zh";
+  return "en";
+}
+
+function normalizeGatewayLang(lang: string | null | undefined, title: string): GatewayLang {
+  if (lang === "ko" || lang === "en" || lang === "ja" || lang === "zh") return lang;
+  if (title.trim()) return detectGatewayLang(title);
+  return "en";
+}
+
+function resolveStatusLabel(status: string, lang: GatewayLang): string {
+  if (status === "in_progress") {
+    if (lang === "en") return "Started";
+    if (lang === "ja") return "開始";
+    if (lang === "zh") return "开始";
+    return "진행 시작";
+  }
+  if (status === "review") {
+    if (lang === "en") return "In Review";
+    if (lang === "ja") return "レビュー中";
+    if (lang === "zh") return "审核中";
+    return "검토 중";
+  }
+  if (status === "done") {
+    if (lang === "en") return "Completed";
+    if (lang === "ja") return "完了";
+    if (lang === "zh") return "完成";
+    return "완료";
+  }
+  return status;
+}
+
+export function notifyTaskStatus(
+  taskId: string,
+  title: string,
+  status: string,
+  lang?: string,
+): void {
   if (!OPENCLAW_CONFIG_PATH) return;
+  const resolvedLang = normalizeGatewayLang(lang, title);
   const emoji = status === "in_progress" ? "\u{1F680}" : status === "review" ? "\u{1F50D}" : status === "done" ? "\u2705" : "\u{1F4CB}";
-  const label = status === "in_progress" ? "진행 시작" : status === "review" ? "검토 중" : status === "done" ? "완료" : status;
+  const label = resolveStatusLabel(status, resolvedLang);
   queueWake({
     key: `task:${taskId}:${status}`,
     text: `${emoji} [${label}] ${title}`,

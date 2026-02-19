@@ -231,9 +231,21 @@ function createWorktree(projectPath: string, taskId: string, agentName: string):
   }
 }
 
+const DIFF_SUMMARY_NONE = "__DIFF_NONE__";
+const DIFF_SUMMARY_ERROR = "__DIFF_ERROR__";
+
+function hasVisibleDiffSummary(summary: string): boolean {
+  return Boolean(summary && summary !== DIFF_SUMMARY_NONE && summary !== DIFF_SUMMARY_ERROR);
+}
+
 function mergeWorktree(projectPath: string, taskId: string): { success: boolean; message: string; conflicts?: string[] } {
   const info = taskWorktrees.get(taskId);
   if (!info) return { success: false, message: "No worktree found for this task" };
+  const taskRow = db.prepare("SELECT title, description FROM tasks WHERE id = ?").get(taskId) as {
+    title: string;
+    description: string | null;
+  } | undefined;
+  const lang = resolveLang(taskRow?.description ?? taskRow?.title);
 
   try {
     // Get current branch name in the original repo
@@ -247,7 +259,15 @@ function mergeWorktree(projectPath: string, taskId: string): { success: boolean;
         cwd: projectPath, stdio: "pipe", timeout: 10000,
       }).toString().trim();
       if (!diffCheck) {
-        return { success: true, message: "변경사항 없음 — 병합 불필요" };
+        return {
+          success: true,
+          message: pickL(l(
+            ["변경사항이 없어 병합이 필요하지 않습니다."],
+            ["No changes to merge."],
+            ["マージする変更がありません。"],
+            ["没有可合并的更改。"],
+          ), lang),
+        };
       }
     } catch { /* proceed with merge attempt anyway */ }
 
@@ -257,7 +277,15 @@ function mergeWorktree(projectPath: string, taskId: string): { success: boolean;
       cwd: projectPath, stdio: "pipe", timeout: 30000,
     });
 
-    return { success: true, message: `병합 완료: ${info.branchName} → ${currentBranch}` };
+    return {
+      success: true,
+      message: pickL(l(
+        [`병합 완료: ${info.branchName} → ${currentBranch}`],
+        [`Merge completed: ${info.branchName} -> ${currentBranch}`],
+        [`マージ完了: ${info.branchName} -> ${currentBranch}`],
+        [`合并完成: ${info.branchName} -> ${currentBranch}`],
+      ), lang),
+    };
   } catch (err: unknown) {
     // Detect conflicts by checking git status instead of parsing error messages
     try {
@@ -272,7 +300,12 @@ function mergeWorktree(projectPath: string, taskId: string): { success: boolean;
 
         return {
           success: false,
-          message: `병합 충돌 발생: ${conflicts.length}개 파일에서 충돌이 있습니다. 수동 해결이 필요합니다.`,
+          message: pickL(l(
+            [`병합 충돌 발생: ${conflicts.length}개 파일에서 충돌이 있습니다. 수동 해결이 필요합니다.`],
+            [`Merge conflict: ${conflicts.length} file(s) have conflicts and need manual resolution.`],
+            [`マージ競合: ${conflicts.length}件のファイルで競合が発生し、手動解決が必要です。`],
+            [`合并冲突：${conflicts.length} 个文件存在冲突，需要手动解决。`],
+          ), lang),
           conflicts,
         };
       }
@@ -282,7 +315,15 @@ function mergeWorktree(projectPath: string, taskId: string): { success: boolean;
     try { execFileSync("git", ["merge", "--abort"], { cwd: projectPath, stdio: "pipe", timeout: 5000 }); } catch { /* ignore */ }
 
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `병합 실패: ${msg}` };
+    return {
+      success: false,
+      message: pickL(l(
+        [`병합 실패: ${msg}`],
+        [`Merge failed: ${msg}`],
+        [`マージ失敗: ${msg}`],
+        [`合并失败: ${msg}`],
+      ), lang),
+    };
   }
 }
 
@@ -326,7 +367,7 @@ function rollbackTaskWorktree(taskId: string, reason: string): boolean {
   if (!info) return false;
 
   const diffSummary = getWorktreeDiffSummary(info.projectPath, taskId);
-  if (diffSummary && diffSummary !== "변경사항 없음" && diffSummary !== "diff 조회 실패") {
+  if (hasVisibleDiffSummary(diffSummary)) {
     appendTaskLog(taskId, "system", `Rollback(${reason}) diff summary:\n${diffSummary}`);
   }
 
@@ -349,9 +390,9 @@ function getWorktreeDiffSummary(projectPath: string, taskId: string): string {
       cwd: projectPath, stdio: "pipe", timeout: 10000,
     }).toString().trim();
 
-    return stat || "변경사항 없음";
+    return stat || DIFF_SUMMARY_NONE;
   } catch {
-    return "diff 조회 실패";
+    return DIFF_SUMMARY_ERROR;
   }
 }
 
@@ -1096,7 +1137,9 @@ function chooseSafeReply(
   kind: ReplyKind,
   agent?: AgentRow,
 ): string {
-  const cleaned = normalizeConversationReply(run.text || "", 2000, { maxSentences: 0 });
+  // Direct 1:1 chat replies should preserve longer answers for the chat UI.
+  const maxReplyChars = kind === "direct" ? 12000 : 2000;
+  const cleaned = normalizeConversationReply(run.text || "", maxReplyChars, { maxSentences: 0 });
   if (!cleaned) return fallbackTurnReply(kind, lang, agent);
   if (/timeout after|CLI 응답 생성에 실패|response failed|one-shot-error/i.test(cleaned)) {
     return fallbackTurnReply(kind, lang, agent);
@@ -1110,11 +1153,18 @@ function chooseSafeReply(
   return cleaned;
 }
 
-function summarizeForMeetingBubble(text: string, maxChars = 96): string {
+const MEETING_BUBBLE_EMPTY = {
+  ko: ["의견 공유드립니다."],
+  en: ["Sharing thoughts shortly."],
+  ja: ["ご意見を共有します。"],
+  zh: ["稍后分享意见。"],
+};
+
+function summarizeForMeetingBubble(text: string, maxChars = 96, lang: Lang = getPreferredLanguage()): string {
   const cleaned = normalizeConversationReply(text, maxChars + 24)
     .replace(/\s+/g, " ")
     .trim();
-  if (!cleaned) return "의견 공유드립니다.";
+  if (!cleaned) return pickL(MEETING_BUBBLE_EMPTY, lang);
   if (cleaned.length <= maxChars) return cleaned;
   return `${cleaned.slice(0, maxChars - 1).trimEnd()}…`;
 }
@@ -1518,6 +1568,7 @@ async function runAgentOneShot(
     getAgentDisplayName,
     chooseSafeReply,
     summarizeForMeetingBubble,
+    hasVisibleDiffSummary,
     isDeferrableReviewHold,
     classifyMeetingReviewDecision,
     wantsReviewRevision,

@@ -1632,13 +1632,19 @@ app.post("/api/tasks/:id/merge", (req, res) => {
   }
 
   const result = mergeWorktree(wtInfo.projectPath, id);
+  const lang = resolveLang();
 
   if (result.success) {
     cleanupWorktree(wtInfo.projectPath, id);
-    appendTaskLog(id, "system", `Manual merge 완료: ${result.message}`);
-    notifyCeo(`수동 병합 완료: ${result.message}`, id);
+    appendTaskLog(id, "system", `Manual merge completed: ${result.message}`);
+    notifyCeo(pickL(l(
+      [`수동 병합 완료: ${result.message}`],
+      [`Manual merge completed: ${result.message}`],
+      [`手動マージ完了: ${result.message}`],
+      [`手动合并完成: ${result.message}`],
+    ), lang), id);
   } else {
-    appendTaskLog(id, "system", `Manual merge 실패: ${result.message}`);
+    appendTaskLog(id, "system", `Manual merge failed: ${result.message}`);
   }
 
   res.json({ ok: result.success, message: result.message, conflicts: result.conflicts });
@@ -1654,7 +1660,13 @@ app.post("/api/tasks/:id/discard", (req, res) => {
 
   cleanupWorktree(wtInfo.projectPath, id);
   appendTaskLog(id, "system", "Worktree discarded (changes abandoned)");
-  notifyCeo(`작업 브랜치가 폐기되었습니다: climpire/${id.slice(0, 8)}`, id);
+  const lang = resolveLang();
+  notifyCeo(pickL(l(
+    [`작업 브랜치가 폐기되었습니다: climpire/${id.slice(0, 8)}`],
+    [`Task branch discarded: climpire/${id.slice(0, 8)}`],
+    [`タスクブランチを破棄しました: climpire/${id.slice(0, 8)}`],
+    [`任务分支已丢弃: climpire/${id.slice(0, 8)}`],
+  ), lang), id);
 
   res.json({ ok: true, message: "Worktree discarded" });
 });

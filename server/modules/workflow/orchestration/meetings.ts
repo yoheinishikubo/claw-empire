@@ -551,7 +551,7 @@ function appendTaskReviewFinalMemo(
   const seen = new Set<string>();
   for (let i = transcript.length - 1; i >= 0; i -= 1) {
     const row = transcript[i];
-    const clipped = summarizeForMeetingBubble(row.content, 140);
+    const clipped = summarizeForMeetingBubble(row.content, 140, lang as Lang);
     if (!clipped) continue;
     const line = `${row.department} ${row.speaker}: ${clipped}`;
     const key = line.toLowerCase();
@@ -658,8 +658,9 @@ function emitMeetingSpeech(
   phase: "kickoff" | "review",
   taskId: string,
   line: string,
+  lang?: string,
 ): void {
-  const preview = summarizeForMeetingBubble(line);
+  const preview = summarizeForMeetingBubble(line, 96, (lang as Lang | undefined));
   const decision = phase === "review" ? classifyMeetingReviewDecision(preview) : undefined;
   if (decision) {
     meetingReviewDecisionByAgent.set(agentId, decision);
@@ -783,7 +784,7 @@ function startReviewConsensusMeeting(
         if (isTaskWorkflowInterrupted(taskId)) return;
         sendAgentMessage(leader, content, messageType, receiverType, receiverId, taskId);
         const seatIndex = seatIndexByAgent.get(leader.id) ?? 0;
-        emitMeetingSpeech(leader.id, seatIndex, "review", taskId, content);
+        emitMeetingSpeech(leader.id, seatIndex, "review", taskId, content, lang);
         pushTranscript(leader, content);
         if (meetingId) {
           appendMeetingMinuteEntry(meetingId, minuteSeq++, leader, lang, messageType, content);
@@ -993,7 +994,7 @@ function startReviewConsensusMeeting(
         if (meetingReviewDecisionByAgent.get(leader.id) !== "hold") continue;
         const latestDecisionLine = findLatestTranscriptContentByAgent(transcript, leader.id);
         if (isDeferrableReviewHold(latestDecisionLine)) {
-          const clipped = summarizeForMeetingBubble(latestDecisionLine, 160);
+          const clipped = summarizeForMeetingBubble(latestDecisionLine, 160, lang as Lang);
           deferredMonitoringLeaders.push(leader);
           deferredMonitoringNotes.push(
             `${getDeptName(leader.department_id ?? "")} ${getAgentDisplayName(leader, lang)}: ${clipped}`,

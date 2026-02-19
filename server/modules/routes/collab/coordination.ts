@@ -116,6 +116,9 @@ export function initializeCollabCoordination(ctx: any): any {
   const withSqliteBusyRetry = __ctx.withSqliteBusyRetry;
   const prettyStreamJson = __ctx.prettyStreamJson;
   const refreshCliUsageData = __ctx.refreshCliUsageData;
+  const resolveLang = __ctx.resolveLang;
+  const l = __ctx.l;
+  const pickL = __ctx.pickL;
   const buildHealthPayload = __ctx.buildHealthPayload;
   const consumeOAuthState = __ctx.consumeOAuthState;
   const upsertOAuthCredential = __ctx.upsertOAuthCredential;
@@ -525,6 +528,7 @@ function startCrossDeptCooperation(
         const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[execAgent.role] || execAgent.role;
         const deptConstraint = getDeptRoleConstraint(crossDeptId, crossDeptName);
         const crossConversationCtx = getRecentConversationContext(execAgent.id);
+        const taskLang = resolveLang(crossTaskData.description ?? crossTaskData.title);
         const spawnPrompt = buildTaskExecutionPrompt([
           `[Task] ${crossTaskData.title}`,
           crossTaskData.description ? `\n${crossTaskData.description}` : "",
@@ -533,7 +537,12 @@ function startCrossDeptCooperation(
           `Agent: ${execAgent.name} (${roleLabel}, ${crossDeptName})`,
           execAgent.personality ? `Personality: ${execAgent.personality}` : "",
           deptConstraint,
-          `Please complete the task above thoroughly. Use the conversation context above if relevant.`,
+          pickL(l(
+            ["위 작업을 충분히 완수하세요. 필요 시 위 대화 맥락을 참고하세요."],
+            ["Please complete the task above thoroughly. Use the conversation context above if relevant."],
+            ["上記タスクを丁寧に完了してください。必要に応じて会話コンテキストを参照してください。"],
+            ["请完整地完成上述任务。可按需参考上方会话上下文。"],
+          ), taskLang),
         ], {
           allowWarningFix: hasExplicitWarningFixRequest(crossTaskData.title, crossTaskData.description),
         });
