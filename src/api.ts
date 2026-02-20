@@ -387,6 +387,19 @@ export async function clearMessages(agentId?: string): Promise<void> {
   await del(`/api/messages?${params.toString()}`);
 }
 
+export type TerminalProgressHint = {
+  phase: 'use' | 'ok' | 'error';
+  tool: string;
+  summary: string;
+  file_path: string | null;
+};
+
+export type TerminalProgressHintsPayload = {
+  current_file: string | null;
+  hints: TerminalProgressHint[];
+  ok_items: string[];
+};
+
 // Terminal
 export async function getTerminal(id: string, lines?: number, pretty?: boolean): Promise<{
   ok: boolean;
@@ -394,6 +407,7 @@ export async function getTerminal(id: string, lines?: number, pretty?: boolean):
   path: string;
   text: string;
   task_logs?: Array<{ id: number; kind: string; message: string; created_at: number }>;
+  progress_hints?: TerminalProgressHintsPayload | null;
 }> {
   const params = new URLSearchParams();
   if (lines) params.set('lines', String(lines));

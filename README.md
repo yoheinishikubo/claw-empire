@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.0.8.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.0.9.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 
 ---
 
-## Latest Release (v1.0.8)
+## Latest Release (v1.0.9)
 
-- **Active Agent Status + Kill** — Added active-agent status panel and backend snapshot route (`/api/agents/active`) so you can inspect working agents and stop stuck tasks quickly.
-- **Task Completion Reports + History** — Added automatic completion-report popup, report history modal, and project-level report detail API.
-- **Planning Consolidated Archive (LLM)** — When all related work is done, planning lead now generates and archives a consolidated markdown report; it can be refreshed on demand from the report popup.
-- **Round/Timeout Stability Improvements** — Added Codex `--max-turns 200`, extended idle timeout, default hard-timeout disabled, safer orphan recovery, and stale in-progress/process cleanup for re-run reliability.
-- **CLI/OAuth/API Communication QA Suite** — Added `test:comm:*` scripts for one-shot and integrated connectivity checks with JSON evidence + markdown report artifacts.
-- Full notes: [`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
+- **Report Request Workflow Upgrade (PPT/MD)** — Strengthened report routing and prompt constraints so report tasks follow research-first flow and use pinned tool submodules.
+- **PPT HTML-First + One-Pass Design Checkpoint** — PPT tasks now pause for one design checkpoint, then resume final regeneration and close without second confirmation.
+- **Terminal Live Hint UX** — Added persistent tool-progress hint panel above status bar; keeps human output visible while showing active tool/hint context.
+- **Terminal History Retention** — Task logs now append per run with run separators, so repeated runs keep prior terminal history.
+- **Docs + Samples for Report/PPT** — Added report/PPT screenshots, `Sample_Slides` sources, and explicit usage path: **Chat window > Report Request button**.
+- Full notes: [`docs/releases/v1.0.9.md`](docs/releases/v1.0.9.md)
 
 ---
 
@@ -136,7 +136,34 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 <img src="Sample_Img/Setting.png" alt="Settings" width="100%" />
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+**Detailed Report** — Example of completion report popup, report history, and detailed report view for a request
+
+<img src="Sample_Img/Report.png" alt="Detailed Report" width="100%" />
+</td>
+<td width="50%">
+
+**PPT Generation** — Example captures of PPT generation output for a report request (2 images in one cell)
+
+<p align="center">
+  <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
+  <img src="Sample_Img/PPT_Gen1.png" alt="PPT Generation Example 1" width="49%" />
+</p>
+</td>
+</tr>
 </table>
+
+### PPT Sample Sources
+
+Use the sample sources below when reviewing or extending report-to-PPT generation:
+Usage path: **Chat window > Report Request button**, then enter your request.
+
+- Folder: [`docs/reports/Sample_Slides`](docs/reports/Sample_Slides)
+- Sample deck (`.pptx`): [`docs/reports/PPT_Sample.pptx`](docs/reports/PPT_Sample.pptx)
+- HTML slides: [`slide-01.html`](docs/reports/Sample_Slides/slide-01.html), [`slide-02.html`](docs/reports/Sample_Slides/slide-02.html), [`slide-03.html`](docs/reports/Sample_Slides/slide-03.html), [`slide-04.html`](docs/reports/Sample_Slides/slide-04.html), [`slide-05.html`](docs/reports/Sample_Slides/slide-05.html), [`slide-06.html`](docs/reports/Sample_Slides/slide-06.html), [`slide-07.html`](docs/reports/Sample_Slides/slide-07.html), [`slide-08.html`](docs/reports/Sample_Slides/slide-08.html), [`slide-09.html`](docs/reports/Sample_Slides/slide-09.html)
+- Build scripts: [`build-pptx.mjs`](docs/reports/Sample_Slides/build-pptx.mjs), [`build-pptx.cjs`](docs/reports/Sample_Slides/build-pptx.cjs), [`html2pptx.cjs`](docs/reports/Sample_Slides/html2pptx.cjs)
 
 ---
 
@@ -270,7 +297,7 @@ If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox smoke test","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.9 inbox smoke test","skipPlannedMeeting":true}'
 ```
 
 Expected:
@@ -520,7 +547,7 @@ pnpm start              # run the built server
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### Communication QA Checks (v1.0.8)
+### Communication QA Checks (v1.0.9)
 
 ```bash
 # Individual checks

@@ -884,8 +884,9 @@ function launchHttpAgent(
   fakePid: number,
   preferredOAuthAccountId?: string | null,
 ): void {
-  const logStream = fs.createWriteStream(logPath, { flags: "w" });
+  const logStream = fs.createWriteStream(logPath, { flags: "a" });
   const { safeWrite, safeEnd } = createSafeLogStreamOps(logStream);
+  safeWrite(`\n===== task run start ${new Date().toISOString()} | provider=${agent} =====\n`);
 
   const promptPath = path.join(logsDir, `${taskId}.prompt.txt`);
   fs.writeFileSync(promptPath, prompt, "utf8");
@@ -1177,8 +1178,9 @@ function launchApiProviderAgent(
   controller: AbortController,
   fakePid: number,
 ): void {
-  const logStream = fs.createWriteStream(logPath, { flags: "w" });
+  const logStream = fs.createWriteStream(logPath, { flags: "a" });
   const { safeWrite, safeEnd } = createSafeLogStreamOps(logStream);
+  safeWrite(`\n===== task run start ${new Date().toISOString()} | provider=api =====\n`);
 
   const promptPath = path.join(logsDir, `${taskId}.prompt.txt`);
   fs.writeFileSync(promptPath, prompt, "utf8");

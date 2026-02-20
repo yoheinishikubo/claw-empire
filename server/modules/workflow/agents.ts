@@ -1017,8 +1017,9 @@ function spawnCliAgent(
   fs.writeFileSync(promptPath, prompt, "utf8");
 
   const args = buildAgentArgs(provider, model, reasoningLevel);
-  const logStream = fs.createWriteStream(logPath, { flags: "w" });
+  const logStream = fs.createWriteStream(logPath, { flags: "a" });
   const { safeWrite, safeEnd } = createSafeLogStreamOps(logStream);
+  safeWrite(`\n===== task run start ${new Date().toISOString()} | provider=${provider} =====\n`);
 
   // Remove CLAUDECODE env var to prevent "nested session" detection
   const cleanEnv = { ...process.env };

@@ -1538,7 +1538,18 @@ function handleSubtaskDelegationBatchComplete(delegatedTaskId: string, subtaskId
   finalizeDelegatedSubtasks(delegatedTaskId, subtaskIds, exitCode);
 }
 
-const collabCoordination = initializeCollabCoordination(__ctx);
+const collabCoordination = initializeCollabCoordination({
+  ...__ctx,
+  resolveLang,
+  l,
+  pickL,
+  sendAgentMessage,
+  findBestSubordinate,
+  findTeamLeader,
+  getDeptName,
+  getDeptRoleConstraint,
+  maybeNotifyAllSubtasksComplete,
+});
 const {
   reconcileCrossDeptSubtasks,
   recoverCrossDeptQueueAfterMissingCallback,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Agent, Task, MeetingMinute } from '../types';
 import * as api from '../api';
+import type { TerminalProgressHint, TerminalProgressHintsPayload } from '../api';
 import AgentAvatar from './AgentAvatar';
 import { useI18n } from '../i18n';
 import type { LangText } from '../i18n';
@@ -51,6 +52,7 @@ interface TaskLogEntry {
 export default function TerminalPanel({ taskId, task, agent, agents, initialTab = 'terminal', onClose }: TerminalPanelProps) {
   const [text, setText] = useState('');
   const [taskLogs, setTaskLogs] = useState<TaskLogEntry[]>([]);
+  const [progressHints, setProgressHints] = useState<TerminalProgressHintsPayload | null>(null);
   const [meetingMinutes, setMeetingMinutes] = useState<MeetingMinute[]>([]);
   const [logPath, setLogPath] = useState('');
   const [follow, setFollow] = useState(true);
@@ -86,10 +88,11 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
   // Poll terminal endpoint every 1.5s
   const fetchTerminal = useCallback(async () => {
     try {
-      const res = await api.getTerminal(taskId, 4000, true);
+      const res = await api.getTerminal(taskId, 12000, true);
       if (res.ok) {
         setLogPath(res.path);
         if (res.task_logs) setTaskLogs(res.task_logs);
+        setProgressHints(res.progress_hints ?? null);
         if (res.exists) {
           setText(res.text ?? '');
         } else {
@@ -166,6 +169,58 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
     if (status === 'failed') return tr('실패', 'Failed', '失敗', '失败');
     return tr('진행중', 'In Progress', '進行中', '进行中');
   };
+
+  const compactHintText = (value: string, max = 90) => {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= max) return normalized;
+    return `${normalized.slice(0, max - 1).trimEnd()}…`;
+  };
+
+  const shortPath = (value: string) => {
+    const normalized = value.replace(/\\/g, '/');
+    const parts = normalized.split('/').filter(Boolean);
+    return parts.length === 0 ? value : parts[parts.length - 1];
+  };
+
+  const hintLineLabel = (hint: TerminalProgressHint) => {
+    const summary = compactHintText(hint.summary, 100);
+    if (hint.phase === 'ok') {
+      return tr(
+        `... ${hint.tool} 확인 완료: ${summary}`,
+        `... ${hint.tool} checked: ${summary}`,
+        `... ${hint.tool} 確認完了: ${summary}`,
+        `... ${hint.tool} 已确认: ${summary}`,
+      );
+    }
+    if (hint.phase === 'error') {
+      return tr(
+        `... ${hint.tool} 재확인 중: ${summary}`,
+        `... ${hint.tool} retry/check: ${summary}`,
+        `... ${hint.tool} 再確認中: ${summary}`,
+        `... ${hint.tool} 重试/检查: ${summary}`,
+      );
+    }
+    return tr(
+      `... ${hint.tool} 진행 중: ${summary}`,
+      `... ${hint.tool} in progress: ${summary}`,
+      `... ${hint.tool} 実行中: ${summary}`,
+      `... ${hint.tool} 进行中: ${summary}`,
+    );
+  };
+
+  const shouldShowProgressHints =
+    activeTab === 'terminal'
+    && task?.status === 'in_progress'
+    && Boolean(progressHints && progressHints.hints.length > 0);
+
+  const latestHint =
+    shouldShowProgressHints && progressHints && progressHints.hints.length > 0
+      ? progressHints.hints[progressHints.hints.length - 1]
+      : null;
+  const activeToolHint =
+    shouldShowProgressHints && progressHints
+      ? [...progressHints.hints].reverse().find((hint) => hint.phase === 'use') ?? latestHint
+      : null;
 
   return (
     <div className="fixed inset-0 z-50 flex w-full max-w-full flex-col bg-[#0d1117] shadow-2xl lg:inset-y-0 lg:right-0 lg:left-auto lg:w-[560px] lg:border-l lg:border-slate-700/50">
@@ -285,7 +340,11 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
               </div>
               <div className="text-sm">
                 {task?.status === 'in_progress'
-                  ? tr('출력을 기다리는 중...', 'Waiting for output...', '出力待機中...', '正在等待输出...')
+                  ? (
+                    shouldShowProgressHints
+                      ? tr('도구 실행 중...', 'Tools are running...', 'ツール実行中...', '工具正在运行...')
+                      : tr('출력을 기다리는 중...', 'Waiting for output...', '出力待機中...', '正在等待输出...')
+                  )
                   : tr('아직 터미널 출력이 없습니다', 'No terminal output yet', 'まだターミナル出力がありません', '暂无终端输出')}
               </div>
             </div>
@@ -341,6 +400,53 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
                 </div>
               </div>
             ))
+          )}
+        </div>
+      )}
+
+      {activeTab === 'terminal' && shouldShowProgressHints && progressHints && (
+        <div className="border-t border-slate-700/50 bg-slate-950/55 backdrop-blur-sm px-4 py-2">
+          <div className="text-[10px] text-slate-400/80 italic">
+            {activeToolHint
+              ? tr(
+                `도구 실행중.. ${activeToolHint.tool} 확인 중`,
+                `Tool running.. checking ${activeToolHint.tool}`,
+                `ツール実行中.. ${activeToolHint.tool} を確認中`,
+                `工具运行中.. 正在检查 ${activeToolHint.tool}`,
+              )
+              : tr(
+                '도구 실행중.. 진행 상황 확인 중',
+                'Tool running.. checking progress',
+                'ツール実行中.. 進捗確認中',
+                '工具运行中.. 正在检查进度',
+              )}
+          </div>
+          {progressHints.current_file && (
+            <div className="mt-1 text-[10px] text-slate-500/85 break-words">
+              {tr(
+                `파일: ${shortPath(progressHints.current_file)}`,
+                `file: ${shortPath(progressHints.current_file)}`,
+                `ファイル: ${shortPath(progressHints.current_file)}`,
+                `文件: ${shortPath(progressHints.current_file)}`,
+              )}
+            </div>
+          )}
+          <div className="mt-1 max-h-20 space-y-0.5 overflow-y-auto">
+            {progressHints.hints.slice(-4).map((hint, idx) => (
+              <div
+                key={`${hint.tool}-${hint.phase}-${idx}`}
+                className={`text-[10px] italic break-words ${
+                  hint.phase === 'error' ? 'text-rose-300/75' : 'text-slate-400/85'
+                }`}
+              >
+                {hintLineLabel(hint)}
+              </div>
+            ))}
+          </div>
+          {progressHints.ok_items.length > 0 && (
+            <div className="mt-1 text-[10px] text-emerald-300/80 break-words">
+              {`✓ ${progressHints.ok_items.map((item) => compactHintText(item, 44)).join(' · ')}`}
+            </div>
           )}
         </div>
       )}

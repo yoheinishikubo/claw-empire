@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.8.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.9.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.8)
+## 最新发布 (v1.0.9)
 
-- **活跃代理状态 + 强制停止** — 新增基于 `/api/agents/active` 的状态面板，可查看工作中代理的进程/活动/空闲信息，并快速停止卡住任务。
-- **任务完成报告 + 历史记录** — 任务完成后自动弹出报告窗口，并支持在历史面板中按项目回看已完成报告。
-- **规划负责人最终汇总归档（LLM）** — 所有相关任务完成后，由规划负责人生成并归档最终汇总 Markdown，可在报告弹窗中手动刷新。
-- **轮次/超时稳定性优化** — 增加 Codex `--max-turns 200`、延长空闲超时、默认关闭硬超时，并强化 orphan/stale 恢复，缓解测试或长任务被提前终止的问题。
-- **CLI/OAuth/API 通信 QA 套件** — 新增 `test:comm:*` 脚本，支持单项/整体验证，并输出 JSON 证据和 Markdown 报告。
-- 详细说明：[`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
+- **报告请求工作流升级（PPT/MD）** — 强化报告任务路由与提示词约束，统一“先调研、后产出”的流程，并配合固定子模块工具链。
+- **PPT HTML 优先 + 单次设计检查点** — PPT 任务先走设计团队一次检查，再由原负责人最终重生成，完成后不再进行二次确认。
+- **终端实时提示 UX 改进** — 在状态栏上方常驻工具进度提示区，同时保留自然语言输出与执行上下文提示。
+- **终端历史保留改进** — 任务重跑时日志改为 append 并写入运行分隔线，保留历史执行记录。
+- **文档与样例补充** — 新增 Report/PPT 截图、`Sample_Slides` 源文件链接及使用路径说明（**聊天窗口 > Report Request 按钮**）。
+- 详细说明：[`docs/releases/v1.0.9.md`](docs/releases/v1.0.9.md)
 
 ---
 
@@ -136,7 +136,34 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 <img src="Sample_Img/Setting.png" alt="Settings" width="100%" />
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+**详细报告** — 请求完成后的报告弹窗、报告历史与详细报告查看示例
+
+<img src="Sample_Img/Report.png" alt="Detailed Report" width="100%" />
+</td>
+<td width="50%">
+
+**PPT 生成示例** — 报告请求触发的 PPT 生成结果示例（单格内放置 2 张图）
+
+<p align="center">
+  <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
+  <img src="Sample_Img/PPT_Gen1.png" alt="PPT Generation Example 1" width="49%" />
+</p>
+</td>
+</tr>
 </table>
+
+### PPT 示例源码
+
+可通过以下样例快速参考或扩展“报告生成 PPT”的实现。
+使用路径: **聊天窗口 > Report Request 按钮**，然后输入你的请求内容。
+
+- 目录: [`docs/reports/Sample_Slides`](docs/reports/Sample_Slides)
+- 示例演示文稿（`.pptx`）: [`docs/reports/PPT_Sample.pptx`](docs/reports/PPT_Sample.pptx)
+- HTML 幻灯片: [`slide-01.html`](docs/reports/Sample_Slides/slide-01.html), [`slide-02.html`](docs/reports/Sample_Slides/slide-02.html), [`slide-03.html`](docs/reports/Sample_Slides/slide-03.html), [`slide-04.html`](docs/reports/Sample_Slides/slide-04.html), [`slide-05.html`](docs/reports/Sample_Slides/slide-05.html), [`slide-06.html`](docs/reports/Sample_Slides/slide-06.html), [`slide-07.html`](docs/reports/Sample_Slides/slide-07.html), [`slide-08.html`](docs/reports/Sample_Slides/slide-08.html), [`slide-09.html`](docs/reports/Sample_Slides/slide-09.html)
+- 构建脚本: [`build-pptx.mjs`](docs/reports/Sample_Slides/build-pptx.mjs), [`build-pptx.cjs`](docs/reports/Sample_Slides/build-pptx.cjs), [`html2pptx.cjs`](docs/reports/Sample_Slides/html2pptx.cjs)
 
 ---
 
@@ -270,7 +297,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox 校验","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.9 inbox 校验","skipPlannedMeeting":true}'
 ```
 
 期望结果：
@@ -520,7 +547,7 @@ pnpm start              # 运行构建后的服务器
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信 QA 检查（v1.0.8）
+### 通信 QA 检查（v1.0.9）
 
 ```bash
 # 单项检查

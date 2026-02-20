@@ -28,7 +28,10 @@ credentials.json
 secrets*.json
 
 # Local reports/worktrees
-docs/reports/
+docs/reports/*
+!docs/reports/Sample_Slides/
+!docs/reports/Sample_Slides/**
+!docs/reports/PPT_Sample.pptx
 docs/.bkit-*
 docs/.pdca-*
 .climpire-worktrees/

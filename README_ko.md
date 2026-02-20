@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.0.8.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.0.9.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 
 ---
 
-## 최신 릴리즈 (v1.0.8)
+## 최신 릴리즈 (v1.0.9)
 
-- **활성 에이전트 상태 + 강제 중지** — `/api/agents/active` 기반 상태 패널이 추가되어, 현재 작업 중인 에이전트의 프로세스/유휴 시간을 확인하고 멈춘 작업을 즉시 중지할 수 있습니다.
-- **작업 완료 보고서 + 이력** — 작업 완료 시 자동 보고서 팝업이 뜨고, 보고서 이력 모달에서 프로젝트별 완료 보고를 다시 열람할 수 있습니다.
-- **기획팀장 최종 취합 아카이브(LLM)** — 모든 관련 작업이 끝나면 기획팀장이 LLM 기반 최종 취합 마크다운을 생성/아카이빙하며, 팝업에서 수동 갱신도 가능합니다.
-- **라운드/타임아웃 안정성 개선** — Codex `--max-turns 200`, idle timeout 확대, 기본 hard timeout 비활성화, orphan/stale 상태 복구 강화로 테스트·장기 작업 중 조기 종료 문제를 완화했습니다.
-- **CLI/OAuth/API 통신 QA 스위트** — `test:comm:*` 스크립트로 개별/통합 통신 점검 및 JSON 증거 + 마크다운 리포트 산출이 가능합니다.
-- 상세 문서: [`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
+- **보고 요청 워크플로우 고도화(PPT/MD)** — 보고 태스크 라우팅과 프롬프트 제약을 강화해, 리서치 우선 및 핀 고정 서브모듈 기반 흐름을 따르도록 개선했습니다.
+- **PPT HTML-우선 + 1회 디자인 체크포인트** — PPT 태스크는 디자인팀 1차 체크포인트를 거친 뒤 원담당자가 최종 재생성하고, 2차 확인 없이 마감됩니다.
+- **터미널 실시간 힌트 UX 개선** — 상태바 상단에 도구 진행 힌트 패널을 고정해, 사람말 출력과 도구 진행 맥락을 동시에 확인할 수 있습니다.
+- **터미널 이력 보존 개선** — 태스크 재실행 시 로그를 append로 누적하고 실행 구분선을 남겨, 이전 실행 이력이 유지됩니다.
+- **문서/샘플 보강** — Report/PPT 스크린샷, `Sample_Slides` 소스, 사용 경로(**채팅창 > 보고 요청 버튼**) 안내를 추가했습니다.
+- 상세 문서: [`docs/releases/v1.0.9.md`](docs/releases/v1.0.9.md)
 
 ---
 
@@ -136,7 +136,34 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 <img src="Sample_Img/Setting.png" alt="Settings" width="100%" />
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+**상세 리포트** — 요청 완료 후 보고 팝업, 보고서 이력, 상세 리포트 확인 화면 예시
+
+<img src="Sample_Img/Report.png" alt="Detailed Report" width="100%" />
+</td>
+<td width="50%">
+
+**PPT 생성 예시** — 보고 요청 기반 PPT 생성 결과 화면 예시 (한 칸에 2장)
+
+<p align="center">
+  <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
+  <img src="Sample_Img/PPT_Gen1.png" alt="PPT Generation Example 1" width="49%" />
+</p>
+</td>
+</tr>
 </table>
+
+### PPT 샘플 소스
+
+보고서 기반 PPT 생성 기능을 참고하거나 확장할 때 아래 샘플 소스를 활용할 수 있습니다.
+사용 경로: **채팅창 > 보고 요청 버튼** 클릭 후 요청 내용을 입력하세요.
+
+- 폴더: [`docs/reports/Sample_Slides`](docs/reports/Sample_Slides)
+- 샘플 덱(`.pptx`): [`docs/reports/PPT_Sample.pptx`](docs/reports/PPT_Sample.pptx)
+- HTML 슬라이드: [`slide-01.html`](docs/reports/Sample_Slides/slide-01.html), [`slide-02.html`](docs/reports/Sample_Slides/slide-02.html), [`slide-03.html`](docs/reports/Sample_Slides/slide-03.html), [`slide-04.html`](docs/reports/Sample_Slides/slide-04.html), [`slide-05.html`](docs/reports/Sample_Slides/slide-05.html), [`slide-06.html`](docs/reports/Sample_Slides/slide-06.html), [`slide-07.html`](docs/reports/Sample_Slides/slide-07.html), [`slide-08.html`](docs/reports/Sample_Slides/slide-08.html), [`slide-09.html`](docs/reports/Sample_Slides/slide-09.html)
+- 빌드 스크립트: [`build-pptx.mjs`](docs/reports/Sample_Slides/build-pptx.mjs), [`build-pptx.cjs`](docs/reports/Sample_Slides/build-pptx.cjs), [`html2pptx.cjs`](docs/reports/Sample_Slides/html2pptx.cjs)
 
 ---
 
@@ -270,7 +297,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox 점검","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.9 inbox 점검","skipPlannedMeeting":true}'
 ```
 
 예상 응답:
@@ -520,7 +547,7 @@ pnpm start              # 빌드된 서버 실행
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 통신 QA 점검 (v1.0.8)
+### 통신 QA 점검 (v1.0.9)
 
 ```bash
 # 개별 점검

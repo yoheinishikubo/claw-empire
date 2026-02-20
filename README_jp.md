@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.0.8.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.0.9.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,14 +53,14 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 
 ---
 
-## 最新リリース (v1.0.8)
+## 最新リリース (v1.0.9)
 
-- **アクティブエージェント状態 + 強制停止** — `/api/agents/active` ベースの状態パネルを追加。作業中エージェントのプロセス/アイドル状況を確認し、詰まったタスクを即時停止できます。
-- **タスク完了レポート + 履歴** — タスク完了時にレポートポップアップを自動表示。履歴モーダルからプロジェクト単位で完了レポートを再確認できます。
-- **企画リード最終統合アーカイブ（LLM）** — 関連タスク完了時に企画リードがLLMで統合Markdownを生成・保存し、ポップアップから手動更新も可能です。
-- **ラウンド/タイムアウト安定性改善** — Codex `--max-turns 200`、idle timeout拡張、デフォルトhard timeout無効化、orphan/stale復旧強化で、テスト・長時間作業の早期終了を緩和しました。
-- **CLI/OAuth/API 通信QAスイート** — `test:comm:*` スクリプトを追加。個別/統合チェックとJSON証跡・Markdownレポート出力に対応します。
-- 詳細: [`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
+- **レポート依頼ワークフロー強化（PPT/MD）** — レポートタスクのルーティングとプロンプト制約を強化し、調査先行・固定サブモジュール利用の流れを標準化しました。
+- **PPTのHTML先行 + 1回デザインチェックポイント** — PPTタスクはデザイン部門の1回チェック後に担当者が最終再生成し、2次確認なしでクローズします。
+- **ターミナルのライブヒントUX改善** — ステータスバー上部にツール進行ヒントパネルを常時表示し、自然言語出力と進捗文脈を同時に確認できます。
+- **ターミナル履歴保持の改善** — 再実行時ログをappend保存し、実行区切りを記録して過去実行の履歴を保持します。
+- **ドキュメント/サンプル拡充** — Report/PPTスクリーンショット、`Sample_Slides` ソース、利用手順（**チャット画面 > Report Request ボタン**）を追加しました。
+- 詳細: [`docs/releases/v1.0.9.md`](docs/releases/v1.0.9.md)
 
 ---
 
@@ -136,7 +136,34 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 <img src="Sample_Img/Setting.png" alt="Settings" width="100%" />
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+**詳細レポート** — リクエスト完了時のレポートポップアップ、履歴、詳細表示のサンプル
+
+<img src="Sample_Img/Report.png" alt="Detailed Report" width="100%" />
+</td>
+<td width="50%">
+
+**PPT生成例** — レポート依頼から生成されたPPT出力のサンプル（1セル内に2枚）
+
+<p align="center">
+  <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
+  <img src="Sample_Img/PPT_Gen1.png" alt="PPT Generation Example 1" width="49%" />
+</p>
+</td>
+</tr>
 </table>
+
+### PPT サンプルソース
+
+レポートからPPTを生成する機能を確認・拡張するためのサンプルを参照できます。
+利用手順: **チャット画面 > Report Request ボタン** を押して依頼内容を入力してください。
+
+- フォルダ: [`docs/reports/Sample_Slides`](docs/reports/Sample_Slides)
+- サンプルデッキ（`.pptx`）: [`docs/reports/PPT_Sample.pptx`](docs/reports/PPT_Sample.pptx)
+- HTMLスライド: [`slide-01.html`](docs/reports/Sample_Slides/slide-01.html), [`slide-02.html`](docs/reports/Sample_Slides/slide-02.html), [`slide-03.html`](docs/reports/Sample_Slides/slide-03.html), [`slide-04.html`](docs/reports/Sample_Slides/slide-04.html), [`slide-05.html`](docs/reports/Sample_Slides/slide-05.html), [`slide-06.html`](docs/reports/Sample_Slides/slide-06.html), [`slide-07.html`](docs/reports/Sample_Slides/slide-07.html), [`slide-08.html`](docs/reports/Sample_Slides/slide-08.html), [`slide-09.html`](docs/reports/Sample_Slides/slide-09.html)
+- ビルドスクリプト: [`build-pptx.mjs`](docs/reports/Sample_Slides/build-pptx.mjs), [`build-pptx.cjs`](docs/reports/Sample_Slides/build-pptx.cjs), [`html2pptx.cjs`](docs/reports/Sample_Slides/html2pptx.cjs)
 
 ---
 
@@ -270,7 +297,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox 検証","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.9 inbox 検証","skipPlannedMeeting":true}'
 ```
 
 期待値:
@@ -520,7 +547,7 @@ pnpm start              # ビルド済みサーバーを起動
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信QAチェック（v1.0.8）
+### 通信QAチェック（v1.0.9）
 
 ```bash
 # 個別チェック

@@ -1,5 +1,6 @@
 # Releases
 
+- [`v1.0.9`](v1.0.9.md) - Report-request/PPT workflow hardening (HTML-first + one-pass design checkpoint + final regen/no second review), terminal live-hint UX and parser improvements, task log append retention, and multilingual README/report-doc updates
 - [`v1.0.8`](v1.0.8.md) - Active agents status panel + kill control, task completion report popup/history, planning-lead consolidated archive generation, long-run stability updates (`--max-turns 200`, timeout/orphan handling), and CLI/OAuth/API communication QA test suite
 - [`v1.0.7`](v1.0.7.md) - External API provider system (Settings API tab, CRUD + connection test), direct chat streaming for API/OAuth agents (`chat_stream` WS event), API provider task execution, `orchestration.ts` const crash fix, model caching layer (SQLite + memory 2-tier)
 - [`v1.0.6`](v1.0.6.md) - Windows cross-platform compatibility (CLI detection `shell: true`, Gemini version detection, skill-learn `spawn` fix), OAuth model provider independence (Copilot API direct fetch → 3-tier resolution), Settings panel version-display fallback, non-interactive esbuild build approval

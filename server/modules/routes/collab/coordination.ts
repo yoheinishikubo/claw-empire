@@ -117,6 +117,12 @@ export function initializeCollabCoordination(ctx: any): any {
   const withSqliteBusyRetry = __ctx.withSqliteBusyRetry;
   const prettyStreamJson = __ctx.prettyStreamJson;
   const refreshCliUsageData = __ctx.refreshCliUsageData;
+  const sendAgentMessage = __ctx.sendAgentMessage;
+  const findBestSubordinate = __ctx.findBestSubordinate;
+  const findTeamLeader = __ctx.findTeamLeader;
+  const getDeptName = __ctx.getDeptName;
+  const getDeptRoleConstraint = __ctx.getDeptRoleConstraint;
+  const maybeNotifyAllSubtasksComplete = __ctx.maybeNotifyAllSubtasksComplete;
   const resolveLang = __ctx.resolveLang;
   const l = __ctx.l;
   const pickL = __ctx.pickL;
@@ -740,6 +746,11 @@ function detectReportOutputFormat(requestText: string): ReportOutputFormat {
 const REPORT_CLAUDE_PRIORITY_DEPTS = ["planning", "dev", "design", "qa", "operations"] as const;
 const REPORT_PPT_TOOL_REPO = "https://github.com/GreenSheep01201/ppt_team_agent";
 const REPORT_PPT_TOOL_DIR = "tools/ppt_team_agent";
+const REPORT_PPT_DESIGN_SKILL = `${REPORT_PPT_TOOL_DIR}/.claude/skills/design-skill/SKILL.md`;
+const REPORT_PPT_PPTX_SKILL = `${REPORT_PPT_TOOL_DIR}/.claude/skills/pptx-skill/SKILL.md`;
+const REPORT_PPT_HTML2PPTX_SCRIPT = `${REPORT_PPT_TOOL_DIR}/.claude/skills/pptx-skill/scripts/html2pptx.js`;
+const REPORT_PPT_RESEARCH_AGENT_GUIDE = `${REPORT_PPT_TOOL_DIR}/.claude/agents/research-agent.md`;
+const REPORT_PPT_ORGANIZER_AGENT_GUIDE = `${REPORT_PPT_TOOL_DIR}/.claude/agents/organizer-agent.md`;
 const REPORT_PLAYWRIGHT_MCP_REPO = "https://github.com/microsoft/playwright-mcp.git";
 const REPORT_PLAYWRIGHT_MCP_DIR = "tools/playwright-mcp";
 
@@ -917,6 +928,9 @@ function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean
 
   const description = [
     `[REPORT REQUEST] ${cleanRequest}`,
+    "[REPORT FLOW] review_meeting=skip_for_report",
+    outputFormat === "ppt" ? "[REPORT FLOW] design_review=pending" : "[REPORT FLOW] design_review=not_required",
+    outputFormat === "ppt" ? "[REPORT FLOW] final_regen=pending" : "[REPORT FLOW] final_regen=not_required",
     "",
     `Primary output format: ${outputLabel}`,
     `Target file path: ${outputPath}`,
@@ -928,13 +942,26 @@ function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean
     "- Web search: research the requested topic first and include source URLs + access date for major claims.",
     `- Browser MCP tool: playwright-mcp (${REPORT_PLAYWRIGHT_MCP_REPO})`,
     `- Local browser MCP workspace: ${REPORT_PLAYWRIGHT_MCP_DIR}`,
-    `- PPT generation tool (recommended for Claude Code): ${REPORT_PPT_TOOL_REPO}`,
+    `- PPT generation tool (required for PPT output when available): ${REPORT_PPT_TOOL_REPO}`,
     `- Local tool workspace: ${REPORT_PPT_TOOL_DIR}`,
+    outputFormat === "ppt" ? `- [PPT SKILL MANDATE] Read and apply design skill guide first: ${REPORT_PPT_DESIGN_SKILL}` : "",
+    outputFormat === "ppt" ? `- [PPT SKILL MANDATE] Follow pptx workflow guide: ${REPORT_PPT_PPTX_SKILL}` : "",
+    outputFormat === "ppt" ? `- [PPT SKILL MANDATE] Use html->pptx conversion workflow/script: ${REPORT_PPT_HTML2PPTX_SCRIPT}` : "",
+    outputFormat === "ppt" ? `- [PPT SKILL MANDATE] Use research/organizer agent guides for quality bar: ${REPORT_PPT_RESEARCH_AGENT_GUIDE}, ${REPORT_PPT_ORGANIZER_AGENT_GUIDE}` : "",
     `- This repository tracks both tools as pinned git submodules at ${REPORT_PLAYWRIGHT_MCP_DIR} and ${REPORT_PPT_TOOL_DIR}; do not auto-clone from runtime.`,
     `- If submodule content is missing: git submodule update --init --recursive ${REPORT_PLAYWRIGHT_MCP_DIR} ${REPORT_PPT_TOOL_DIR}`,
     "Rules:",
     "- This is a report/documentation request only; do not execute implementation work.",
     "- Follow sequence: research -> evidence notes -> output artifact.",
+    outputFormat === "ppt"
+      ? "- For PPT workflow, generate and maintain editable HTML slide sources first (do not skip HTML intermediate artifacts)."
+      : "",
+    outputFormat === "ppt"
+      ? `- For PPT output, do not skip ${REPORT_PPT_TOOL_DIR} skill workflow; apply design-skill and pptx-skill guidance before final deck generation.`
+      : "",
+    outputFormat === "ppt"
+      ? "- Final PPT must be regenerated from the HTML sources after the design checkpoint handoff."
+      : "",
     outputFormat === "ppt"
       ? "- Deliver .pptx first. If PPT generation fails, submit markdown fallback with failure reason and manual conversion guidance."
       : "- Create a complete markdown report with structured headings and evidence.",

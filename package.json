@@ -1,6 +1,6 @@
 {
   "name": "climpire",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "description": "Claw-Empire - AI Agent Company Simulation. Command your CLI agent empire from the CEO desk.",
   "type": "module",
   "scripts": {
@@ -54,7 +54,9 @@
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "nodemon": "^3.1.11",
+    "playwright": "^1.58.2",
     "postcss": "^8.5.4",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.8",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
