@@ -25,6 +25,7 @@ export function initializeCollabCoordination(ctx: any): any {
   const buildCliFailureMessage = __ctx.buildCliFailureMessage;
   const buildDirectReplyPrompt = __ctx.buildDirectReplyPrompt;
   const buildTaskExecutionPrompt = __ctx.buildTaskExecutionPrompt;
+  const buildAvailableSkillsPromptBlock = __ctx.buildAvailableSkillsPromptBlock || ((provider: string) => `[Available Skills][provider=${provider || "unknown"}][unavailable]`);
   const cachedCliStatus = __ctx.cachedCliStatus;
   const cachedModels = __ctx.cachedModels;
   const chooseSafeReply = __ctx.chooseSafeReply;
@@ -529,7 +530,9 @@ function startCrossDeptCooperation(
         const deptConstraint = getDeptRoleConstraint(crossDeptId, crossDeptName);
         const crossConversationCtx = getRecentConversationContext(execAgent.id);
         const taskLang = resolveLang(crossTaskData.description ?? crossTaskData.title);
+        const availableSkillsPromptBlock = buildAvailableSkillsPromptBlock(execProvider);
         const spawnPrompt = buildTaskExecutionPrompt([
+          availableSkillsPromptBlock,
           `[Task] ${crossTaskData.title}`,
           crossTaskData.description ? `\n${crossTaskData.description}` : "",
           crossConversationCtx,
@@ -729,66 +732,164 @@ type ReportOutputFormat = "ppt" | "md";
 
 function detectReportOutputFormat(requestText: string): ReportOutputFormat {
   const text = requestText.toLowerCase();
-  const wantsPpt = /pptx?|slide|deck|presentation|발표|슬라이드|시각화|그래프|차트|도표|visual|chart|diagram|图表|简报|プレゼン|資料/.test(text);
-  if (wantsPpt) return "ppt";
-  return "md";
+  const explicitMd = /(?:^|\s)(md|markdown)(?:\s|$)|마크다운|markdown 보고서|text report|텍스트 보고서|plain text|문서만|文档|テキスト/.test(text);
+  if (explicitMd) return "md";
+  return "ppt";
 }
 
-function pickPlanningReportAssignee(preferredAgentId: string | null): AgentRow | null {
-  const planningAgents = db.prepare(`
-    SELECT * FROM agents
-    WHERE department_id = 'planning' AND status != 'offline'
-  `).all() as unknown as AgentRow[];
-  if (planningAgents.length === 0) return null;
-  const claudeAgents = planningAgents.filter((a) => (a.cli_provider || "") === "claude");
-  const candidatePool = claudeAgents.length > 0 ? claudeAgents : planningAgents;
+const REPORT_CLAUDE_PRIORITY_DEPTS = ["planning", "dev", "design", "qa", "operations"] as const;
+const REPORT_PPT_TOOL_REPO = "https://github.com/GreenSheep01201/ppt_team_agent";
+const REPORT_PPT_TOOL_DIR = "tools/ppt_team_agent";
+const REPORT_PLAYWRIGHT_MCP_REPO = "https://github.com/microsoft/playwright-mcp.git";
+const REPORT_PLAYWRIGHT_MCP_DIR = "tools/playwright-mcp";
 
-  if (preferredAgentId) {
-    const preferred = candidatePool.find((a) => a.id === preferredAgentId);
-    if (preferred) return preferred;
-  }
+const REPORT_DEPT_PRIORITY: Record<string, number> = {
+  planning: 0,
+  dev: 1,
+  design: 2,
+  qa: 3,
+  operations: 4,
+};
 
-  const providerPriority: Record<string, number> = {
-    claude: 0,
-    codex: 1,
-    gemini: 2,
-    opencode: 3,
-    copilot: 4,
-    antigravity: 5,
-  };
-  const statusPriority: Record<string, number> = {
-    idle: 0,
-    break: 1,
-    working: 2,
-    offline: 3,
-  };
-  const rolePriority: Record<string, number> = {
-    senior: 0,
-    junior: 1,
-    intern: 2,
-    team_leader: 3,
-  };
+const REPORT_DEPT_LABELS: Record<string, string> = {
+  planning: "Planning",
+  dev: "Development",
+  design: "Design",
+  qa: "QA",
+  operations: "Operations",
+};
 
-  const sorted = [...candidatePool].sort((a, b) => {
-    const ap = providerPriority[a.cli_provider || ""] ?? 9;
-    const bp = providerPriority[b.cli_provider || ""] ?? 9;
-    if (ap !== bp) return ap - bp;
+const REPORT_STATUS_PRIORITY: Record<string, number> = {
+  idle: 0,
+  break: 1,
+  working: 2,
+  offline: 3,
+};
 
-    const as = statusPriority[a.status || ""] ?? 9;
-    const bs = statusPriority[b.status || ""] ?? 9;
+const REPORT_ROLE_PRIORITY: Record<string, number> = {
+  team_leader: 0,
+  senior: 1,
+  junior: 2,
+  intern: 3,
+};
+
+function sortReportCandidates(candidates: AgentRow[]): AgentRow[] {
+  return [...candidates].sort((a, b) => {
+    const ad = REPORT_DEPT_PRIORITY[a.department_id || ""] ?? 99;
+    const bd = REPORT_DEPT_PRIORITY[b.department_id || ""] ?? 99;
+    if (ad !== bd) return ad - bd;
+
+    const as = REPORT_STATUS_PRIORITY[a.status || ""] ?? 99;
+    const bs = REPORT_STATUS_PRIORITY[b.status || ""] ?? 99;
     if (as !== bs) return as - bs;
 
-    const ar = rolePriority[a.role || ""] ?? 9;
-    const br = rolePriority[b.role || ""] ?? 9;
+    const ar = REPORT_ROLE_PRIORITY[a.role || ""] ?? 99;
+    const br = REPORT_ROLE_PRIORITY[b.role || ""] ?? 99;
     if (ar !== br) return ar - br;
 
     return a.name.localeCompare(b.name);
   });
-  return sorted[0] ?? null;
+}
+
+function fetchAgentById(agentId: string | null): AgentRow | null {
+  if (!agentId) return null;
+  return db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId) as AgentRow | null;
+}
+
+function fetchClaudePriorityCandidates(): AgentRow[] {
+  const placeholders = REPORT_CLAUDE_PRIORITY_DEPTS.map(() => "?").join(",");
+  return sortReportCandidates(
+    db.prepare(`
+      SELECT * FROM agents
+      WHERE status != 'offline'
+        AND cli_provider = 'claude'
+        AND department_id IN (${placeholders})
+    `).all(...REPORT_CLAUDE_PRIORITY_DEPTS) as unknown as AgentRow[],
+  );
+}
+
+function fetchFallbackCandidates(): AgentRow[] {
+  return sortReportCandidates(
+    db.prepare(`
+      SELECT * FROM agents
+      WHERE status != 'offline'
+    `).all() as unknown as AgentRow[],
+  );
+}
+
+function pickTopRecommendationsByDept(candidates: AgentRow[]): AgentRow[] {
+  const used = new Set<string>();
+  const out: AgentRow[] = [];
+  for (const agent of candidates) {
+    const deptId = String(agent.department_id || "");
+    if (!REPORT_DEPT_PRIORITY.hasOwnProperty(deptId)) continue;
+    if (used.has(deptId)) continue;
+    used.add(deptId);
+    out.push(agent);
+  }
+  return out;
+}
+
+function formatRecommendationList(candidates: AgentRow[]): string {
+  if (candidates.length === 0) return "none";
+  return candidates.map((agent, idx) => {
+    const deptId = String(agent.department_id || "");
+    const dept = REPORT_DEPT_LABELS[deptId] || deptId || "Unknown";
+    return `${idx + 1}. ${dept}:${agent.name}`;
+  }).join(" / ");
+}
+
+function resolveReportAssignee(targetAgentId: string | null): {
+  requestedAgent: AgentRow | null;
+  assignee: AgentRow | null;
+  claudeRecommendations: AgentRow[];
+  reroutedToClaude: boolean;
+  claudeUnavailable: boolean;
+} {
+  const requestedAgent = fetchAgentById(targetAgentId);
+  const claudeCandidates = fetchClaudePriorityCandidates();
+  const claudeRecommendations = pickTopRecommendationsByDept(claudeCandidates);
+
+  if (claudeCandidates.length > 0) {
+    if (requestedAgent && requestedAgent.status !== "offline" && requestedAgent.cli_provider === "claude") {
+      return {
+        requestedAgent,
+        assignee: requestedAgent,
+        claudeRecommendations,
+        reroutedToClaude: false,
+        claudeUnavailable: false,
+      };
+    }
+    return {
+      requestedAgent,
+      assignee: claudeRecommendations[0] ?? claudeCandidates[0] ?? null,
+      claudeRecommendations,
+      reroutedToClaude: Boolean(requestedAgent && requestedAgent.cli_provider !== "claude"),
+      claudeUnavailable: false,
+    };
+  }
+
+  const fallbackCandidates = fetchFallbackCandidates();
+  const fallbackAssignee = requestedAgent && requestedAgent.status !== "offline"
+    ? requestedAgent
+    : (fallbackCandidates[0] ?? null);
+
+  return {
+    requestedAgent,
+    assignee: fallbackAssignee,
+    claudeRecommendations: [],
+    reroutedToClaude: false,
+    claudeUnavailable: true,
+  };
+}
+
+function pickPlanningReportAssignee(preferredAgentId: string | null): AgentRow | null {
+  return resolveReportAssignee(preferredAgentId).assignee;
 }
 
 function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean {
-  const reportAssignee = pickPlanningReportAssignee(targetAgentId);
+  const routing = resolveReportAssignee(targetAgentId);
+  const reportAssignee = routing.assignee;
   if (!reportAssignee) return false;
 
   const lang = resolveLang(ceoMessage);
@@ -799,6 +900,8 @@ function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean
   const taskType = outputFormat === "ppt" ? "presentation" : "documentation";
   const t = nowMs();
   const taskId = randomUUID();
+  const assigneeDeptId = reportAssignee.department_id || "planning";
+  const assigneeDeptName = REPORT_DEPT_LABELS[assigneeDeptId] || assigneeDeptId || "Planning";
   const requestPreview = cleanRequest.length > 64 ? `${cleanRequest.slice(0, 61).trimEnd()}...` : cleanRequest;
   const taskTitle = outputFormat === "ppt"
     ? `보고 자료(PPT) 작성: ${requestPreview}`
@@ -808,27 +911,47 @@ function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean
   const outputPath = outputFormat === "ppt"
     ? `docs/reports/${fileStamp}-report-deck.${outputExt}`
     : `docs/reports/${fileStamp}-report.${outputExt}`;
+  const researchNotesPath = `docs/reports/${fileStamp}-research-notes.md`;
+  const fallbackMdPath = `docs/reports/${fileStamp}-report-fallback.md`;
+  const recommendationText = formatRecommendationList(routing.claudeRecommendations);
 
   const description = [
     `[REPORT REQUEST] ${cleanRequest}`,
     "",
     `Primary output format: ${outputLabel}`,
     `Target file path: ${outputPath}`,
+    `Research notes path: ${researchNotesPath}`,
+    outputFormat === "ppt" ? `Fallback markdown path: ${fallbackMdPath}` : "",
+    "Tool preset: web-search + playwright-mcp + ppt_team_agent",
+    "",
+    "Default Tooling (must apply):",
+    "- Web search: research the requested topic first and include source URLs + access date for major claims.",
+    `- Browser MCP tool: playwright-mcp (${REPORT_PLAYWRIGHT_MCP_REPO})`,
+    `- Local browser MCP workspace: ${REPORT_PLAYWRIGHT_MCP_DIR}`,
+    `- PPT generation tool (recommended for Claude Code): ${REPORT_PPT_TOOL_REPO}`,
+    `- Local tool workspace: ${REPORT_PPT_TOOL_DIR}`,
+    `- This repository tracks both tools as pinned git submodules at ${REPORT_PLAYWRIGHT_MCP_DIR} and ${REPORT_PPT_TOOL_DIR}; do not auto-clone from runtime.`,
+    `- If submodule content is missing: git submodule update --init --recursive ${REPORT_PLAYWRIGHT_MCP_DIR} ${REPORT_PPT_TOOL_DIR}`,
     "Rules:",
     "- This is a report/documentation request only; do not execute implementation work.",
+    "- Follow sequence: research -> evidence notes -> output artifact.",
     outputFormat === "ppt"
-      ? "- Create slide-ready content for presentation. If direct pptx generation is unavailable, create a slide-structured markdown deck and clearly mark conversion guidance."
+      ? "- Deliver .pptx first. If PPT generation fails, submit markdown fallback with failure reason and manual conversion guidance."
       : "- Create a complete markdown report with structured headings and evidence.",
+    routing.claudeUnavailable
+      ? "- Claude Code assignee is unavailable in the priority departments. You must attempt PPT creation yourself first; fallback to markdown only when PPT generation fails."
+      : "- Claude Code priority routing is enabled for PPT reliability.",
     "- Include executive summary, key findings, quantitative evidence, risks, and next actions.",
   ].join("\n");
 
   db.prepare(`
     INSERT INTO tasks (id, title, description, department_id, assigned_agent_id, status, priority, task_type, project_path, created_at, updated_at)
-    VALUES (?, ?, ?, 'planning', ?, 'planned', 1, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, 'planned', 1, ?, ?, ?, ?)
   `).run(
     taskId,
     taskTitle,
     description,
+    assigneeDeptId,
     reportAssignee.id,
     taskType,
     detectedPath ?? null,
@@ -843,6 +966,16 @@ function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean
     "system",
     `Report routing: assignee=${reportAssignee.name} provider=${reportAssignee.cli_provider || "unknown"} format=${outputLabel}`,
   );
+  if (routing.reroutedToClaude && routing.requestedAgent) {
+    appendTaskLog(
+      taskId,
+      "system",
+      `Claude Code recommendation applied (requested=${routing.requestedAgent.name}/${routing.requestedAgent.cli_provider || "unknown"}): ${recommendationText}`,
+    );
+  }
+  if (routing.claudeUnavailable) {
+    appendTaskLog(taskId, "system", "No Claude Code candidate found in priority departments; fallback assignment used.");
+  }
   if (detectedPath) {
     appendTaskLog(taskId, "system", `Project path detected: ${detectedPath}`);
   }
@@ -869,13 +1002,30 @@ function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean
     [`[REPORT ROUTING] '${taskTitle}' を ${assigneeName} (${providerLabel}) に割り当てました。出力形式: ${outputLabel}`],
     [`[REPORT ROUTING] 已将'${taskTitle}'分配给${assigneeName}（${providerLabel}）。输出格式：${outputLabel}`],
   ), lang), taskId);
+  if (routing.reroutedToClaude && routing.requestedAgent) {
+    const requestedName = getAgentDisplayName(routing.requestedAgent, lang);
+    notifyCeo(pickL(l(
+      [`[CLAUDE RECOMMENDATION] 요청 대상 ${requestedName}(${routing.requestedAgent.cli_provider || "unknown"})는 Claude Code가 아니어서 Claude Code 우선 라우팅을 적용했습니다. 우선순위 추천: ${recommendationText}`],
+      [`[CLAUDE RECOMMENDATION] Requested agent ${requestedName} (${routing.requestedAgent.cli_provider || "unknown"}) is not on Claude Code, so Claude-priority routing was applied. Priority recommendations: ${recommendationText}`],
+      [`[CLAUDE RECOMMENDATION] 依頼先 ${requestedName}（${routing.requestedAgent.cli_provider || "unknown"}）は Claude Code ではないため、Claude 優先ルーティングを適用しました。優先候補: ${recommendationText}`],
+      [`[CLAUDE RECOMMENDATION] 请求目标 ${requestedName}（${routing.requestedAgent.cli_provider || "unknown"}）不是 Claude Code，已启用 Claude 优先路由。优先推荐：${recommendationText}`],
+    ), lang), taskId);
+  }
+  if (routing.claudeUnavailable) {
+    notifyCeo(pickL(l(
+      ["[CLAUDE RECOMMENDATION] 우선순위 부서(기획>개발>디자인>QA>운영)에서 Claude Code 에이전트를 찾지 못해 현재 담당자가 PPT를 우선 시도하고, 실패 시 MD로 대체하도록 지시했습니다."],
+      ["[CLAUDE RECOMMENDATION] No Claude Code agent was found in priority departments (Planning>Development>Design>QA>Operations). The current assignee was instructed to attempt PPT first, then fallback to MD on failure."],
+      ["[CLAUDE RECOMMENDATION] 優先部門（企画>開発>デザイン>QA>運用）に Claude Code エージェントがいないため、現担当者にPPT優先・失敗時MD代替を指示しました。"],
+      ["[CLAUDE RECOMMENDATION] 在优先部门（企划>开发>设计>QA>运营）中未找到 Claude Code 代理，已要求当前负责人先尝试 PPT，失败时改为 MD。"],
+    ), lang), taskId);
+  }
 
   broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
   broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(reportAssignee.id));
 
   setTimeout(() => {
     if (isTaskWorkflowInterrupted(taskId)) return;
-    startTaskExecutionForAgent(taskId, reportAssignee, "planning", getDeptName("planning"));
+    startTaskExecutionForAgent(taskId, reportAssignee, assigneeDeptId, assigneeDeptName);
   }, randomDelay(900, 1600));
 
   return true;

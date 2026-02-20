@@ -48,6 +48,10 @@ coverage/
 # NPM auth
 .npmrc
 
+# Local AI assistant artifacts
+.agents/
+.claude/
+
 # OS metadata
 .DS_Store
 Thumbs.db

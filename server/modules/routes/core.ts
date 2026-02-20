@@ -25,6 +25,7 @@ export function registerRoutesPartA(ctx: any): any {
   const buildCliFailureMessage = __ctx.buildCliFailureMessage;
   const buildDirectReplyPrompt = __ctx.buildDirectReplyPrompt;
   const buildTaskExecutionPrompt = __ctx.buildTaskExecutionPrompt;
+  const buildAvailableSkillsPromptBlock = __ctx.buildAvailableSkillsPromptBlock || ((provider: string) => `[Available Skills][provider=${provider || "unknown"}][unavailable]`);
   const cachedCliStatus = __ctx.cachedCliStatus;
   const cachedModels = __ctx.cachedModels;
   const chooseSafeReply = __ctx.chooseSafeReply;
@@ -506,8 +507,10 @@ app.post("/api/agents/:id/spawn", (req, res) => {
   const projectPath = task.project_path || process.cwd();
   const logPath = path.join(logsDir, `${taskId}.log`);
   const executionSession = ensureTaskExecutionSession(taskId, agent.id, provider);
+  const availableSkillsPromptBlock = buildAvailableSkillsPromptBlock(provider);
 
   const prompt = buildTaskExecutionPrompt([
+    availableSkillsPromptBlock,
     `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
     "This session is scoped to this task only.",
     `[Task] ${task.title}`,
@@ -1229,6 +1232,7 @@ Whenever you complete a subtask, report it in this format:
   ), taskLang);
 
   const prompt = buildTaskExecutionPrompt([
+    buildAvailableSkillsPromptBlock(provider),
     `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
     "This session is task-scoped. Keep continuity for this task only and do not cross-contaminate context from other projects.",
     projectStructureBlock,

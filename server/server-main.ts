@@ -785,6 +785,23 @@ CREATE TABLE IF NOT EXISTS task_report_archives (
   updated_at INTEGER DEFAULT (unixepoch()*1000)
 );
 
+CREATE TABLE IF NOT EXISTS skill_learning_history (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  provider TEXT NOT NULL CHECK(provider IN ('claude','codex','gemini','opencode','copilot','antigravity','api')),
+  repo TEXT NOT NULL,
+  skill_id TEXT NOT NULL,
+  skill_label TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed')),
+  command TEXT NOT NULL,
+  error TEXT,
+  run_started_at INTEGER,
+  run_completed_at INTEGER,
+  created_at INTEGER DEFAULT (unixepoch()*1000),
+  updated_at INTEGER DEFAULT (unixepoch()*1000),
+  UNIQUE(job_id, provider)
+);
+
 CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id);
 CREATE INDEX IF NOT EXISTS idx_task_report_archives_root ON task_report_archives(root_task_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, updated_at DESC);
@@ -797,6 +814,10 @@ CREATE INDEX IF NOT EXISTS idx_meeting_minute_entries_meeting ON meeting_minute_
 CREATE INDEX IF NOT EXISTS idx_review_revision_history_task ON review_revision_history(task_id, first_round DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_oauth_accounts_provider ON oauth_accounts(provider, status, priority, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_oauth_active_accounts_provider ON oauth_active_accounts(provider, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_skill_learning_history_provider_status_updated
+  ON skill_learning_history(provider, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_skill_learning_history_skill_lookup
+  ON skill_learning_history(provider, repo, skill_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS api_providers (
   id TEXT PRIMARY KEY,

@@ -654,6 +654,7 @@ export async function getSkillDetail(source: string, skillId: string): Promise<S
 
 export type SkillLearnProvider = 'claude' | 'codex' | 'gemini' | 'opencode';
 export type SkillLearnStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type SkillHistoryProvider = SkillLearnProvider | 'copilot' | 'antigravity' | 'api';
 
 export interface SkillLearnJob {
   id: string;
@@ -686,6 +687,60 @@ export async function getSkillLearningJob(jobId: string): Promise<SkillLearnJob>
     `/api/skills/learn/${encodeURIComponent(jobId)}`
   );
   return j.job;
+}
+
+export interface SkillLearningHistoryEntry {
+  id: string;
+  job_id: string;
+  provider: SkillHistoryProvider;
+  repo: string;
+  skill_id: string;
+  skill_label: string;
+  status: SkillLearnStatus;
+  command: string;
+  error: string | null;
+  run_started_at: number | null;
+  run_completed_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface LearnedSkillEntry {
+  provider: SkillHistoryProvider;
+  repo: string;
+  skill_id: string;
+  skill_label: string;
+  learned_at: number;
+}
+
+export async function getSkillLearningHistory(input: {
+  provider?: SkillHistoryProvider;
+  status?: SkillLearnStatus;
+  limit?: number;
+} = {}): Promise<{ history: SkillLearningHistoryEntry[]; retentionDays: number }> {
+  const params = new URLSearchParams();
+  if (input.provider) params.set("provider", input.provider);
+  if (input.status) params.set("status", input.status);
+  if (typeof input.limit === "number") params.set("limit", String(input.limit));
+  const qs = params.toString();
+  const j = await request<{ ok: boolean; history: SkillLearningHistoryEntry[]; retention_days: number }>(
+    `/api/skills/history${qs ? `?${qs}` : ""}`
+  );
+  return { history: j.history ?? [], retentionDays: Number(j.retention_days ?? 0) };
+}
+
+export async function getAvailableLearnedSkills(input: {
+  provider?: SkillHistoryProvider;
+  limit?: number;
+} = {}): Promise<LearnedSkillEntry[]> {
+  const params = new URLSearchParams();
+  if (input.provider) params.set("provider", input.provider);
+  if (typeof input.limit === "number") params.set("limit", String(input.limit));
+  const qs = params.toString();
+  const j = await request<{ ok: boolean; skills: LearnedSkillEntry[] }>(
+    `/api/skills/available${qs ? `?${qs}` : ""}`
+  );
+  return j.skills ?? [];
 }
 
 // Gateway Channel Messaging

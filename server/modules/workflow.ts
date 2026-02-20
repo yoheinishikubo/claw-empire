@@ -29,6 +29,7 @@ export function initializeWorkflow(ctx: any): any {
     buildCliFailureMessage: runtime.buildCliFailureMessage,
     buildDirectReplyPrompt: runtime.buildDirectReplyPrompt,
     buildTaskExecutionPrompt: runtime.buildTaskExecutionPrompt,
+    buildAvailableSkillsPromptBlock: runtime.buildAvailableSkillsPromptBlock,
     cachedCliStatus: runtime.cachedCliStatus,
     cachedModels: runtime.cachedModels,
     chooseSafeReply: runtime.chooseSafeReply,

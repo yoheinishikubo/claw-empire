@@ -41,6 +41,7 @@ export function initializeWorkflowPartC(ctx: any): any {
   const buildCliFailureMessage = __ctx.buildCliFailureMessage;
   const buildDirectReplyPrompt = __ctx.buildDirectReplyPrompt;
   const buildTaskExecutionPrompt = __ctx.buildTaskExecutionPrompt;
+  const buildAvailableSkillsPromptBlock = __ctx.buildAvailableSkillsPromptBlock || ((provider: string) => `[Available Skills][provider=${provider || "unknown"}][unavailable]`);
   const cachedCliStatus = __ctx.cachedCliStatus;
   const cachedModels = __ctx.cachedModels;
   const chooseSafeReply = __ctx.chooseSafeReply;
@@ -734,7 +735,9 @@ function startTaskExecutionForAgent(
     ["上記タスクを丁寧に完了してください。必要に応じて継続要約と会話コンテキストを参照してください。"],
     ["请完整地完成上述任务。可按需参考连续执行摘要与会话上下文。"],
   ), taskLang);
+  const availableSkillsPromptBlock = buildAvailableSkillsPromptBlock(provider);
   const spawnPrompt = buildTaskExecutionPrompt([
+    availableSkillsPromptBlock,
     `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
     "This session is scoped to this task only. Keep context continuity inside this task session and do not mix with other projects.",
     recentChanges ? `[Recent Changes]\n${recentChanges}` : "",

@@ -201,6 +201,7 @@ git --version
 ```bash
 git clone https://github.com/GreenSheep01201/claw-empire.git
 cd claw-empire
+git submodule update --init --recursive
 bash install.sh
 ```
 
@@ -209,6 +210,7 @@ Windows PowerShell:
 ```powershell
 git clone https://github.com/GreenSheep01201/claw-empire.git
 cd claw-empire
+git submodule update --init --recursive
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
@@ -299,8 +301,8 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 | 플랫폼 | 명령어 |
 |--------|--------|
-| **macOS / Linux** | `bash scripts/openclaw-setup.sh` |
-| **Windows (PowerShell)** | `powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
+| **macOS / Linux** | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh` |
+| **Windows (PowerShell)** | `git submodule update --init --recursive; powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
 
 ### OpenClaw `.env` 필수값 (`/api/inbox` 사용 시)
 

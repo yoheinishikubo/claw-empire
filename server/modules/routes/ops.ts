@@ -1927,6 +1927,7 @@ app.get("/api/skills/detail", async (req, res) => {
 // ---------------------------------------------------------------------------
 
 type SkillLearnProvider = "claude" | "codex" | "gemini" | "opencode";
+type SkillHistoryProvider = SkillLearnProvider | "copilot" | "antigravity" | "api";
 type SkillLearnStatus = "queued" | "running" | "succeeded" | "failed";
 
 interface SkillLearnJob {
@@ -1957,21 +1958,50 @@ const SKILL_LEARN_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-
 const SKILL_LEARN_MAX_LOG_LINES = 120;
 const SKILL_LEARN_JOB_TTL_MS = 30 * 60 * 1000;
 const SKILL_LEARN_MAX_JOBS = 200;
+const SKILL_LEARN_HISTORY_RETENTION_DAYS = 180;
+const SKILL_LEARN_HISTORY_RETENTION_MS = SKILL_LEARN_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const SKILL_LEARN_HISTORY_MAX_ROWS_PER_PROVIDER = 2_000;
+const SKILL_LEARN_HISTORY_MAX_QUERY_LIMIT = 200;
 const skillLearnJobs = new Map<string, SkillLearnJob>();
+
+function isSkillLearnProvider(value: string): value is SkillLearnProvider {
+  return value === "claude" || value === "codex" || value === "gemini" || value === "opencode";
+}
+
+function isSkillHistoryProvider(value: string): value is SkillHistoryProvider {
+  return isSkillLearnProvider(value) || value === "copilot" || value === "antigravity" || value === "api";
+}
 
 function normalizeSkillLearnProviders(input: unknown): SkillLearnProvider[] {
   if (!Array.isArray(input)) return [];
   const out: SkillLearnProvider[] = [];
   for (const raw of input) {
     const value = String(raw ?? "").trim().toLowerCase();
-    if (
-      (value === "claude" || value === "codex" || value === "gemini" || value === "opencode")
-      && !out.includes(value as SkillLearnProvider)
-    ) {
-      out.push(value as SkillLearnProvider);
+    if (isSkillLearnProvider(value) && !out.includes(value)) {
+      out.push(value);
     }
   }
   return out;
+}
+
+function normalizeSkillLearnStatus(input: string): SkillLearnStatus | null {
+  if (input === "queued" || input === "running" || input === "succeeded" || input === "failed") {
+    return input;
+  }
+  return null;
+}
+
+function normalizeSkillLearnSkillId(skillId: string, repo: string): string {
+  const trimmed = skillId.trim();
+  if (trimmed) return trimmed;
+  const repoTail = repo.split("/").filter(Boolean).pop();
+  if (repoTail) return repoTail;
+  return "unknown-skill";
+}
+
+function buildSkillLearnLabel(repo: string, skillId: string): string {
+  if (!skillId) return repo;
+  return `${repo}#${skillId}`;
 }
 
 function pruneSkillLearnJobs(now = Date.now()): void {
@@ -1991,6 +2021,97 @@ function pruneSkillLearnJobs(now = Date.now()): void {
   }
 }
 
+function pruneSkillLearningHistory(now = Date.now()): void {
+  db.prepare(`
+    DELETE FROM skill_learning_history
+    WHERE COALESCE(run_completed_at, updated_at, created_at) < ?
+  `).run(now - SKILL_LEARN_HISTORY_RETENTION_MS);
+
+  const overflowProviders = db.prepare(`
+    SELECT provider, COUNT(*) AS cnt
+    FROM skill_learning_history
+    GROUP BY provider
+    HAVING COUNT(*) > ?
+  `).all(SKILL_LEARN_HISTORY_MAX_ROWS_PER_PROVIDER) as Array<{ provider: string; cnt: number }>;
+  if (overflowProviders.length === 0) return;
+
+  const trimStmt = db.prepare(`
+    DELETE FROM skill_learning_history
+    WHERE provider = ?
+      AND id IN (
+        SELECT id
+        FROM skill_learning_history
+        WHERE provider = ?
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT -1 OFFSET ?
+      )
+  `);
+  for (const row of overflowProviders) {
+    trimStmt.run(row.provider, row.provider, SKILL_LEARN_HISTORY_MAX_ROWS_PER_PROVIDER);
+  }
+}
+
+function recordSkillLearnHistoryState(
+  job: SkillLearnJob,
+  status: SkillLearnStatus,
+  opts: {
+    error?: string | null;
+    startedAt?: number | null;
+    completedAt?: number | null;
+  } = {},
+): void {
+  const now = Date.now();
+  const normalizedSkillId = normalizeSkillLearnSkillId(job.skillId, job.repo);
+  const skillLabel = buildSkillLearnLabel(job.repo, normalizedSkillId);
+  const upsert = db.prepare(`
+    INSERT INTO skill_learning_history (
+      id,
+      job_id,
+      provider,
+      repo,
+      skill_id,
+      skill_label,
+      status,
+      command,
+      error,
+      run_started_at,
+      run_completed_at,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(job_id, provider) DO UPDATE SET
+      repo = excluded.repo,
+      skill_id = excluded.skill_id,
+      skill_label = excluded.skill_label,
+      status = excluded.status,
+      command = excluded.command,
+      error = excluded.error,
+      run_started_at = COALESCE(excluded.run_started_at, skill_learning_history.run_started_at),
+      run_completed_at = COALESCE(excluded.run_completed_at, skill_learning_history.run_completed_at),
+      updated_at = excluded.updated_at
+  `);
+
+  for (const provider of job.providers) {
+    upsert.run(
+      randomUUID(),
+      job.id,
+      provider,
+      job.repo,
+      normalizedSkillId,
+      skillLabel,
+      status,
+      job.command,
+      opts.error ?? null,
+      opts.startedAt ?? null,
+      opts.completedAt ?? null,
+      now,
+      now,
+    );
+  }
+  pruneSkillLearningHistory(now);
+}
+
 function appendSkillLearnLogs(job: SkillLearnJob, chunk: string): void {
   for (const rawLine of chunk.split(/\r?\n/)) {
     const line = rawLine.trimEnd();
@@ -2005,6 +2126,7 @@ function appendSkillLearnLogs(job: SkillLearnJob, chunk: string): void {
 
 function createSkillLearnJob(repo: string, skillId: string, providers: SkillLearnProvider[]): SkillLearnJob {
   const id = randomUUID();
+  const normalizedSkillId = normalizeSkillLearnSkillId(skillId, repo);
   const agents = providers
     .map((provider) => SKILL_LEARN_PROVIDER_TO_AGENT[provider])
     .filter((value, index, arr) => arr.indexOf(value) === index);
@@ -2012,7 +2134,7 @@ function createSkillLearnJob(repo: string, skillId: string, providers: SkillLear
   const job: SkillLearnJob = {
     id,
     repo,
-    skillId,
+    skillId: normalizedSkillId,
     providers,
     agents,
     status: "queued",
@@ -2026,18 +2148,48 @@ function createSkillLearnJob(repo: string, skillId: string, providers: SkillLear
     error: null,
   };
   skillLearnJobs.set(id, job);
+  try {
+    recordSkillLearnHistoryState(job, "queued");
+  } catch (err) {
+    console.warn(`[skills.learn] failed to record queued history: ${String(err)}`);
+  }
 
   setTimeout(() => {
     job.status = "running";
     job.startedAt = Date.now();
     job.updatedAt = job.startedAt;
+    try {
+      recordSkillLearnHistoryState(job, "running", { startedAt: job.startedAt });
+    } catch (err) {
+      console.warn(`[skills.learn] failed to record running history: ${String(err)}`);
+    }
 
-    const child = spawn("npx", args, {
-      cwd: process.cwd(),
-      env: { ...process.env, FORCE_COLOR: "0" },
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
-    });
+    let child;
+    try {
+      child = spawn("npx", args, {
+        cwd: process.cwd(),
+        env: { ...process.env, FORCE_COLOR: "0" },
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: process.platform === "win32",
+      });
+    } catch (err) {
+      job.status = "failed";
+      job.error = err instanceof Error ? err.message : String(err);
+      job.completedAt = Date.now();
+      job.updatedAt = job.completedAt;
+      appendSkillLearnLogs(job, `ERROR: ${job.error}`);
+      try {
+        recordSkillLearnHistoryState(job, "failed", {
+          error: job.error,
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+        });
+      } catch (historyErr) {
+        console.warn(`[skills.learn] failed to record spawn error history: ${String(historyErr)}`);
+      }
+      pruneSkillLearnJobs();
+      return;
+    }
 
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
@@ -2053,6 +2205,15 @@ function createSkillLearnJob(repo: string, skillId: string, providers: SkillLear
       job.completedAt = Date.now();
       job.updatedAt = job.completedAt;
       appendSkillLearnLogs(job, `ERROR: ${job.error}`);
+      try {
+        recordSkillLearnHistoryState(job, "failed", {
+          error: job.error,
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+        });
+      } catch (historyErr) {
+        console.warn(`[skills.learn] failed to record error history: ${String(historyErr)}`);
+      }
       pruneSkillLearnJobs();
     });
     child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
@@ -2064,6 +2225,15 @@ function createSkillLearnJob(repo: string, skillId: string, providers: SkillLear
       } else {
         job.status = "failed";
         job.error = signal ? `process terminated by ${signal}` : `process exited with code ${String(code)}`;
+      }
+      try {
+        recordSkillLearnHistoryState(job, job.status, {
+          error: job.error,
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+        });
+      } catch (historyErr) {
+        console.warn(`[skills.learn] failed to record close history: ${String(historyErr)}`);
       }
       pruneSkillLearnJobs();
     });
@@ -2100,6 +2270,125 @@ app.get("/api/skills/learn/:jobId", (req, res) => {
     return res.status(404).json({ error: "job_not_found" });
   }
   res.json({ ok: true, job });
+});
+
+app.get("/api/skills/history", (req, res) => {
+  pruneSkillLearningHistory();
+  const rawProvider = String(req.query.provider ?? "").trim().toLowerCase();
+  const provider = rawProvider ? (isSkillHistoryProvider(rawProvider) ? rawProvider : null) : null;
+  if (rawProvider && !provider) {
+    return res.status(400).json({ error: "invalid provider" });
+  }
+
+  const rawStatus = String(req.query.status ?? "").trim().toLowerCase();
+  const status = rawStatus ? normalizeSkillLearnStatus(rawStatus) : null;
+  if (rawStatus && !status) {
+    return res.status(400).json({ error: "invalid status" });
+  }
+
+  const requestedLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), SKILL_LEARN_HISTORY_MAX_QUERY_LIMIT)
+    : 50;
+
+  const where: string[] = [];
+  const params: Array<string | number> = [];
+  if (provider) {
+    where.push("provider = ?");
+    params.push(provider);
+  }
+  if (status) {
+    where.push("status = ?");
+    params.push(status);
+  }
+
+  const sql = `
+    SELECT
+      id,
+      job_id,
+      provider,
+      repo,
+      skill_id,
+      skill_label,
+      status,
+      command,
+      error,
+      run_started_at,
+      run_completed_at,
+      created_at,
+      updated_at
+    FROM skill_learning_history
+    ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT ?
+  `;
+  params.push(limit);
+
+  const history = db.prepare(sql).all(...params) as Array<{
+    id: string;
+    job_id: string;
+    provider: SkillHistoryProvider;
+    repo: string;
+    skill_id: string;
+    skill_label: string;
+    status: SkillLearnStatus;
+    command: string;
+    error: string | null;
+    run_started_at: number | null;
+    run_completed_at: number | null;
+    created_at: number;
+    updated_at: number;
+  }>;
+
+  res.json({
+    ok: true,
+    retention_days: SKILL_LEARN_HISTORY_RETENTION_DAYS,
+    history,
+  });
+});
+
+app.get("/api/skills/available", (req, res) => {
+  pruneSkillLearningHistory();
+  const rawProvider = String(req.query.provider ?? "").trim().toLowerCase();
+  const provider = rawProvider ? (isSkillHistoryProvider(rawProvider) ? rawProvider : null) : null;
+  if (rawProvider && !provider) {
+    return res.status(400).json({ error: "invalid provider" });
+  }
+
+  const requestedLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), SKILL_LEARN_HISTORY_MAX_QUERY_LIMIT)
+    : 30;
+
+  const params: Array<string | number> = [];
+  let whereClause = "status = 'succeeded'";
+  if (provider) {
+    whereClause += " AND provider = ?";
+    params.push(provider);
+  }
+  params.push(limit);
+
+  const skills = db.prepare(`
+    SELECT
+      provider,
+      repo,
+      skill_id,
+      skill_label,
+      MAX(COALESCE(run_completed_at, updated_at, created_at)) AS learned_at
+    FROM skill_learning_history
+    WHERE ${whereClause}
+    GROUP BY provider, repo, skill_id, skill_label
+    ORDER BY learned_at DESC
+    LIMIT ?
+  `).all(...params) as Array<{
+    provider: SkillHistoryProvider;
+    repo: string;
+    skill_id: string;
+    skill_label: string;
+    learned_at: number;
+  }>;
+
+  res.json({ ok: true, skills });
 });
 
 // ---------------------------------------------------------------------------
