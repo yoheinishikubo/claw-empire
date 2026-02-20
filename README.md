@@ -145,7 +145,7 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 </td>
 <td width="50%">
 
-**PPT Generation** — Example captures of PPT generation output for a report request (2 images in one cell)
+**PPT Generation** — Example captures of PPT generation output for a report request
 
 <p align="center">
   <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
