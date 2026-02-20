@@ -145,7 +145,7 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 </td>
 <td width="50%">
 
-**PPT 生成示例** — 报告请求触发的 PPT 生成结果示例（单格内放置 2 张图）
+**PPT 生成示例** — 报告请求触发的 PPT 生成结果示例
 
 <p align="center">
   <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
