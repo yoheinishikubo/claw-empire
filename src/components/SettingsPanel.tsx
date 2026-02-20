@@ -1401,8 +1401,8 @@ export default function SettingsPanel({
                                       {t({ ko: "선택하세요...", en: "Select...", ja: "選択してください...", zh: "请选择..." })}
                                     </option>
                                   )}
-                                  {modelList.map((m) => (
-                                    <option key={m} value={m}>{m}</option>
+                                  {modelList.map((m, idx) => (
+                                    <option key={`${m}-${idx}`} value={m}>{m}</option>
                                   ))}
                                 </select>
                               ) : (
@@ -1490,8 +1490,8 @@ export default function SettingsPanel({
                                             {draft.modelOverride}
                                           </option>
                                         )}
-                                        {modelList.map((m) => (
-                                          <option key={m} value={m}>
+                                        {modelList.map((m, idx) => (
+                                          <option key={`${m}-${idx}`} value={m}>
                                             {m}
                                           </option>
                                         ))}

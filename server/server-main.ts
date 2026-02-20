@@ -775,7 +775,18 @@ CREATE TABLE IF NOT EXISTS subtasks (
   completed_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS task_report_archives (
+  id TEXT PRIMARY KEY,
+  root_task_id TEXT NOT NULL UNIQUE REFERENCES tasks(id) ON DELETE CASCADE,
+  generated_by_agent_id TEXT REFERENCES agents(id),
+  summary_markdown TEXT NOT NULL,
+  source_snapshot_json TEXT,
+  created_at INTEGER DEFAULT (unixepoch()*1000),
+  updated_at INTEGER DEFAULT (unixepoch()*1000)
+);
+
 CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_report_archives_root ON task_report_archives(root_task_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(assigned_agent_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_dept ON tasks(department_id);

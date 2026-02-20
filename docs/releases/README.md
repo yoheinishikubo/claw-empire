@@ -1,5 +1,6 @@
 # Releases
 
+- [`v1.0.8`](v1.0.8.md) - Active agents status panel + kill control, task completion report popup/history, planning-lead consolidated archive generation, long-run stability updates (`--max-turns 200`, timeout/orphan handling), and CLI/OAuth/API communication QA test suite
 - [`v1.0.7`](v1.0.7.md) - External API provider system (Settings API tab, CRUD + connection test), direct chat streaming for API/OAuth agents (`chat_stream` WS event), API provider task execution, `orchestration.ts` const crash fix, model caching layer (SQLite + memory 2-tier)
 - [`v1.0.6`](v1.0.6.md) - Windows cross-platform compatibility (CLI detection `shell: true`, Gemini version detection, skill-learn `spawn` fix), OAuth model provider independence (Copilot API direct fetch → 3-tier resolution), Settings panel version-display fallback, non-interactive esbuild build approval
 - [`v1.0.5`](v1.0.5.md) - Runtime modularization follow-up (route/workflow decomposition), `/api/inbox` security-doc parity (`x-inbox-secret`), one-time post-pull auto-migration (`INBOX_WEBHOOK_SECRET`/AGENTS/OpenClaw path), AGENTS secret-discovery hardening, runtime language-alignment fixes, long chat-response truncation/repetition fixes, workflow crash hotfix, and Skills Library Learn Squad background install flow (`npx skills add ...`)

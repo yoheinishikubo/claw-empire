@@ -181,6 +181,19 @@ function recoverOrphanInProgressTasks(reason: InProgressRecoveryReason): void {
     const ageMs = lastTouchedAt > 0 ? Math.max(0, now - lastTouchedAt) : IN_PROGRESS_ORPHAN_GRACE_MS + 1;
     if (reason === "interval" && ageMs < IN_PROGRESS_ORPHAN_GRACE_MS) continue;
 
+    // 추가 안전장치: 최근 2분 이내 로그가 있으면 아직 활성 상태로 간주
+    if (reason === "interval") {
+      const recentLog = db.prepare(`
+        SELECT created_at FROM task_logs
+        WHERE task_id = ? AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1
+      `).get(task.id, now - 120_000) as { created_at: number } | undefined;
+      if (recentLog) {
+        // 로그 활동이 있으면 orphan이 아님 — 스킵
+        continue;
+      }
+    }
+
     const latestRunLog = db.prepare(`
       SELECT message
       FROM task_logs

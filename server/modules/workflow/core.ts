@@ -180,8 +180,8 @@ function readTimeoutMsEnv(name: string, fallbackMs: number): number {
   return readNonNegativeIntEnv(name, fallbackMs);
 }
 
-const TASK_RUN_IDLE_TIMEOUT_MS = readTimeoutMsEnv("TASK_RUN_IDLE_TIMEOUT_MS", 8 * 60_000);
-const TASK_RUN_HARD_TIMEOUT_MS = readTimeoutMsEnv("TASK_RUN_HARD_TIMEOUT_MS", 45 * 60_000);
+const TASK_RUN_IDLE_TIMEOUT_MS = readTimeoutMsEnv("TASK_RUN_IDLE_TIMEOUT_MS", 15 * 60_000);
+const TASK_RUN_HARD_TIMEOUT_MS = readTimeoutMsEnv("TASK_RUN_HARD_TIMEOUT_MS", 0);
 
 // ---------------------------------------------------------------------------
 // Git Worktree support — agent isolation per task
@@ -780,6 +780,7 @@ function buildAgentArgs(provider: string, model?: string, reasoningLevel?: strin
         "--verbose",
         "--output-format=stream-json",
         "--include-partial-messages",
+        "--max-turns", "200",
       ];
       if (model) args.push("--model", model);
       return args;

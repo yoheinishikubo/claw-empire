@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.7-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.0.7.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.0.8.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 
 ---
 
-## 최신 릴리즈 (v1.0.7)
+## 최신 릴리즈 (v1.0.8)
 
-- **외부 API 프로바이더 시스템** — 설정 패널에 API 탭 추가. 에이전트를 외부 LLM API(OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras 및 커스텀 엔드포인트)에 연결 가능. CRUD, 연결 테스트, 모델 자동 감지 지원
-- **다이렉트 채팅 스트리밍** — API/OAuth 에이전트의 응답이 `chat_stream` WebSocket 이벤트를 통해 실시간 스트리밍되며, ChatPanel에서 에메랄드 보더 애니메이션으로 표시
-- **API 프로바이더 태스크 실행** — 외부 API 프로바이더를 사용하는 에이전트도 CLI/OAuth 에이전트와 동일한 오케스트레이션 파이프라인으로 태스크 실행(spawn, run) 가능
-- **태스크 실행 크래시 수정** — `orchestration.ts`에서 `const` 변수 mutation으로 인한 `TypeError` 수정. OAuth/API 태스크 디스패치 시 500 에러 해결
-- **모델 캐싱 레이어** — CLI/OAuth 모델 목록에 2-tier 캐싱(메모리 + SQLite `settings` 테이블) 적용으로 불필요한 원격 호출 절감
-- 상세 문서: [`docs/releases/v1.0.7.md`](docs/releases/v1.0.7.md)
+- **활성 에이전트 상태 + 강제 중지** — `/api/agents/active` 기반 상태 패널이 추가되어, 현재 작업 중인 에이전트의 프로세스/유휴 시간을 확인하고 멈춘 작업을 즉시 중지할 수 있습니다.
+- **작업 완료 보고서 + 이력** — 작업 완료 시 자동 보고서 팝업이 뜨고, 보고서 이력 모달에서 프로젝트별 완료 보고를 다시 열람할 수 있습니다.
+- **기획팀장 최종 취합 아카이브(LLM)** — 모든 관련 작업이 끝나면 기획팀장이 LLM 기반 최종 취합 마크다운을 생성/아카이빙하며, 팝업에서 수동 갱신도 가능합니다.
+- **라운드/타임아웃 안정성 개선** — Codex `--max-turns 200`, idle timeout 확대, 기본 hard timeout 비활성화, orphan/stale 상태 복구 강화로 테스트·장기 작업 중 조기 종료 문제를 완화했습니다.
+- **CLI/OAuth/API 통신 QA 스위트** — `test:comm:*` 스크립트로 개별/통합 통신 점검 및 JSON 증거 + 마크다운 리포트 산출이 가능합니다.
+- 상세 문서: [`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
 
 ---
 
@@ -151,6 +151,8 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 | **외부 API 프로바이더** | 설정 > API 탭에서 에이전트를 외부 LLM API(OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, 커스텀)에 연결 |
 | **OAuth 연동** | 로컬 SQLite에 AES 암호화된 토큰 저장을 사용하는 GitHub & Google OAuth |
 | **실시간 WebSocket** | 실시간 상태 업데이트, 활동 피드, 에이전트 상태 동기화 |
+| **활성 에이전트 제어** | 작업 중 에이전트 상태(프로세스/활동/유휴) 확인 및 멈춘 태스크 강제 중지 |
+| **작업 보고서 시스템** | 완료 팝업, 보고서 이력, 팀별 보고 드릴다운, 기획팀장 최종 취합 아카이브 |
 | **에이전트 랭킹 & XP** | 완료된 태스크로 XP를 획득하는 에이전트; 랭킹 보드에서 상위 성과자 추적 |
 | **스킬 라이브러리** | 카테고리별로 정리된 600개 이상의 스킬 (Frontend, Backend, Design, AI, DevOps, Security 등) |
 | **회의 시스템** | AI 생성 회의록과 다중 라운드 검토가 포함된 계획 및 임시 회의 |
@@ -158,6 +160,7 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 | **다국어 UI** | 한국어, 영어, 일본어, 중국어 — 자동 감지 또는 수동 설정 |
 | **메신저 연동** | Telegram, Discord, Slack 등 — OpenClaw 게이트웨이를 통해 `$` CEO 디렉티브 전송 및 태스크 업데이트 수신 |
 | **PowerPoint 내보내기** | 회의록과 보고서로부터 프레젠테이션 슬라이드 생성 |
+| **통신 QA 스크립트** | `test:comm:*` 스크립트로 CLI/OAuth/API 통신 상태를 재시도/증거 로그와 함께 검증 |
 | **부서 관리** | 기획, 개발, 디자인, QA/QC, DevSecOps, 운영 |
 
 ---
@@ -265,7 +268,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.7 inbox 점검","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox 점검","skipPlannedMeeting":true}'
 ```
 
 예상 응답:
@@ -514,6 +517,21 @@ pnpm start              # 빌드된 서버 실행
 # 헬스 체크
 curl -fsS http://127.0.0.1:8790/healthz
 ```
+
+### 통신 QA 점검 (v1.0.8)
+
+```bash
+# 개별 점검
+pnpm run test:comm:llm
+pnpm run test:comm:oauth
+pnpm run test:comm:api
+
+# 통합 점검 (레거시 진입점 포함)
+pnpm run test:comm:suite
+pnpm run test:comm-status
+```
+
+`test:comm:suite`는 기계 판독용 증거를 `logs/`에, 요약 리포트를 `docs/`에 생성합니다.
 
 ---
 

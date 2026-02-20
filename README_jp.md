@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.7-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.0.7.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.0.8.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,14 +53,14 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 
 ---
 
-## 最新リリース (v1.0.7)
+## 最新リリース (v1.0.8)
 
-- **外部APIプロバイダーシステム** — 設定パネルにAPIタブを追加。エージェントを外部LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、カスタムエンドポイント）に接続可能。CRUD、接続テスト、モデル自動検出に対応
-- **ダイレクトチャットストリーミング** — API/OAuthエージェントの応答が `chat_stream` WebSocketイベントでリアルタイムにストリーミングされ、ChatPanelでエメラルドボーダーアニメーション付きで表示
-- **APIプロバイダータスク実行** — 外部APIプロバイダーを使用するエージェントもCLI/OAuthエージェントと同じオーケストレーションパイプラインでタスク実行（spawn、run）が可能
-- **タスク実行クラッシュの修正** — `orchestration.ts` で `const` 変数のmutationによる `TypeError` を修正。OAuth/APIタスクディスパッチ時の500エラーを解消
-- **モデルキャッシュレイヤー** — CLI/OAuthモデルリストに2段階キャッシュ（メモリ + SQLite `settings` テーブル）を適用し、不要なリモート呼び出しを削減
-- 詳細: [`docs/releases/v1.0.7.md`](docs/releases/v1.0.7.md)
+- **アクティブエージェント状態 + 強制停止** — `/api/agents/active` ベースの状態パネルを追加。作業中エージェントのプロセス/アイドル状況を確認し、詰まったタスクを即時停止できます。
+- **タスク完了レポート + 履歴** — タスク完了時にレポートポップアップを自動表示。履歴モーダルからプロジェクト単位で完了レポートを再確認できます。
+- **企画リード最終統合アーカイブ（LLM）** — 関連タスク完了時に企画リードがLLMで統合Markdownを生成・保存し、ポップアップから手動更新も可能です。
+- **ラウンド/タイムアウト安定性改善** — Codex `--max-turns 200`、idle timeout拡張、デフォルトhard timeout無効化、orphan/stale復旧強化で、テスト・長時間作業の早期終了を緩和しました。
+- **CLI/OAuth/API 通信QAスイート** — `test:comm:*` スクリプトを追加。個別/統合チェックとJSON証跡・Markdownレポート出力に対応します。
+- 詳細: [`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
 
 ---
 
@@ -151,6 +151,8 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 | **外部APIプロバイダー** | 設定 > APIタブからエージェントを外部LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、カスタム）に接続 |
 | **OAuth連携** | ローカルSQLiteへのAES暗号化トークンストレージによるGitHub・Google OAuth |
 | **リアルタイムWebSocket** | ライブステータス更新、アクティビティフィード、エージェント状態のリアルタイム同期 |
+| **アクティブエージェント制御** | 作業中エージェントのプロセス/活動/アイドル情報を可視化し、スタックしたタスクを強制停止 |
+| **タスクレポートシステム** | 完了ポップアップ、レポート履歴、チーム別詳細、企画リード統合アーカイブ |
 | **エージェントランキング＆XP** | タスク完了でXPを獲得するエージェント；上位パフォーマーを追跡するランキングボード |
 | **スキルライブラリ** | Frontend、Backend、Design、AI、DevOps、Securityなど600以上のカテゴリ別スキル |
 | **ミーティングシステム** | 予定・臨時ミーティング対応；AIによる議事録自動生成と複数ラウンドレビュー機能 |
@@ -158,6 +160,7 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 | **多言語UI** | 英語、韓国語、日本語、中国語 — 自動検出または手動設定 |
 | **メッセンジャー連携** | Telegram、Discord、Slack等 — OpenClawゲートウェイ経由で `$` CEOディレクティブ送信＆タスク更新受信 |
 | **PowerPointエクスポート** | 議事録やレポートからプレゼンテーションスライドを自動生成 |
+| **通信QAスクリプト** | `test:comm:*` スクリプトでCLI/OAuth/API疎通を再試行・証跡ログ付きで検証 |
 | **部署管理** | 企画、開発、デザイン、QA/QC、DevSecOps、オペレーション |
 
 ---
@@ -265,7 +268,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.7 inbox 検証","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox 検証","skipPlannedMeeting":true}'
 ```
 
 期待値:
@@ -514,6 +517,21 @@ pnpm start              # ビルド済みサーバーを起動
 # ヘルスチェック
 curl -fsS http://127.0.0.1:8790/healthz
 ```
+
+### 通信QAチェック（v1.0.8）
+
+```bash
+# 個別チェック
+pnpm run test:comm:llm
+pnpm run test:comm:oauth
+pnpm run test:comm:api
+
+# 統合チェック（互換エントリ含む）
+pnpm run test:comm:suite
+pnpm run test:comm-status
+```
+
+`test:comm:suite` は機械可読な証跡を `logs/` に、要約レポートを `docs/` に出力します。
 
 ---
 

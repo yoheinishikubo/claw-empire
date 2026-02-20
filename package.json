@@ -20,7 +20,12 @@
     "setup": "node scripts/setup.mjs",
     "arch:map": "node scripts/generate-architecture-report.mjs",
     "preflight:public": "bash scripts/preflight-public.sh",
-    "audit:verify": "node scripts/verify-security-audit-log.mjs"
+    "audit:verify": "node scripts/verify-security-audit-log.mjs",
+    "test:comm:llm": "node scripts/qa/llm-comm-test.mjs",
+    "test:comm:oauth": "node scripts/qa/oauth-comm-test.mjs",
+    "test:comm:api": "node scripts/qa/api-comm-test.mjs",
+    "test:comm:suite": "node scripts/qa/run-comm-suite.mjs",
+    "test:comm-status": "node scripts/test-comm-status.mjs"
   },
   "dependencies": {
     "@rollup/rollup-darwin-arm64": "^4.57.1",

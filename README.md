@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.7-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.0.7.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.0.8.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 
 ---
 
-## Latest Release (v1.0.7)
+## Latest Release (v1.0.8)
 
-- **External API Provider System** — Settings panel now includes an API tab to connect agents to external LLM APIs (OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, and custom endpoints). Full CRUD, connection test, and model auto-discovery
-- **Direct Chat Streaming** — API and OAuth agent responses are now streamed in real-time via `chat_stream` WebSocket event with emerald-border animation in ChatPanel
-- **API Provider Task Execution** — Agents using external API providers can now execute tasks (spawn and run) through the same orchestration pipeline as CLI and OAuth agents
-- **Task Execution Crash Fix** — Fixed `TypeError: Assignment to constant variable` in `orchestration.ts` that caused 500 errors when dispatching OAuth/API tasks
-- **Model Caching Layer** — CLI and OAuth model lists now use 2-tier caching (memory + SQLite `settings` table) to reduce redundant remote fetches
-- Full notes: [`docs/releases/v1.0.7.md`](docs/releases/v1.0.7.md)
+- **Active Agent Status + Kill** — Added active-agent status panel and backend snapshot route (`/api/agents/active`) so you can inspect working agents and stop stuck tasks quickly.
+- **Task Completion Reports + History** — Added automatic completion-report popup, report history modal, and project-level report detail API.
+- **Planning Consolidated Archive (LLM)** — When all related work is done, planning lead now generates and archives a consolidated markdown report; it can be refreshed on demand from the report popup.
+- **Round/Timeout Stability Improvements** — Added Codex `--max-turns 200`, extended idle timeout, default hard-timeout disabled, safer orphan recovery, and stale in-progress/process cleanup for re-run reliability.
+- **CLI/OAuth/API Communication QA Suite** — Added `test:comm:*` scripts for one-shot and integrated connectivity checks with JSON evidence + markdown report artifacts.
+- Full notes: [`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
 
 ---
 
@@ -151,6 +151,8 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 | **External API Providers** | Connect agents to external LLM APIs (OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, custom) via Settings > API tab |
 | **OAuth Integration** | GitHub & Google OAuth with AES-encrypted token storage in local SQLite |
 | **Real-time WebSocket** | Live status updates, activity feed, and agent state synchronization |
+| **Active Agent Control** | Active-agent monitor with process/activity/idle metadata and direct kill action for stuck tasks |
+| **Task Report System** | Completion popup, report history, team report drilldown, and planning-lead consolidated archive |
 | **Agent Ranking & XP** | Agents earn XP for completed tasks; ranking board tracks top performers |
 | **Skills Library** | 600+ categorized skills (Frontend, Backend, Design, AI, DevOps, Security, etc.) |
 | **Meeting System** | Planned and ad-hoc meetings with AI-generated minutes and multi-round review |
@@ -158,6 +160,7 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 | **Multi-Language UI** | English, Korean, Japanese, Chinese — auto-detected or manually set |
 | **Messenger Integration** | Telegram, Discord, Slack and more — send `$` CEO directives and receive task updates via OpenClaw gateway |
 | **PowerPoint Export** | Generate presentation slides from meeting minutes and reports |
+| **Connectivity QA Scripts** | Built-in `test:comm:*` scripts for CLI/OAuth/API communication validation with retry and evidence logs |
 | **Department Management** | Planning, Development, Design, QA/QC, DevSecOps, Operations |
 
 ---
@@ -265,7 +268,7 @@ If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.7 inbox smoke test","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox smoke test","skipPlannedMeeting":true}'
 ```
 
 Expected:
@@ -514,6 +517,21 @@ pnpm start              # run the built server
 # Health check
 curl -fsS http://127.0.0.1:8790/healthz
 ```
+
+### Communication QA Checks (v1.0.8)
+
+```bash
+# Individual checks
+pnpm run test:comm:llm
+pnpm run test:comm:oauth
+pnpm run test:comm:api
+
+# Integrated suite (also available via legacy entrypoint)
+pnpm run test:comm:suite
+pnpm run test:comm-status
+```
+
+`test:comm:suite` writes machine-readable evidence to `logs/` and a markdown report to `docs/`.
 
 ---
 

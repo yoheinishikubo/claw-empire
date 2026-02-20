@@ -203,6 +203,7 @@ export type WSEventType =
   | 'cross_dept_delivery'
   | 'ceo_office_call'
   | 'chat_stream'
+  | 'task_report'
   | 'connected';
 
 export interface WSEvent {

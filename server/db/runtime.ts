@@ -43,8 +43,8 @@ export const REVIEW_MAX_MEMO_ITEMS_PER_ROUND = Math.max(
 );
 export const REVIEW_MAX_REMEDIATION_REQUESTS = 1;
 export const IN_PROGRESS_ORPHAN_GRACE_MS = Math.max(
-  10_000,
-  readNonNegativeIntEnv("IN_PROGRESS_ORPHAN_GRACE_MS", 45_000),
+  30_000,
+  readNonNegativeIntEnv("IN_PROGRESS_ORPHAN_GRACE_MS", 600_000),
 );
 export const IN_PROGRESS_ORPHAN_SWEEP_MS = Math.max(
   10_000,

@@ -8,6 +8,9 @@ import AgentDetail from "./components/AgentDetail";
 import SettingsPanel from "./components/SettingsPanel";
 import TerminalPanel from "./components/TerminalPanel";
 import SkillsLibrary from "./components/SkillsLibrary";
+import TaskReportPopup from "./components/TaskReportPopup";
+import ReportHistory from "./components/ReportHistory";
+import AgentStatusPanel from "./components/AgentStatusPanel";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type {
   Department,
@@ -30,6 +33,7 @@ import {
   normalizeLanguage,
   pickLang,
 } from "./i18n";
+import type { TaskReportDetail } from "./api";
 import * as api from "./api";
 
 interface SubAgent {
@@ -117,6 +121,9 @@ export default function App() {
   const [ceoOfficeCalls, setCeoOfficeCalls] = useState<CeoOfficeCall[]>([]);
   const [meetingPresence, setMeetingPresence] = useState<MeetingPresence[]>([]);
   const [oauthResult, setOauthResult] = useState<OAuthCallbackResult | null>(null);
+  const [taskReport, setTaskReport] = useState<TaskReportDetail | null>(null);
+  const [showReportHistory, setShowReportHistory] = useState(false);
+  const [showAgentStatus, setShowAgentStatus] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState<{
     message_id: string;
@@ -281,6 +288,17 @@ export default function App() {
             return next;
           });
         }
+      }),
+      on("task_report", (payload: unknown) => {
+        const p = payload as { task?: { id?: string } } | null;
+        const reportTaskId = typeof p?.task?.id === "string" ? p.task.id : null;
+        if (!reportTaskId) {
+          setTaskReport(payload as TaskReportDetail);
+          return;
+        }
+        api.getTaskReportDetail(reportTaskId)
+          .then((detail) => setTaskReport(detail))
+          .catch(() => setTaskReport(payload as TaskReportDetail));
       }),
       on("cross_dept_delivery", (payload: unknown) => {
         const p = payload as { from_agent_id: string; to_agent_id: string };
@@ -699,6 +717,18 @@ export default function App() {
     ja: "全社告知",
     zh: "全员公告",
   })}`;
+  const reportLabel = `📋 ${pickLang(uiLanguage, {
+    ko: "보고서",
+    en: "Reports",
+    ja: "レポート",
+    zh: "报告",
+  })}`;
+  const agentStatusLabel = pickLang(uiLanguage, {
+    ko: "에이전트",
+    en: "Agents",
+    ja: "エージェント",
+    zh: "代理",
+  });
 
   if (loading) {
     return (
@@ -774,6 +804,20 @@ export default function App() {
               <h1 className="truncate text-base font-bold text-white sm:text-lg">{viewTitle}</h1>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => setShowAgentStatus(true)}
+                className="rounded-lg border border-blue-500/30 bg-blue-600/20 px-2.5 py-1.5 text-xs text-blue-400 transition-colors hover:bg-blue-600/30 sm:px-3 sm:text-sm"
+              >
+                <span className="sm:hidden">&#x1F6E0;</span>
+                <span className="hidden sm:inline">&#x1F6E0; {agentStatusLabel}</span>
+              </button>
+              <button
+                onClick={() => setShowReportHistory(true)}
+                className="rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-2.5 py-1.5 text-xs text-emerald-400 transition-colors hover:bg-emerald-600/30 sm:px-3 sm:text-sm"
+              >
+                <span className="sm:hidden">📋</span>
+                <span className="hidden sm:inline">{reportLabel}</span>
+              </button>
               <button
                 onClick={() => {
                   setChatAgent(null);
@@ -951,6 +995,34 @@ export default function App() {
             )}
             agents={agents}
             onClose={() => setTaskPanel(null)}
+          />
+        )}
+
+        {/* Task Report Popup (auto-shows on task completion) */}
+        {taskReport && (
+          <TaskReportPopup
+            report={taskReport}
+            agents={agents}
+            uiLanguage={uiLanguage}
+            onClose={() => setTaskReport(null)}
+          />
+        )}
+
+        {/* Report History Modal */}
+        {showReportHistory && (
+          <ReportHistory
+            agents={agents}
+            uiLanguage={uiLanguage}
+            onClose={() => setShowReportHistory(false)}
+          />
+        )}
+
+        {/* Agent Status Panel */}
+        {showAgentStatus && (
+          <AgentStatusPanel
+            agents={agents}
+            uiLanguage={uiLanguage}
+            onClose={() => setShowAgentStatus(false)}
           />
         )}
       </div>

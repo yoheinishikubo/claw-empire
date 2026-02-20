@@ -74,6 +74,7 @@ export function initializeWorkflow(ctx: any): any {
     mergeWorktree: runtime.mergeWorktree,
     normalizeOAuthProvider: runtime.normalizeOAuthProvider,
     notifyCeo: runtime.notifyCeo,
+    archivePlanningConsolidatedReport: runtime.archivePlanningConsolidatedReport,
     randomDelay: runtime.randomDelay,
     refreshGoogleToken: runtime.refreshGoogleToken,
     rollbackTaskWorktree: runtime.rollbackTaskWorktree,

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.7-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.8-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.7.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.8.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.7)
+## 最新发布 (v1.0.8)
 
-- **外部 API 提供商系统** — 设置面板新增 API 选项卡，可将代理连接到外部 LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras 及自定义端点）。支持完整的增删改查、连接测试和模型自动发现
-- **直接聊天流式传输** — API/OAuth 代理的回复现在通过 `chat_stream` WebSocket 事件实时流式传输，ChatPanel 中以翡翠色边框动画显示
-- **API 提供商任务执行** — 使用外部 API 提供商的代理现在可以通过与 CLI/OAuth 代理相同的编排管道执行任务（spawn 和 run）
-- **任务执行崩溃修复** — 修复 `orchestration.ts` 中 `const` 变量 mutation 导致的 `TypeError`，解决了 OAuth/API 任务分发时的 500 错误
-- **模型缓存层** — CLI/OAuth 模型列表现在使用双层缓存（内存 + SQLite `settings` 表），减少不必要的远程请求
-- 详细说明：[`docs/releases/v1.0.7.md`](docs/releases/v1.0.7.md)
+- **活跃代理状态 + 强制停止** — 新增基于 `/api/agents/active` 的状态面板，可查看工作中代理的进程/活动/空闲信息，并快速停止卡住任务。
+- **任务完成报告 + 历史记录** — 任务完成后自动弹出报告窗口，并支持在历史面板中按项目回看已完成报告。
+- **规划负责人最终汇总归档（LLM）** — 所有相关任务完成后，由规划负责人生成并归档最终汇总 Markdown，可在报告弹窗中手动刷新。
+- **轮次/超时稳定性优化** — 增加 Codex `--max-turns 200`、延长空闲超时、默认关闭硬超时，并强化 orphan/stale 恢复，缓解测试或长任务被提前终止的问题。
+- **CLI/OAuth/API 通信 QA 套件** — 新增 `test:comm:*` 脚本，支持单项/整体验证，并输出 JSON 证据和 Markdown 报告。
+- 详细说明：[`docs/releases/v1.0.8.md`](docs/releases/v1.0.8.md)
 
 ---
 
@@ -151,6 +151,8 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 | **外部 API 提供商** | 通过设置 > API 选项卡将代理连接到外部 LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、自定义端点） |
 | **OAuth 集成** | GitHub 与 Google OAuth，AES 加密令牌本地存储于 SQLite |
 | **实时 WebSocket** | 实时状态更新、活动动态及代理状态同步 |
+| **活跃代理控制** | 查看工作中代理的进程/活动/空闲元数据，并可对卡住任务执行强制停止 |
+| **任务报告系统** | 完成报告弹窗、历史列表、团队报告详情与规划负责人最终汇总归档 |
 | **代理排名与经验值** | 代理完成任务可获得经验值，排行榜追踪顶尖表现者 |
 | **技能库** | 600+ 分类技能（前端、后端、设计、AI、DevOps、安全等） |
 | **会议系统** | 支持计划内及临时会议，AI 生成纪要并支持多轮审阅 |
@@ -158,6 +160,7 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 | **多语言界面** | 英语、韩语、日语、中文 — 自动检测或手动设置 |
 | **即时通讯集成** | Telegram、Discord、Slack 等 — 通过 OpenClaw gateway 发送 `$` CEO 指令并接收任务更新 |
 | **PowerPoint 导出** | 从会议纪要和报告生成演示文稿幻灯片 |
+| **通信 QA 脚本** | 内置 `test:comm:*` 脚本，可带重试与证据日志验证 CLI/OAuth/API 连通性 |
 | **部门管理** | 规划、开发、设计、QA/QC、DevSecOps、运营 |
 
 ---
@@ -265,7 +268,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.7 inbox 校验","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.8 inbox 校验","skipPlannedMeeting":true}'
 ```
 
 期望结果：
@@ -514,6 +517,21 @@ pnpm start              # 运行构建后的服务器
 # 健康检查
 curl -fsS http://127.0.0.1:8790/healthz
 ```
+
+### 通信 QA 检查（v1.0.8）
+
+```bash
+# 单项检查
+pnpm run test:comm:llm
+pnpm run test:comm:oauth
+pnpm run test:comm:api
+
+# 集成检查（含兼容旧入口）
+pnpm run test:comm:suite
+pnpm run test:comm-status
+```
+
+`test:comm:suite` 会将机器可读证据写入 `logs/`，并将汇总报告写入 `docs/`。
 
 ---
 

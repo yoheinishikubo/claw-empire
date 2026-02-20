@@ -337,6 +337,44 @@ app.get("/api/meeting-presence", (_req, res) => {
   res.json({ presence });
 });
 
+// ── Active Agents Status (must be before /api/agents/:id to avoid param capture) ──
+app.get("/api/agents/active", (_req, res) => {
+  try {
+    const workingAgents = db.prepare(`
+      SELECT a.id, a.name, a.name_ko, a.avatar_emoji, a.role, a.status, a.current_task_id,
+             a.department_id, a.cli_provider,
+             COALESCE(d.name, '') AS dept_name,
+             COALESCE(d.name_ko, '') AS dept_name_ko,
+             t.id AS task_id, t.title AS task_title, t.status AS task_status,
+             t.started_at AS task_started_at
+      FROM agents a
+      LEFT JOIN departments d ON d.id = a.department_id
+      LEFT JOIN tasks t ON t.id = a.current_task_id
+      WHERE a.status = 'working'
+      ORDER BY a.name
+    `).all() as Array<Record<string, unknown>>;
+
+    const now = Date.now();
+    const result = workingAgents.map((row) => {
+      const taskId = row.task_id as string | null;
+      const session = taskId ? taskExecutionSessions.get(taskId) : undefined;
+      const hasProcess = taskId ? activeProcesses.has(taskId) : false;
+      return {
+        ...row,
+        has_active_process: hasProcess,
+        session_opened_at: session?.openedAt ?? null,
+        last_activity_at: session?.lastTouchedAt ?? null,
+        idle_seconds: session?.lastTouchedAt ? Math.round((now - session.lastTouchedAt) / 1000) : null,
+      };
+    });
+
+    res.json({ ok: true, agents: result });
+  } catch (err) {
+    console.error("[active-agents]", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch active agents" });
+  }
+});
+
 app.get("/api/agents/:id", (req, res) => {
   const id = String(req.params.id);
   const agent = db.prepare(`
@@ -1010,9 +1048,35 @@ app.post("/api/tasks/:id/run", (req, res) => {
   if (!task) return res.status(404).json({ error: "not_found" });
   const taskLang = resolveLang(task.description ?? task.title);
 
-  if (task.status === "in_progress" || task.status === "collaborating") {
-    return res.status(400).json({ error: "already_running" });
+  // --- Stale process cleanup ---
+  // activeProcesses에 있지만 PID가 실제로 죽은 경우 정리
+  if (activeProcesses.has(id)) {
+    const staleChild = activeProcesses.get(id);
+    const stalePid = typeof staleChild?.pid === "number" ? staleChild.pid : null;
+    // HTTP agents use negative fake PIDs (always dead after restart); CLI agents check process.kill(pid, 0)
+    let pidIsAlive = false;
+    if (stalePid !== null && stalePid > 0) {
+      try { process.kill(stalePid, 0); pidIsAlive = true; } catch { pidIsAlive = false; }
+    }
+    if (!pidIsAlive) {
+      activeProcesses.delete(id);
+      appendTaskLog(id, "system", `Cleaned up stale process handle (pid=${stalePid}) on re-run attempt`);
+    }
   }
+
+  // task가 in_progress이지만 실제 프로세스가 없으면 (서버 재시작 등) 상태 리셋 후 재실행 허용
+  if (task.status === "in_progress" || task.status === "collaborating") {
+    if (activeProcesses.has(id)) {
+      return res.status(400).json({ error: "already_running" });
+    }
+    // 프로세스 없이 in_progress 상태 → stale. 리셋하고 재실행 허용
+    const t = nowMs();
+    db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?").run(t, id);
+    task.status = "pending";
+    appendTaskLog(id, "system", `Reset stale in_progress status (no active process) for re-run`);
+  }
+
+  // 실제 활성 프로세스가 있으면 실행 거부
   if (activeProcesses.has(id)) {
     return res.status(409).json({
       error: "process_still_active",
