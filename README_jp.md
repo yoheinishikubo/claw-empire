@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.5-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.6-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.0.5.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.0.6.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,19 +53,15 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 
 ---
 
-## 最新リリース (v1.0.5)
+## 最新リリース (v1.0.6)
 
-- サーバー実行フローをさらにモジュール化し、ルーティング/ワークフロー/ランタイム結合部の保守性を強化
-- ランタイム言語整合性を強化: タスク実行プロンプトとワークフロー/ステータスメッセージが選択言語に一貫して追従
-- `/api/inbox` 連携ドキュメントを統一: `x-inbox-secret` ヘッダーは必須で、不一致/欠落時は `401`
-- AIインストールガイドとクイックスタートに `INBOX_WEBHOOK_SECRET` と `OPENCLAW_CONFIG` の検証手順を追加
-- `OPENCLAW_CONFIG` の取り扱いを強化: ランタイムで外側の引用符と先頭 `~` を正規化
-- OpenClaw設定ドキュメントに `.env` の絶対パス運用（引用符なし推奨）を明確化
-- 既存クローンが `v1.0.5` を `git pull` した場合も、初回 `pnpm dev*` / `pnpm start*` 実行時に1回だけ自動マイグレーションを適用
-- AGENTS オーケストレーションに `INBOX_SECRET_DISCOVERY_V2` を追加し、シェル環境変数・`.env`・`.env.clone`・代表的なプロジェクトルートからシークレット自動探索を実施
-- エージェントとの1:1チャットで長文応答の過度な切り詰めを改善し、同一文言の循環重複を抑制
-- Skills Library に Learn Squad フローを追加: `Copy` の上にある `Learn` から、役職優先（チームリーダー > シニア > ジュニア > インターン）で CLI 代表を選定し、複数選択でバックグラウンド `npx skills add <owner/repo>` インストールを実行（進行状況/ログ/キャラクター演出を表示）
-- 詳細: [`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
+- OAuthモデルリストを `opencode` CLIに依存せず、プロバイダーAPI（GitHub Copilot API）から直接取得するように変更 — 3段階解決: プロバイダーAPI → opencode補完 → 静的フォールバック
+- Windows CLIツール検出エラー（`ENOENT` / `-4058`）を修正: `.cmd`ラッパー実行のため `execFile`/`spawn` に `shell: true` を追加
+- Gemini CLIバージョン検出を修正: `--version` が対話モードを起動する問題を解決し、インストール済み `package.json` からバージョンを読み取るように変更
+- 設定パネルでCLIツールが検出されたがバージョン不明の場合、「未インストール」ではなく「バージョン不明」と表示
+- Windowsスキル学習エラー（`spawn npx ENOENT`）を修正: バックグラウンド `npx skills add` ジョブでWindows上 `shell: true` を使用
+- 非対話型 `pnpm install` のための `pnpm.onlyBuiltDependencies` を追加（esbuild）
+- 詳細: [`docs/releases/v1.0.6.md`](docs/releases/v1.0.6.md)
 
 ---
 
@@ -269,7 +265,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.5 inbox 検証","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.6 inbox 検証","skipPlannedMeeting":true}'
 ```
 
 期待値:

@@ -45,6 +45,7 @@ export function registerRoutesPartC(ctx: any): any {
   const endTaskExecutionSession = __ctx.endTaskExecutionSession;
   const ensureClaudeMd = __ctx.ensureClaudeMd;
   const ensureOAuthActiveAccount = __ctx.ensureOAuthActiveAccount;
+  const exchangeCopilotToken = __ctx.exchangeCopilotToken;
   const ensureTaskExecutionSession = __ctx.ensureTaskExecutionSession;
   const execFileSync = __ctx.execFileSync;
   const execWithTimeout = __ctx.execWithTimeout;
@@ -1310,6 +1311,41 @@ app.put("/api/oauth/accounts/:id", (req, res) => {
 // ---------------------------------------------------------------------------
 // OAuth Provider Model Listing
 // ---------------------------------------------------------------------------
+
+// Copilot 모델 목록을 GitHub Copilot API에서 직접 가져옴
+async function fetchCopilotModelsFromAPI(): Promise<string[]> {
+  try {
+    const accounts = getPreferredOAuthAccounts("github");
+    const account = accounts.find((a: any) => Boolean(a.accessToken));
+    if (!account) return [];
+
+    const { token, baseUrl } = await exchangeCopilotToken(account.accessToken);
+    const resp = await fetch(`${baseUrl}/models`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "User-Agent": "climpire",
+        "Editor-Version": "climpire/1.0.0",
+        "Copilot-Integration-Id": "vscode-chat",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) return [];
+
+    const data = await resp.json() as { data?: Array<{ id?: string }> };
+    const models: string[] = [];
+    if (data.data && Array.isArray(data.data)) {
+      for (const m of data.data) {
+        if (m.id) models.push(`github-copilot/${m.id}`);
+      }
+    }
+    return models;
+  } catch {
+    return [];
+  }
+}
+
+// opencode CLI에서 추가 모델 목록 보충
 async function fetchOpenCodeModels(): Promise<Record<string, string[]>> {
   const grouped: Record<string, string[]> = { opencode: [] };
   try {
@@ -1498,10 +1534,37 @@ app.get("/api/oauth/models", async (_req, res) => {
   }
 
   try {
-    const ocModels = await fetchOpenCodeModels();
+    // 1. 프로바이더 API에서 직접 모델 목록 가져오기 (primary)
+    // 2. opencode CLI에서 보충 (supplementary)
+    const [copilotModels, ocModels] = await Promise.all([
+      fetchCopilotModelsFromAPI(),
+      fetchOpenCodeModels(),
+    ]);
 
-    // Merge with fallback antigravity models if empty
     const merged: Record<string, string[]> = { ...ocModels };
+
+    // Copilot: 프로바이더 API 결과 우선, opencode 보충
+    if (copilotModels.length > 0) {
+      const existing = new Set(copilotModels);
+      const supplement = (merged.copilot ?? []).filter((m: string) => !existing.has(m));
+      merged.copilot = [...copilotModels, ...supplement];
+    }
+
+    // Copilot fallback (프로바이더 API + opencode 모두 실패 시)
+    if (!merged.copilot || merged.copilot.length === 0) {
+      merged.copilot = [
+        "github-copilot/claude-sonnet-4.6",
+        "github-copilot/claude-sonnet-4.5",
+        "github-copilot/claude-3.7-sonnet",
+        "github-copilot/claude-3.5-sonnet",
+        "github-copilot/gpt-4o",
+        "github-copilot/gpt-4.1",
+        "github-copilot/o4-mini",
+        "github-copilot/gemini-2.5-pro",
+      ];
+    }
+
+    // Antigravity fallback
     if (!merged.antigravity || merged.antigravity.length === 0) {
       merged.antigravity = [
         "google/antigravity-gemini-3-pro",
@@ -1927,6 +1990,7 @@ function createSkillLearnJob(repo: string, skillId: string, providers: SkillLear
       cwd: process.cwd(),
       env: { ...process.env, FORCE_COLOR: "0" },
       stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32",
     });
 
     child.stdout?.setEncoding("utf8");

@@ -735,7 +735,10 @@ export default function SettingsPanel({
                         {info?.label ?? provider}
                       </div>
                       <div className="text-xs text-slate-500">
-                        {status.version ?? t({ ko: "미설치", en: "Not installed", ja: "未インストール", zh: "未安装" })}
+                        {status.version
+                          ?? (status.installed
+                            ? t({ ko: "버전 확인 불가", en: "Version unknown", ja: "バージョン不明", zh: "版本未知" })
+                            : t({ ko: "미설치", en: "Not installed", ja: "未インストール", zh: "未安装" }))}
                       </div>
                     </div>
                     <div className="flex gap-2">

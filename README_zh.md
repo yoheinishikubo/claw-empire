@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.5-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.6-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.5.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.6.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,19 +53,15 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.5)
+## 最新发布 (v1.0.6)
 
-- 服务器运行流程进一步模块化，便于路由/工作流/运行时装配的后续维护
-- 强化运行时语言一致性：任务执行提示与工作流/状态消息统一遵循所选语言
-- 统一 `/api/inbox` 文档要求：`x-inbox-secret` 为必填头，缺失或不匹配返回 `401`
-- AI 安装指南与快速开始新增 `INBOX_WEBHOOK_SECRET`、`OPENCLAW_CONFIG` 校验步骤
-- 强化 `OPENCLAW_CONFIG` 处理：运行时会规范化外层引号与前导 `~`
-- OpenClaw 配置文档明确建议 `.env` 使用绝对路径（推荐不加引号）
-- 现有克隆仓库在 `git pull v1.0.5` 后，首次执行 `pnpm dev*` / `pnpm start*` 时也会自动执行一次迁移修复
-- AGENTS 编排规则新增 `INBOX_SECRET_DISCOVERY_V2`，可从 shell 环境变量、`.env`、`.env.clone` 及常见项目根目录自动发现密钥
-- 修复代理一对一聊天中长回复被过早截断的问题，并抑制同一句式循环重复输出
-- Skills Library 新增 Learn Squad 流程：在 `Copy` 上方点击 `Learn`，按角色优先级（团队负责人 > 资深 > 初级 > 实习生）自动选出各 CLI 代表，可多选并在后台执行 `npx skills add <owner/repo>` 安装，同时显示实时状态/日志/角色动画
-- 详细说明：[`docs/releases/v1.0.5.md`](docs/releases/v1.0.5.md)
+- OAuth 模型列表改为直接从提供商 API（GitHub Copilot API）获取，不再依赖 `opencode` CLI — 三级解析：提供商 API → opencode 补充 → 静态回退
+- 修复 Windows CLI 工具检测错误（`ENOENT` / `-4058`）：为 `.cmd` 包装器执行在 `execFile`/`spawn` 中添加 `shell: true`
+- 修复 Gemini CLI 版本检测：`--version` 会启动交互模式，现改为从已安装的 `package.json` 读取版本
+- 设置面板在 CLI 工具已检测到但版本未知时显示"版本未知"而非"未安装"
+- 修复 Windows 技能学习错误（`spawn npx ENOENT`）：后台 `npx skills add` 任务在 Windows 上使用 `shell: true`
+- 添加 `pnpm.onlyBuiltDependencies` 以支持非交互式 `pnpm install`（esbuild）
+- 详细说明：[`docs/releases/v1.0.6.md`](docs/releases/v1.0.6.md)
 
 ---
 
@@ -269,7 +265,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.5 inbox 校验","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.6 inbox 校验","skipPlannedMeeting":true}'
 ```
 
 期望结果：

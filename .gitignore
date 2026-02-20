@@ -29,6 +29,8 @@ secrets*.json
 
 # Local reports/worktrees
 docs/reports/
+docs/.bkit-*
+docs/.pdca-*
 .climpire-worktrees/
 .climpire/
 

@@ -1036,6 +1036,8 @@ interface CliToolDef {
   name: string;
   authHint: string;
   checkAuth: () => boolean;
+  versionArgs?: string[];
+  getVersion?: () => string | null;
 }
 
 function jsonHasKey(filePath: string, key: string): boolean {
@@ -1393,6 +1395,27 @@ const CLI_TOOLS: CliToolDef[] = [
   {
     name: "gemini",
     authHint: "Run: gemini auth login",
+    // gemini -v / --version이 프로세스를 종료하지 않아 package.json에서 버전 조회
+    getVersion: () => {
+      try {
+        const whichCmd = process.platform === "win32" ? "where" : "which";
+        const geminiPath = execFileSync(whichCmd, ["gemini"], { encoding: "utf8", timeout: 3000 }).split("\n")[0].trim();
+        if (!geminiPath) return null;
+        const realPath = fs.realpathSync(geminiPath);
+        let dir = path.dirname(realPath);
+        for (let i = 0; i < 10; i++) {
+          const pkgPath = path.join(dir, "node_modules", "@google", "gemini-cli", "package.json");
+          if (fs.existsSync(pkgPath)) {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+            return pkg.version ?? null;
+          }
+          const parent = path.dirname(dir);
+          if (parent === dir) break;
+          dir = parent;
+        }
+      } catch { /* ignore */ }
+      return null;
+    },
     checkAuth: () => {
       // macOS Keychain
       if (readGeminiCredsFromKeychain()) return true;
@@ -1422,7 +1445,10 @@ const CLI_TOOLS: CliToolDef[] = [
 
 function execWithTimeout(cmd: string, args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = execFile(cmd, args, { timeout: timeoutMs }, (err, stdout) => {
+    // Windows에서 npm .cmd wrapper 실행을 위해 shell: true 필요
+    const opts: any = { timeout: timeoutMs };
+    if (process.platform === "win32") opts.shell = true;
+    const child = execFile(cmd, args, opts, (err, stdout) => {
       if (err) return reject(err);
       resolve(stdout.trim());
     });
@@ -1439,10 +1465,14 @@ async function detectCliTool(tool: CliToolDef): Promise<CliToolStatus> {
   }
 
   let version: string | null = null;
-  try {
-    version = await execWithTimeout(tool.name, ["--version"], 3000);
-    if (version.includes("\n")) version = version.split("\n")[0].trim();
-  } catch { /* binary found but --version failed */ }
+  if (tool.getVersion) {
+    version = tool.getVersion();
+  } else {
+    try {
+      version = await execWithTimeout(tool.name, tool.versionArgs ?? ["--version"], 3000);
+      if (version.includes("\n")) version = version.split("\n")[0].trim();
+    } catch { /* binary found but --version failed */ }
+  }
 
   const authenticated = tool.checkAuth();
   return { installed: true, version, authenticated, authHint: tool.authHint };
@@ -1469,6 +1499,7 @@ async function detectAllCli(): Promise<CliStatusResult> {
     getDecryptedOAuthToken,
     getProviderModelConfig,
     refreshGoogleToken,
+    exchangeCopilotToken,
     executeCopilotAgent,
     executeAntigravityAgent,
     launchHttpAgent,
