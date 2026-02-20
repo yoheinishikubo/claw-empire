@@ -1022,6 +1022,7 @@ const workflowMeetingTools = initializeWorkflowMeetingTools(Object.assign(
     getTaskStatusById,
     getReviewRoundMode,
     scheduleNextReviewRound,
+    startTaskExecutionForAgent,
     startProgressTimer,
     stopProgressTimer,
     notifyCeo,
