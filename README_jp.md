@@ -145,7 +145,7 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 </td>
 <td width="50%">
 
-**PPT生成例** — レポート依頼から生成されたPPT出力のサンプル（1セル内に2枚）
+**PPT生成例** — レポート依頼から生成されたPPT出力のサンプル
 
 <p align="center">
   <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
