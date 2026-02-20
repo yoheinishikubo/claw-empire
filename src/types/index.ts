@@ -18,7 +18,7 @@ export interface Department {
 // Agent roles
 export type AgentRole = 'team_leader' | 'senior' | 'junior' | 'intern';
 export type AgentStatus = 'idle' | 'working' | 'break' | 'offline';
-export type CliProvider = 'claude' | 'codex' | 'gemini' | 'opencode' | 'copilot' | 'antigravity';
+export type CliProvider = 'claude' | 'codex' | 'gemini' | 'opencode' | 'copilot' | 'antigravity' | 'api';
 export type MeetingReviewDecision = 'reviewing' | 'approved' | 'hold';
 
 export interface Agent {
@@ -30,6 +30,8 @@ export interface Agent {
   role: AgentRole;
   cli_provider: CliProvider;
   oauth_account_id?: string | null;
+  api_provider_id?: string | null;
+  api_model?: string | null;
   avatar_emoji: string;
   personality: string | null;
   status: AgentStatus;
@@ -200,6 +202,7 @@ export type WSEventType =
   | 'subtask_update'
   | 'cross_dept_delivery'
   | 'ceo_office_call'
+  | 'chat_stream'
   | 'connected';
 
 export interface WSEvent {

@@ -942,6 +942,288 @@ function launchHttpAgent(
   runTask.catch(() => {});
 }
 
+// ---------------------------------------------------------------------------
+// Anthropic SSE stream parser (content_block_delta events)
+// ---------------------------------------------------------------------------
+async function parseAnthropicSSEStream(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  safeWrite: (text: string) => boolean,
+  taskId?: string,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const subtaskAccum = { buf: "" };
+
+  const processLine = (trimmed: string) => {
+    if (!trimmed || trimmed.startsWith(":")) return;
+    if (!trimmed.startsWith("data: ")) return;
+    if (trimmed === "data: [DONE]") return;
+    try {
+      const data = JSON.parse(trimmed.slice(6));
+      // Anthropic uses event types: content_block_delta with delta.text
+      if (data.type === "content_block_delta" && data.delta?.text) {
+        const text = normalizeStreamChunk(data.delta.text);
+        if (!text) return;
+        safeWrite(text);
+        if (taskId) {
+          broadcast("cli_output", { task_id: taskId, stream: "stdout", data: text });
+          parseHttpAgentSubtasks(taskId, text, subtaskAccum);
+        }
+      }
+      // Also handle message_delta for stop reason
+      if (data.type === "message_delta" && data.delta?.stop_reason) {
+        // stream finished
+      }
+    } catch { /* ignore */ }
+  };
+
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    if (signal.aborted) break;
+    buffer += decoder.decode(chunk, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) processLine(line.trim());
+  }
+  if (buffer.trim()) processLine(buffer.trim());
+}
+
+// ---------------------------------------------------------------------------
+// API Provider agent execution (OpenAI, Anthropic, Google, Ollama, etc.)
+// ---------------------------------------------------------------------------
+type ApiProviderType = "openai" | "anthropic" | "google" | "ollama" | "openrouter" | "together" | "groq" | "cerebras" | "custom";
+
+interface ApiProviderRow {
+  id: string;
+  name: string;
+  type: ApiProviderType;
+  base_url: string;
+  api_key_enc: string | null;
+  enabled: number;
+  models_cache: string | null;
+  models_cached_at: number | null;
+}
+
+function getApiProviderById(providerId: string): ApiProviderRow | null {
+  return (db.prepare("SELECT * FROM api_providers WHERE id = ?").get(providerId) as ApiProviderRow) ?? null;
+}
+
+function resolveApiProviderModel(provider: ApiProviderRow, requestedModel: string | null): string {
+  // 사용자가 에이전트에 지정한 모델 우선
+  if (requestedModel) return requestedModel;
+  // 캐시된 모델 중 첫 번째 (연결 테스트를 했다면 존재)
+  if (provider.models_cache) {
+    try {
+      const models = JSON.parse(provider.models_cache) as string[];
+      if (models.length > 0) return models[0];
+    } catch { /* ignore */ }
+  }
+  // 모델이 지정되지 않으면 에러
+  throw new Error(
+    `No model specified for API provider '${provider.name}'. ` +
+    `Please select a model in the agent settings or run a connection test first to cache available models.`
+  );
+}
+
+// base_url 정규화: 후행 경로(/v1/chat/completions, /v1/models, /v1/ 등)를 정리하여 /v1 까지만 남김
+function normalizeApiBaseUrl(rawUrl: string): string {
+  let url = rawUrl.replace(/\/+$/, "");
+  // /v1/chat/completions 같은 전체 경로가 입력된 경우 → /v1 까지만 유지
+  url = url.replace(/\/v1\/(chat\/completions|models|messages)$/i, "/v1");
+  // /v1beta/models/... 같은 Google 경로
+  url = url.replace(/\/v1beta\/models\/.+$/i, "/v1beta");
+  return url;
+}
+
+function buildApiProviderRequest(
+  provider: ApiProviderRow,
+  model: string,
+  prompt: string,
+  projectPath: string,
+): { url: string; headers: Record<string, string>; body: string } {
+  const apiKey = provider.api_key_enc ? decryptSecret(provider.api_key_enc) : "";
+  const baseUrl = normalizeApiBaseUrl(provider.base_url);
+
+  if (provider.type === "anthropic") {
+    // base_url이 /v1 포함 여부에 따라 분기
+    const messagesUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/messages` : `${baseUrl}/v1/messages`;
+    return {
+      url: messagesUrl,
+      headers: {
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 16384,
+        stream: true,
+        messages: [
+          { role: "user", content: prompt },
+        ],
+        system: `You are a coding assistant. Project path: ${projectPath}`,
+      }),
+    };
+  }
+
+  if (provider.type === "google") {
+    // Google AI Studio: base_url은 /v1beta 까지
+    const googleBase = baseUrl.endsWith("/v1beta") ? baseUrl : `${baseUrl}/v1beta`;
+    const url = `${googleBase}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+    return {
+      url,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: `You are a coding assistant. Project path: ${projectPath}` }] },
+      }),
+    };
+  }
+
+  // OpenAI-compatible: openai, ollama, openrouter, together, groq, cerebras, custom
+  const chatUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+  // OpenRouter 추가 헤더
+  if (provider.type === "openrouter") {
+    headers["HTTP-Referer"] = "https://claw-empire.app";
+    headers["X-Title"] = "Claw-Empire";
+  }
+
+  return {
+    url: chatUrl,
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: `You are a coding assistant. Project path: ${projectPath}` },
+        { role: "user", content: prompt },
+      ],
+      stream: true,
+    }),
+  };
+}
+
+async function executeApiProviderAgent(
+  prompt: string,
+  projectPath: string,
+  logStream: fs.WriteStream,
+  signal: AbortSignal,
+  taskId?: string,
+  apiProviderId?: string | null,
+  apiModel?: string | null,
+  safeWriteOverride?: (text: string) => boolean,
+): Promise<void> {
+  const safeWrite = safeWriteOverride ?? createSafeLogStreamOps(logStream).safeWrite;
+
+  if (!apiProviderId) {
+    throw new Error("No API provider configured for this agent. Set api_provider_id first.");
+  }
+
+  const provider = getApiProviderById(apiProviderId);
+  if (!provider) {
+    throw new Error(`API provider not found: ${apiProviderId}`);
+  }
+  if (!provider.enabled) {
+    throw new Error(`API provider '${provider.name}' is disabled.`);
+  }
+
+  const model = resolveApiProviderModel(provider, apiModel ?? null);
+  const header = `[api:${provider.type}] Provider: ${provider.name}, Model: ${model}\n---\n`;
+  safeWrite(header);
+  if (taskId) broadcast("cli_output", { task_id: taskId, stream: "stderr", data: header });
+
+  const req = buildApiProviderRequest(provider, model, prompt, projectPath);
+
+  const resp = await fetch(req.url, {
+    method: "POST",
+    headers: req.headers,
+    body: req.body,
+    signal,
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`API provider '${provider.name}' error (${resp.status}): ${text}`);
+  }
+
+  // 타입별 SSE 파서 선택
+  if (provider.type === "anthropic") {
+    await parseAnthropicSSEStream(resp.body!, signal, safeWrite, taskId);
+  } else if (provider.type === "google") {
+    await parseGeminiSSEStream(resp.body!, signal, safeWrite, taskId);
+  } else {
+    // OpenAI-compatible: openai, ollama, openrouter, together, groq, custom
+    await parseSSEStream(resp.body!, signal, safeWrite, taskId);
+  }
+
+  safeWrite(`\n---\n[api:${provider.type}] Done.\n`);
+  if (taskId) broadcast("cli_output", { task_id: taskId, stream: "stderr", data: `\n---\n[api:${provider.type}] Done.\n` });
+}
+
+function launchApiProviderAgent(
+  taskId: string,
+  apiProviderId: string | null,
+  apiModel: string | null,
+  prompt: string,
+  projectPath: string,
+  logPath: string,
+  controller: AbortController,
+  fakePid: number,
+): void {
+  const logStream = fs.createWriteStream(logPath, { flags: "w" });
+  const { safeWrite, safeEnd } = createSafeLogStreamOps(logStream);
+
+  const promptPath = path.join(logsDir, `${taskId}.prompt.txt`);
+  fs.writeFileSync(promptPath, prompt, "utf8");
+
+  const mockProc = {
+    pid: fakePid,
+    kill: () => { controller.abort(); return true; },
+  } as unknown as ChildProcess;
+  activeProcesses.set(taskId, mockProc);
+
+  const runTask = (async () => {
+    let exitCode = 0;
+    try {
+      await executeApiProviderAgent(
+        prompt,
+        projectPath,
+        logStream,
+        controller.signal,
+        taskId,
+        apiProviderId,
+        apiModel,
+        safeWrite,
+      );
+    } catch (err: any) {
+      exitCode = 1;
+      if (err.name !== "AbortError") {
+        const msg = normalizeStreamChunk(`[api] Error: ${err.message}\n`);
+        safeWrite(msg);
+        broadcast("cli_output", { task_id: taskId, stream: "stderr", data: msg });
+        console.error(`[Claw-Empire] API provider agent error (task ${taskId}): ${err.message}`);
+      } else {
+        const msg = normalizeStreamChunk(`[api] Aborted by user\n`);
+        safeWrite(msg);
+        broadcast("cli_output", { task_id: taskId, stream: "stderr", data: msg });
+      }
+    } finally {
+      await new Promise<void>((resolve) => safeEnd(resolve));
+      try { fs.unlinkSync(promptPath); } catch { /* ignore */ }
+      handleTaskRunComplete(taskId, exitCode);
+    }
+  })();
+
+  runTask.catch(() => {});
+}
+
 function killPidTree(pid: number): void {
   if (pid <= 0) return;
 
@@ -1502,7 +1784,9 @@ async function detectAllCli(): Promise<CliStatusResult> {
     exchangeCopilotToken,
     executeCopilotAgent,
     executeAntigravityAgent,
+    executeApiProviderAgent,
     launchHttpAgent,
+    launchApiProviderAgent,
     killPidTree,
     isPidAlive,
     interruptPidTree,

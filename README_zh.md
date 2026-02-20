@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.6-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.7-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.6.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.7.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,15 +53,14 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.6)
+## 最新发布 (v1.0.7)
 
-- OAuth 模型列表改为直接从提供商 API（GitHub Copilot API）获取，不再依赖 `opencode` CLI — 三级解析：提供商 API → opencode 补充 → 静态回退
-- 修复 Windows CLI 工具检测错误（`ENOENT` / `-4058`）：为 `.cmd` 包装器执行在 `execFile`/`spawn` 中添加 `shell: true`
-- 修复 Gemini CLI 版本检测：`--version` 会启动交互模式，现改为从已安装的 `package.json` 读取版本
-- 设置面板在 CLI 工具已检测到但版本未知时显示"版本未知"而非"未安装"
-- 修复 Windows 技能学习错误（`spawn npx ENOENT`）：后台 `npx skills add` 任务在 Windows 上使用 `shell: true`
-- 添加 `pnpm.onlyBuiltDependencies` 以支持非交互式 `pnpm install`（esbuild）
-- 详细说明：[`docs/releases/v1.0.6.md`](docs/releases/v1.0.6.md)
+- **外部 API 提供商系统** — 设置面板新增 API 选项卡，可将代理连接到外部 LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras 及自定义端点）。支持完整的增删改查、连接测试和模型自动发现
+- **直接聊天流式传输** — API/OAuth 代理的回复现在通过 `chat_stream` WebSocket 事件实时流式传输，ChatPanel 中以翡翠色边框动画显示
+- **API 提供商任务执行** — 使用外部 API 提供商的代理现在可以通过与 CLI/OAuth 代理相同的编排管道执行任务（spawn 和 run）
+- **任务执行崩溃修复** — 修复 `orchestration.ts` 中 `const` 变量 mutation 导致的 `TypeError`，解决了 OAuth/API 任务分发时的 500 错误
+- **模型缓存层** — CLI/OAuth 模型列表现在使用双层缓存（内存 + SQLite `settings` 表），减少不必要的远程请求
+- 详细说明：[`docs/releases/v1.0.7.md`](docs/releases/v1.0.7.md)
 
 ---
 
@@ -149,6 +148,7 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 | **看板任务面板** | 完整任务生命周期 — 收件箱、已计划、协作中、进行中、审阅中、已完成 — 支持拖拽操作 |
 | **CEO 聊天与指令** | 与团队负责人直接沟通；`$` 指令支持会议选择与项目路径/上下文路由（`project_path`、`project_context`） |
 | **多提供商支持** | Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity — 统一仪表板管理 |
+| **外部 API 提供商** | 通过设置 > API 选项卡将代理连接到外部 LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、自定义端点） |
 | **OAuth 集成** | GitHub 与 Google OAuth，AES 加密令牌本地存储于 SQLite |
 | **实时 WebSocket** | 实时状态更新、活动动态及代理状态同步 |
 | **代理排名与经验值** | 代理完成任务可获得经验值，排行榜追踪顶尖表现者 |
@@ -265,7 +265,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.6 inbox 校验","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.7 inbox 校验","skipPlannedMeeting":true}'
 ```
 
 期望结果：
@@ -529,6 +529,8 @@ Claw-Empire 支持多款 CLI AI 编程助手，请至少安装其中一款：
 | [OpenCode](https://github.com/opencode-ai/opencode) | `npm i -g opencode` | 按提供商要求配置 |
 
 在应用内的 **设置 > CLI 工具** 面板中配置提供商和模型。
+
+此外，还可以无需安装 CLI 工具，直接通过 **设置 > API** 选项卡将代理连接到外部 LLM API。API 密钥以加密形式（AES-256-GCM）存储在本地 SQLite 数据库中，不会保存在 `.env` 或源代码中。
 
 ---
 

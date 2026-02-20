@@ -118,6 +118,13 @@ export default function App() {
   const [meetingPresence, setMeetingPresence] = useState<MeetingPresence[]>([]);
   const [oauthResult, setOauthResult] = useState<OAuthCallbackResult | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState<{
+    message_id: string;
+    agent_id: string;
+    agent_name: string;
+    agent_avatar: string;
+    content: string;
+  } | null>(null);
   const viewRef = useRef<View>("office");
   viewRef.current = view;
 
@@ -388,6 +395,52 @@ export default function App() {
           }
         } catch {
           // Not JSON or not parseable - ignore
+        }
+      }),
+      on("chat_stream", (payload: unknown) => {
+        const p = payload as {
+          phase: "start" | "delta" | "end";
+          message_id: string;
+          agent_id: string;
+          agent_name?: string;
+          agent_avatar?: string;
+          text?: string;
+          content?: string;
+          created_at?: number;
+        };
+        if (p.phase === "start") {
+          setStreamingMessage({
+            message_id: p.message_id,
+            agent_id: p.agent_id,
+            agent_name: p.agent_name ?? "",
+            agent_avatar: p.agent_avatar ?? "",
+            content: "",
+          });
+        } else if (p.phase === "delta") {
+          setStreamingMessage((prev) => {
+            if (!prev || prev.message_id !== p.message_id) return prev;
+            return { ...prev, content: prev.content + (p.text ?? "") };
+          });
+        } else if (p.phase === "end") {
+          setStreamingMessage(null);
+          // end 이벤트에는 DB에 저장된 최종 메시지가 new_message로 별도 전달됨
+          // 만약 new_message가 안 오는 경우를 대비해 직접 추가
+          if (p.content && p.message_id) {
+            const finalMsg: Message = {
+              id: p.message_id,
+              sender_type: "agent",
+              sender_id: p.agent_id,
+              receiver_type: "agent",
+              receiver_id: null,
+              content: p.content,
+              message_type: "chat",
+              task_id: null,
+              created_at: p.created_at ?? Date.now(),
+            };
+            setMessages((prev) =>
+              prev.some((m) => m.id === finalMsg.id) ? prev : [...prev, finalMsg]
+            );
+          }
         }
       }),
     ];
@@ -831,6 +884,7 @@ export default function App() {
             selectedAgent={chatAgent}
             messages={messages}
             agents={agents}
+            streamingMessage={streamingMessage}
             onSendMessage={handleSendMessage}
             onSendAnnouncement={handleSendAnnouncement}
             onSendDirective={handleSendDirective}

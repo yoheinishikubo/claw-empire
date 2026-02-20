@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.6-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.7-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.0.6.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.0.7.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,15 +53,14 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 
 ---
 
-## Latest Release (v1.0.6)
+## Latest Release (v1.0.7)
 
-- OAuth model list now fetches directly from provider API (GitHub Copilot API) instead of depending on `opencode` CLI — 3-tier resolution: provider API → opencode supplement → static fallback
-- Fixed Windows CLI tool detection (`ENOENT` / `-4058`): added `shell: true` for `.cmd` wrapper execution via `execFile`/`spawn`
-- Fixed Gemini CLI version detection: `--version` starts interactive mode, now reads version from installed `package.json`
-- Settings panel shows "Version unknown" instead of "Not installed" when a CLI tool is detected but version cannot be determined
-- Fixed Windows skill learning (`spawn npx ENOENT`): background `npx skills add` jobs now use `shell: true` on Windows
-- Added `pnpm.onlyBuiltDependencies` for non-interactive `pnpm install` (esbuild)
-- Full notes: [`docs/releases/v1.0.6.md`](docs/releases/v1.0.6.md)
+- **External API Provider System** — Settings panel now includes an API tab to connect agents to external LLM APIs (OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, and custom endpoints). Full CRUD, connection test, and model auto-discovery
+- **Direct Chat Streaming** — API and OAuth agent responses are now streamed in real-time via `chat_stream` WebSocket event with emerald-border animation in ChatPanel
+- **API Provider Task Execution** — Agents using external API providers can now execute tasks (spawn and run) through the same orchestration pipeline as CLI and OAuth agents
+- **Task Execution Crash Fix** — Fixed `TypeError: Assignment to constant variable` in `orchestration.ts` that caused 500 errors when dispatching OAuth/API tasks
+- **Model Caching Layer** — CLI and OAuth model lists now use 2-tier caching (memory + SQLite `settings` table) to reduce redundant remote fetches
+- Full notes: [`docs/releases/v1.0.7.md`](docs/releases/v1.0.7.md)
 
 ---
 
@@ -149,6 +148,7 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 | **Kanban Task Board** | Full task lifecycle — Inbox, Planned, Collaborating, In Progress, Review, Done — with drag-and-drop |
 | **CEO Chat & Directives** | Direct communication with team leaders; `$` directives support meeting choice plus project path/context routing (`project_path`, `project_context`) |
 | **Multi-Provider Support** | Claude Code, Codex CLI, Gemini CLI, OpenCode, Antigravity — all from one dashboard |
+| **External API Providers** | Connect agents to external LLM APIs (OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, custom) via Settings > API tab |
 | **OAuth Integration** | GitHub & Google OAuth with AES-encrypted token storage in local SQLite |
 | **Real-time WebSocket** | Live status updates, activity feed, and agent state synchronization |
 | **Agent Ranking & XP** | Agents earn XP for completed tasks; ranking board tracks top performers |
@@ -265,7 +265,7 @@ If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.6 inbox smoke test","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.7 inbox smoke test","skipPlannedMeeting":true}'
 ```
 
 Expected:
@@ -529,6 +529,8 @@ Claw-Empire works with multiple CLI-based AI coding assistants. Install at least
 | [OpenCode](https://github.com/opencode-ai/opencode) | `npm i -g opencode` | Provider-specific |
 
 Configure providers and models in the **Settings > CLI Tools** panel within the app.
+
+Alternatively, connect agents to external LLM APIs (no CLI installation required) via the **Settings > API** tab. API keys are stored encrypted (AES-256-GCM) in the local SQLite database — not in `.env` or source code.
 
 ---
 

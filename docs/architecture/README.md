@@ -227,6 +227,21 @@ flowchart TB
 | POST | `/api/tasks/:id/subtasks` |
 | GET | `/api/tasks/:id/terminal` |
 | GET | `/api/worktrees` |
+| GET | `/api/api-providers` |
+| POST | `/api/api-providers` |
+| GET | `/api/api-providers/presets` |
+| PUT | `/api/api-providers/:id` |
+| DELETE | `/api/api-providers/:id` |
+| POST | `/api/api-providers/:id/test` |
+| GET | `/api/api-providers/:id/models` |
+| GET | `/api/cli-models` |
+| POST | `/api/oauth/refresh` |
+| POST | `/api/oauth/accounts/activate` |
+| PUT | `/api/oauth/accounts/:id` |
+| GET | `/api/skills` |
+| GET | `/api/skills/detail` |
+| POST | `/api/skills/learn` |
+| GET | `/api/skills/learn/:jobId` |
 | GET | `/health` |
 | GET | `/healthz` |
 
@@ -237,6 +252,12 @@ flowchart TB
 | `/api/agents` |
 | `/api/agents/:param` |
 | `/api/announcements` |
+| `/api/api-providers` |
+| `/api/api-providers/:param` |
+| `/api/api-providers/:param/test` |
+| `/api/api-providers/:param/models` |
+| `/api/api-providers/presets` |
+| `/api/cli-models` |
 | `/api/cli-status` |
 | `/api/cli-usage` |
 | `/api/cli-usage/refresh` |
@@ -247,9 +268,16 @@ flowchart TB
 | `/api/oauth/github-copilot/device-poll` |
 | `/api/oauth/github-copilot/device-start` |
 | `/api/oauth/models` |
+| `/api/oauth/refresh` |
+| `/api/oauth/accounts/activate` |
+| `/api/oauth/accounts/:param` |
 | `/api/oauth/start` |
 | `/api/oauth/status` |
 | `/api/settings` |
+| `/api/skills` |
+| `/api/skills/detail` |
+| `/api/skills/learn` |
+| `/api/skills/learn/:param` |
 | `/api/stats` |
 | `/api/subtasks` |
 | `/api/subtasks/:param` |
@@ -272,6 +300,7 @@ flowchart TB
 | --- | --- | --- |
 | agent_status | yes | yes |
 | announcement | yes | yes |
+| chat_stream | yes | yes |
 | cli_output | yes | yes |
 | cli_usage_update | yes |  |
 | cross_dept_delivery | yes | yes |
@@ -286,6 +315,7 @@ flowchart TB
 | Table |
 | --- |
 | `agents` |
+| `api_providers` |
 | `cli_usage_cache` |
 | `departments` |
 | `messages` |
@@ -356,3 +386,5 @@ flowchart TD
 | DevSecOps | Pipe | senior | codex |
 | Operations | Atlas | team_leader | claude |
 | Operations | Turbo | senior | codex |
+
+> **CLI Provider types**: `claude`, `codex`, `gemini`, `copilot` (GitHub Copilot OAuth), `antigravity` (Google Antigravity OAuth), `api` (external API provider)

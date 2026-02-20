@@ -71,6 +71,7 @@ export function registerRoutesPartA(ctx: any): any {
   const interruptPidTree = __ctx.interruptPidTree;
   const isTaskWorkflowInterrupted = __ctx.isTaskWorkflowInterrupted;
   const killPidTree = __ctx.killPidTree;
+  const launchApiProviderAgent = __ctx.launchApiProviderAgent;
   const launchHttpAgent = __ctx.launchHttpAgent;
   const logsDir = __ctx.logsDir;
   const meetingPhaseByAgent = __ctx.meetingPhaseByAgent;
@@ -372,6 +373,11 @@ app.patch("/api/agents/:id", (req, res) => {
     // Auto-clear pinned OAuth account when switching to non-OAuth provider.
     body.oauth_account_id = null;
   }
+  if (nextProvider !== "api" && !("api_provider_id" in body) && ("cli_provider" in body)) {
+    // Auto-clear API provider fields when switching to non-API provider.
+    body.api_provider_id = null;
+    body.api_model = null;
+  }
 
   if ("oauth_account_id" in body) {
     if (body.oauth_account_id === "" || typeof body.oauth_account_id === "undefined") {
@@ -398,7 +404,8 @@ app.patch("/api/agents/:id", (req, res) => {
 
   const allowedFields = [
     "name", "name_ko", "department_id", "role", "cli_provider",
-    "oauth_account_id", "avatar_emoji", "personality", "status", "current_task_id",
+    "oauth_account_id", "api_provider_id", "api_model",
+    "avatar_emoji", "personality", "status", "current_task_id",
   ];
 
   const updates: string[] = [];
@@ -430,13 +437,15 @@ app.post("/api/agents/:id/spawn", (req, res) => {
     name: string;
     cli_provider: string | null;
     oauth_account_id: string | null;
+    api_provider_id: string | null;
+    api_model: string | null;
     current_task_id: string | null;
     status: string;
   } | undefined;
   if (!agent) return res.status(404).json({ error: "not_found" });
 
   const provider = agent.cli_provider || "claude";
-  if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity"].includes(provider)) {
+  if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(provider)) {
     return res.status(400).json({ error: "unsupported_provider", provider });
   }
 
@@ -480,6 +489,20 @@ app.post("/api/agents/:id/spawn", (req, res) => {
   const spawnModelConfig = getProviderModelConfig();
   const spawnModel = spawnModelConfig[provider]?.model || undefined;
   const spawnReasoningLevel = spawnModelConfig[provider]?.reasoningLevel || undefined;
+
+  if (provider === "api") {
+    const controller = new AbortController();
+    const fakePid = -(++httpAgentCounter);
+    db.prepare("UPDATE agents SET status = 'working' WHERE id = ?").run(id);
+    db.prepare("UPDATE tasks SET status = 'in_progress', started_at = ?, updated_at = ? WHERE id = ?")
+      .run(nowMs(), nowMs(), taskId);
+    const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
+    broadcast("agent_status", updatedAgent);
+    broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+    notifyTaskStatus(taskId, task.title, "in_progress", taskLang);
+    launchApiProviderAgent(taskId, agent.api_provider_id ?? null, agent.api_model ?? null, prompt, projectPath, logPath, controller, fakePid);
+    return res.json({ ok: true, pid: fakePid, logPath, cwd: projectPath });
+  }
 
   if (provider === "copilot" || provider === "antigravity") {
     const controller = new AbortController();
@@ -1014,6 +1037,8 @@ app.post("/api/tasks/:id/run", (req, res) => {
     role: string;
     cli_provider: string | null;
     oauth_account_id: string | null;
+    api_provider_id: string | null;
+    api_model: string | null;
     personality: string | null;
     department_id: string | null;
     department_name: string | null;
@@ -1030,7 +1055,7 @@ app.post("/api/tasks/:id/run", (req, res) => {
   }
 
   const provider = agent.cli_provider || "claude";
-  if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity"].includes(provider)) {
+  if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(provider)) {
     return res.status(400).json({ error: "unsupported_provider", provider });
   }
   const executionSession = ensureTaskExecutionSession(id, agentId, provider);
@@ -1162,6 +1187,46 @@ Whenever you complete a subtask, report it in this format:
   });
 
   appendTaskLog(id, "system", `RUN start (agent=${agent.name}, provider=${provider})`);
+
+  // API provider agent
+  if (provider === "api") {
+    const controller = new AbortController();
+    const fakePid = -(++httpAgentCounter);
+
+    const t = nowMs();
+    db.prepare(
+      "UPDATE tasks SET status = 'in_progress', assigned_agent_id = ?, started_at = ?, updated_at = ? WHERE id = ?"
+    ).run(agentId, t, t, id);
+    db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(id, agentId);
+
+    const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
+    const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
+    broadcast("task_update", updatedTask);
+    broadcast("agent_status", updatedAgent);
+    notifyTaskStatus(id, task.title, "in_progress", taskLang);
+
+    const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
+    const worktreeNote = worktreePath
+      ? pickL(l(
+        [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+        [` (isolated branch: climpire/${id.slice(0, 8)})`],
+        [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+        [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+      ), taskLang)
+      : "";
+    notifyCeo(pickL(l(
+      [`${assigneeName}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`],
+      [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
+      [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
+      [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+    ), taskLang), id);
+
+    const taskRow = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(id) as { department_id: string | null } | undefined;
+    startProgressTimer(id, task.title, taskRow?.department_id ?? null);
+
+    launchApiProviderAgent(id, agent.api_provider_id ?? null, agent.api_model ?? null, prompt, agentCwd, logPath, controller, fakePid);
+    return res.json({ ok: true, pid: fakePid, logPath, cwd: agentCwd, worktree: !!worktreePath });
+  }
 
   // HTTP agent for copilot/antigravity
   if (provider === "copilot" || provider === "antigravity") {

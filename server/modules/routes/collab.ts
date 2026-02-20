@@ -26,6 +26,9 @@ export function registerRoutesPartB(ctx: any): any {
   const broadcast = __ctx.broadcast;
   const buildCliFailureMessage = __ctx.buildCliFailureMessage;
   const buildDirectReplyPrompt = __ctx.buildDirectReplyPrompt;
+  const executeApiProviderAgent = __ctx.executeApiProviderAgent;
+  const executeCopilotAgent = __ctx.executeCopilotAgent;
+  const executeAntigravityAgent = __ctx.executeAntigravityAgent;
   const buildTaskExecutionPrompt = __ctx.buildTaskExecutionPrompt;
   const cachedCliStatus = __ctx.cachedCliStatus;
   const cachedModels = __ctx.cachedModels;
@@ -151,6 +154,8 @@ interface AgentRow {
   avatar_emoji: string;
   cli_provider: string | null;
   oauth_account_id: string | null;
+  api_provider_id: string | null;
+  api_model: string | null;
 }
 
 const ROLE_PRIORITY: Record<string, number> = {
@@ -1909,6 +1914,7 @@ function scheduleAgentReply(agentId: string, ceoMessage: string, messageType: st
   }
 
   const useTaskFlow = shouldTreatDirectChatAsTask(ceoMessage, messageType);
+  console.log(`[scheduleAgentReply] useTaskFlow=${useTaskFlow}, messageType=${messageType}, msg="${ceoMessage.slice(0, 50)}"`);
   if (useTaskFlow) {
     if (agent.role === "team_leader" && agent.department_id) {
       handleTaskDelegation(agent, ceoMessage, "");
@@ -1934,6 +1940,175 @@ function scheduleAgentReply(agentId: string, ceoMessage: string, messageType: st
         || (activeTask ? resolveProjectPath(activeTask) : process.cwd());
 
       const built = buildDirectReplyPrompt(agent, ceoMessage, messageType);
+
+      console.log(`[scheduleAgentReply] agent=${agent.name}, cli_provider=${agent.cli_provider}, api_provider_id=${agent.api_provider_id}, api_model=${agent.api_model}`);
+
+      // API provider: 스트리밍 채팅 메시지
+      if (agent.cli_provider === "api" && agent.api_provider_id) {
+        const msgId = randomUUID();
+        const startedAt = nowMs();
+        // placeholder 메시지 (빈 내용으로 시작)
+        broadcast("chat_stream", {
+          phase: "start",
+          message_id: msgId,
+          agent_id: agent.id,
+          agent_name: agent.name,
+          agent_avatar: agent.avatar_emoji ?? "🤖",
+        });
+
+        let fullText = "";
+        let apiError = "";
+        try {
+          const logStream = fs.createWriteStream(
+            path.join(logsDir, `direct-${agent.id}-${Date.now()}.log`),
+            { flags: "w" },
+          );
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 180_000);
+          try {
+            await executeApiProviderAgent(
+              built.prompt,
+              projectPath,
+              logStream,
+              controller.signal,
+              undefined, // taskId
+              agent.api_provider_id,
+              agent.api_model ?? null,
+              (text: string) => {
+                fullText += text;
+                // 로그파일에도 기록
+                logStream.write(text);
+                broadcast("chat_stream", {
+                  phase: "delta",
+                  message_id: msgId,
+                  agent_id: agent.id,
+                  text,
+                });
+                return true;
+              },
+            );
+          } finally {
+            clearTimeout(timeout);
+            logStream.end();
+          }
+        } catch (err: any) {
+          apiError = err?.message || String(err);
+          console.error(`[scheduleAgentReply:API] Error for ${agent.name}:`, apiError);
+        }
+
+        // fullText에서 header/footer 메타데이터 제거 (실제 콘텐츠만 추출)
+        const contentOnly = fullText
+          .replace(/^\[api:[^\]]*\][^\n]*\n---\n/g, "")
+          .replace(/\n---\n\[api:[^\]]*\]\s*Done\.\s*$/g, "")
+          .trim();
+
+        let finalReply: string;
+        if (contentOnly) {
+          // API가 실제 콘텐츠를 반환한 경우 — chooseSafeReply의 언어 필터링 적용하지 않음
+          finalReply = contentOnly.length > 12000 ? contentOnly.slice(0, 12000) : contentOnly;
+        } else if (apiError) {
+          finalReply = `[API Error] ${apiError}`;
+        } else {
+          finalReply = chooseSafeReply({ text: "" }, built.lang, "direct", agent);
+        }
+        const endedAt = nowMs();
+        db.prepare(`
+          INSERT INTO messages (id, sender_type, sender_id, receiver_type, receiver_id, content, message_type, task_id, created_at)
+          VALUES (?, 'agent', ?, 'agent', NULL, ?, 'chat', NULL, ?)
+        `).run(msgId, agent.id, finalReply, endedAt);
+        broadcast("chat_stream", {
+          phase: "end",
+          message_id: msgId,
+          agent_id: agent.id,
+          content: finalReply,
+          created_at: endedAt,
+        });
+        return;
+      }
+
+      // OAuth provider (copilot / antigravity): 스트리밍 채팅 메시지
+      if (agent.cli_provider === "copilot" || agent.cli_provider === "antigravity") {
+        const msgId = randomUUID();
+        broadcast("chat_stream", {
+          phase: "start",
+          message_id: msgId,
+          agent_id: agent.id,
+          agent_name: agent.name,
+          agent_avatar: agent.avatar_emoji ?? "🤖",
+        });
+
+        let fullText = "";
+        let oauthError = "";
+        try {
+          const logStream = fs.createWriteStream(
+            path.join(logsDir, `direct-${agent.id}-${Date.now()}.log`),
+            { flags: "w" },
+          );
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 180_000);
+          const streamCb = (text: string) => {
+            fullText += text;
+            logStream.write(text);
+            broadcast("chat_stream", {
+              phase: "delta",
+              message_id: msgId,
+              agent_id: agent.id,
+              text,
+            });
+            return true;
+          };
+          try {
+            if (agent.cli_provider === "copilot") {
+              await executeCopilotAgent(
+                built.prompt, projectPath, logStream, controller.signal,
+                undefined, agent.oauth_account_id ?? null, streamCb,
+              );
+            } else {
+              await executeAntigravityAgent(
+                built.prompt, logStream, controller.signal,
+                undefined, agent.oauth_account_id ?? null, streamCb,
+              );
+            }
+          } finally {
+            clearTimeout(timeout);
+            logStream.end();
+          }
+        } catch (err: any) {
+          oauthError = err?.message || String(err);
+          console.error(`[scheduleAgentReply:OAuth] Error for ${agent.name}:`, oauthError);
+        }
+
+        // header/footer 메타데이터 제거
+        const contentOnly = fullText
+          .replace(/^\[(copilot|antigravity)\][^\n]*\n/gm, "")
+          .replace(/---+/g, "")
+          .replace(/^\[oauth[^\]]*\][^\n]*/gm, "")
+          .trim();
+
+        let finalReply: string;
+        if (contentOnly) {
+          finalReply = contentOnly.length > 12000 ? contentOnly.slice(0, 12000) : contentOnly;
+        } else if (oauthError) {
+          finalReply = `[OAuth Error] ${oauthError}`;
+        } else {
+          finalReply = chooseSafeReply({ text: "" }, built.lang, "direct", agent);
+        }
+
+        const endedAt = nowMs();
+        db.prepare(`
+          INSERT INTO messages (id, sender_type, sender_id, receiver_type, receiver_id, content, message_type, task_id, created_at)
+          VALUES (?, 'agent', ?, 'agent', NULL, ?, 'chat', NULL, ?)
+        `).run(msgId, agent.id, finalReply, endedAt);
+        broadcast("chat_stream", {
+          phase: "end",
+          message_id: msgId,
+          agent_id: agent.id,
+          content: finalReply,
+          created_at: endedAt,
+        });
+        return;
+      }
+
       const run = await runAgentOneShot(agent, built.prompt, { projectPath, rawOutput: true });
       const reply = chooseSafeReply(run, built.lang, "direct", agent);
       sendAgentMessage(agent, reply);

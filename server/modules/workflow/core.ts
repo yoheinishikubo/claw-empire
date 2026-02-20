@@ -110,6 +110,7 @@ export function initializeWorkflowPartA(ctx: any): any {
   const resolveAntigravityModel = __ctx.resolveAntigravityModel;
   const executeCopilotAgent = (...args: any[]) => __ctx.executeCopilotAgent(...args);
   const executeAntigravityAgent = (...args: any[]) => __ctx.executeAntigravityAgent(...args);
+  const executeApiProviderAgent = (...args: any[]) => __ctx.executeApiProviderAgent(...args);
   const jsonHasKey = __ctx.jsonHasKey;
   const fileExistsNonEmpty = __ctx.fileExistsNonEmpty;
   const readClaudeToken = __ctx.readClaudeToken;
@@ -1412,7 +1413,7 @@ async function runAgentOneShot(
 
   const onChunk = (chunk: Buffer | string, stream: "stdout" | "stderr") => {
     const text = normalizeStreamChunk(chunk, {
-      dropCliNoise: provider !== "copilot" && provider !== "antigravity",
+      dropCliNoise: provider !== "copilot" && provider !== "antigravity" && provider !== "api",
     });
     if (!text) return;
     rawOutput += text;
@@ -1423,9 +1424,37 @@ async function runAgentOneShot(
   };
 
   try {
-    if (provider === "copilot" || provider === "antigravity") {
+    if (provider === "api") {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        await executeApiProviderAgent(
+          prompt,
+          projectPath,
+          logStream,
+          controller.signal,
+          streamTaskId ?? undefined,
+          (agent as any).api_provider_id ?? null,
+          (agent as any).api_model ?? null,
+          (text: string) => {
+            rawOutput += text;
+            return safeWrite(text);
+          },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+      // logStream fallback
+      if (!rawOutput.trim() && fs.existsSync(logPath)) {
+        rawOutput = fs.readFileSync(logPath, "utf8");
+      }
+    } else if (provider === "copilot" || provider === "antigravity") {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const oauthWrite = (text: string) => {
+        rawOutput += text;
+        return safeWrite(text);
+      };
       try {
         if (provider === "copilot") {
           await executeCopilotAgent(
@@ -1435,7 +1464,7 @@ async function runAgentOneShot(
             controller.signal,
             streamTaskId ?? undefined,
             agent.oauth_account_id ?? null,
-            safeWrite,
+            oauthWrite,
           );
         } else {
           await executeAntigravityAgent(
@@ -1444,7 +1473,7 @@ async function runAgentOneShot(
             controller.signal,
             streamTaskId ?? undefined,
             agent.oauth_account_id ?? null,
-            safeWrite,
+            oauthWrite,
           );
         }
       } finally {

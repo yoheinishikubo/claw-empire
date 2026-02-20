@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { CompanySettings, CliStatusMap, CliProvider, CliModelInfo } from "../types";
 import * as api from "../api";
-import type { OAuthStatus, OAuthConnectProvider, DeviceCodeStart, GatewayTarget } from "../api";
+import type { OAuthStatus, OAuthConnectProvider, DeviceCodeStart, GatewayTarget, ApiProvider, ApiProviderType } from "../api";
 import type { OAuthCallbackResult } from "../App";
+import AgentAvatar, { buildSpriteMap } from "./AgentAvatar";
 
 interface SettingsPanelProps {
   settings: CompanySettings;
@@ -160,7 +161,7 @@ export default function SettingsPanel({
   const [form, setForm] = useState<LocalSettings>(settings as LocalSettings);
   const { t, localeTag } = useI18n(form.language);
   const [saved, setSaved] = useState(false);
-  const [tab, setTab] = useState<"general" | "cli" | "oauth" | "gateway">(
+  const [tab, setTab] = useState<"general" | "cli" | "oauth" | "api" | "gateway">(
     oauthResult ? "oauth" : "general"
   );
   const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
@@ -184,6 +185,23 @@ export default function SettingsPanel({
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // API Providers state
+  const [apiProviders, setApiProviders] = useState<ApiProvider[]>([]);
+  const [apiProvidersLoading, setApiProvidersLoading] = useState(false);
+  const [apiAddMode, setApiAddMode] = useState(false);
+  const [apiEditingId, setApiEditingId] = useState<string | null>(null);
+  const [apiForm, setApiForm] = useState<{ name: string; type: ApiProviderType; base_url: string; api_key: string }>({
+    name: "", type: "openai", base_url: "https://api.openai.com/v1", api_key: "",
+  });
+  const [apiSaving, setApiSaving] = useState(false);
+  const [apiTesting, setApiTesting] = useState<string | null>(null);
+  const [apiTestResult, setApiTestResult] = useState<Record<string, { ok: boolean; msg: string }>>({});
+  const [apiModelsExpanded, setApiModelsExpanded] = useState<Record<string, boolean>>({});
+  const [apiAssignTarget, setApiAssignTarget] = useState<{ providerId: string; model: string } | null>(null);
+  const [apiAssignAgents, setApiAssignAgents] = useState<import("../types").Agent[]>([]);
+  const [apiAssignDepts, setApiAssignDepts] = useState<import("../types").Department[]>([]);
+  const [apiAssigning, setApiAssigning] = useState(false);
+
   // Gateway channel messaging state
   const [gwTargets, setGwTargets] = useState<GatewayTarget[]>([]);
   const [gwLoading, setGwLoading] = useState(false);
@@ -200,6 +218,149 @@ export default function SettingsPanel({
     },
     [onSave]
   );
+
+  const API_TYPE_PRESETS: Record<ApiProviderType, { label: string; base_url: string }> = {
+    openai:     { label: "OpenAI",     base_url: "https://api.openai.com/v1" },
+    anthropic:  { label: "Anthropic",  base_url: "https://api.anthropic.com/v1" },
+    google:     { label: "Google AI",  base_url: "https://generativelanguage.googleapis.com/v1beta" },
+    ollama:     { label: "Ollama",     base_url: "http://localhost:11434/v1" },
+    openrouter: { label: "OpenRouter", base_url: "https://openrouter.ai/api/v1" },
+    together:   { label: "Together",   base_url: "https://api.together.xyz/v1" },
+    groq:       { label: "Groq",       base_url: "https://api.groq.com/openai/v1" },
+    cerebras:   { label: "Cerebras",   base_url: "https://api.cerebras.ai/v1" },
+    custom:     { label: "Custom",     base_url: "" },
+  };
+
+  const apiLoadedRef = useRef(false);
+
+  const loadApiProviders = useCallback(async () => {
+    setApiProvidersLoading(true);
+    try {
+      const providers = await api.getApiProviders();
+      setApiProviders(providers);
+      apiLoadedRef.current = true;
+    } catch (e) {
+      console.error("Failed to load API providers:", e);
+    } finally {
+      setApiProvidersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "api" && !apiLoadedRef.current && !apiProvidersLoading) {
+      loadApiProviders();
+    }
+  }, [tab, apiProvidersLoading, loadApiProviders]);
+
+  async function handleApiProviderSave() {
+    if (!apiForm.name.trim() || !apiForm.base_url.trim()) return;
+    setApiSaving(true);
+    try {
+      if (apiEditingId) {
+        await api.updateApiProvider(apiEditingId, {
+          name: apiForm.name,
+          type: apiForm.type,
+          base_url: apiForm.base_url,
+          ...(apiForm.api_key ? { api_key: apiForm.api_key } : {}),
+        });
+      } else {
+        await api.createApiProvider({
+          name: apiForm.name,
+          type: apiForm.type,
+          base_url: apiForm.base_url,
+          api_key: apiForm.api_key || undefined,
+        });
+      }
+      setApiAddMode(false);
+      setApiEditingId(null);
+      setApiForm({ name: "", type: "openai", base_url: "https://api.openai.com/v1", api_key: "" });
+      await loadApiProviders();
+    } catch (e) {
+      console.error("API provider save failed:", e);
+    } finally {
+      setApiSaving(false);
+    }
+  }
+
+  async function handleApiProviderDelete(id: string) {
+    try {
+      await api.deleteApiProvider(id);
+      await loadApiProviders();
+    } catch (e) {
+      console.error("API provider delete failed:", e);
+    }
+  }
+
+  async function handleApiProviderTest(id: string) {
+    setApiTesting(id);
+    setApiTestResult((prev) => ({ ...prev, [id]: { ok: false, msg: "" } }));
+    try {
+      const result = await api.testApiProvider(id);
+      setApiTestResult((prev) => ({
+        ...prev,
+        [id]: result.ok
+          ? { ok: true, msg: `${result.model_count} ${t({ ko: "개 모델 발견", en: "models found", ja: "モデル検出", zh: "个模型" })}` }
+          : { ok: false, msg: result.error?.slice(0, 200) || `HTTP ${result.status}` },
+      }));
+      if (result.ok) await loadApiProviders();
+    } catch (e: any) {
+      setApiTestResult((prev) => ({ ...prev, [id]: { ok: false, msg: e.message || String(e) } }));
+    } finally {
+      setApiTesting(null);
+    }
+  }
+
+  async function handleApiProviderToggle(id: string, enabled: boolean) {
+    try {
+      await api.updateApiProvider(id, { enabled: !enabled });
+      await loadApiProviders();
+    } catch (e) {
+      console.error("API provider toggle failed:", e);
+    }
+  }
+
+  function handleApiEditStart(provider: ApiProvider) {
+    setApiEditingId(provider.id);
+    setApiAddMode(true);
+    setApiForm({
+      name: provider.name,
+      type: provider.type,
+      base_url: provider.base_url,
+      api_key: "",
+    });
+  }
+
+  async function handleApiModelAssign(providerId: string, model: string) {
+    setApiAssignTarget({ providerId, model });
+    try {
+      const [agents, depts] = await Promise.all([api.getAgents(), api.getDepartments()]);
+      setApiAssignAgents(agents);
+      setApiAssignDepts(depts);
+    } catch (e) {
+      console.error("Failed to load agents:", e);
+    }
+  }
+
+  async function handleApiAssignToAgent(agentId: string) {
+    if (!apiAssignTarget) return;
+    setApiAssigning(true);
+    try {
+      await api.updateAgent(agentId, {
+        cli_provider: "api",
+        api_provider_id: apiAssignTarget.providerId,
+        api_model: apiAssignTarget.model,
+      });
+      setApiAssignAgents((prev) => prev.map((a) =>
+        a.id === agentId
+          ? { ...a, cli_provider: "api" as const, api_provider_id: apiAssignTarget.providerId, api_model: apiAssignTarget.model }
+          : a
+      ));
+    } catch (e) {
+      console.error("Failed to assign API model to agent:", e);
+    } finally {
+      setApiAssigning(false);
+    }
+  }
 
   const loadOAuthStatus = useCallback(async () => {
     setOauthLoading(true);
@@ -233,11 +394,15 @@ export default function SettingsPanel({
     window.dispatchEvent(new Event("climpire-language-change"));
   }, [settings]);
 
-  // Auto-switch to oauth tab when callback result arrives
+  // Auto-switch to oauth tab when callback result arrives + 연결 성공 시 모델 새로고침
   useEffect(() => {
     if (oauthResult) {
       setTab("oauth");
       setOauthStatus(null);
+      // 새 OAuth 연결 성공 시 모델 목록 강제 갱신
+      if (!oauthResult.error) {
+        setModels(null); // 캐시 무효화 → 탭 진입 시 자동 로드
+      }
     }
   }, [oauthResult]);
 
@@ -528,6 +693,11 @@ export default function SettingsPanel({
             icon: "🔑",
           },
           {
+            key: "api",
+            label: t({ ko: "API 연동", en: "API", ja: "API 連携", zh: "API 集成" }),
+            icon: "🔌",
+          },
+          {
             key: "gateway",
             label: t({ ko: "채널 메시지", en: "Channel", ja: "チャネル", zh: "频道" }),
             icon: "📡",
@@ -698,7 +868,15 @@ export default function SettingsPanel({
             {t({ ko: "CLI 도구 상태", en: "CLI Tool Status", ja: "CLI ツール状態", zh: "CLI 工具状态" })}
           </h3>
           <button
-            onClick={onRefreshCli}
+            onClick={() => {
+              onRefreshCli();
+              // 모델 목록도 새로 불러오기 (refresh=true)
+              setCliModelsLoading(true);
+              api.getCliModels(true)
+                .then(setCliModels)
+                .catch(console.error)
+                .finally(() => setCliModelsLoading(false));
+            }}
             className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
           >
             🔄 {t({ ko: "새로고침", en: "Refresh", ja: "更新", zh: "刷新" })}
@@ -965,6 +1143,12 @@ export default function SettingsPanel({
               setOauthStatus(null);
               setOauthLoading(true);
               loadOAuthStatus().catch(console.error);
+              // 모델 목록도 새로 불러오기 (refresh=true)
+              setModelsLoading(true);
+              api.getOAuthModels(true)
+                .then(setModels)
+                .catch(console.error)
+                .finally(() => setModelsLoading(false));
             }}
             className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
           >
@@ -1481,6 +1665,420 @@ export default function SettingsPanel({
             </div>
           </>
         ) : null}
+      </section>
+      )}
+
+      {/* API Providers Tab */}
+      {tab === "api" && (
+      <section className="space-y-4 rounded-xl border border-slate-700/50 bg-slate-800/60 p-4 sm:p-5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+            {t({ ko: "API 프로바이더", en: "API Providers", ja: "API プロバイダー", zh: "API 提供商" })}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadApiProviders}
+              disabled={apiProvidersLoading}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+            >
+              🔄 {t({ ko: "새로고침", en: "Refresh", ja: "更新", zh: "刷新" })}
+            </button>
+            {!apiAddMode && (
+              <button
+                onClick={() => {
+                  setApiAddMode(true);
+                  setApiEditingId(null);
+                  setApiForm({ name: "", type: "openai", base_url: "https://api.openai.com/v1", api_key: "" });
+                }}
+                className="text-xs px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
+              >
+                + {t({ ko: "추가", en: "Add", ja: "追加", zh: "添加" })}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-500">
+          {t({
+            ko: "로컬 모델(Ollama 등), 프론티어 모델(OpenAI, Anthropic 등), 기타 서비스의 API를 등록하여 언어모델에 접근합니다.",
+            en: "Register APIs for local models (Ollama, etc.), frontier models (OpenAI, Anthropic, etc.), and other services.",
+            ja: "ローカルモデル（Ollama等）、フロンティアモデル（OpenAI, Anthropic等）、その他サービスのAPIを登録します。",
+            zh: "注册本地模型（Ollama等）、前沿模型（OpenAI、Anthropic等）及其他服务的API。",
+          })}
+        </p>
+
+        {/* Add/Edit Form */}
+        {apiAddMode && (
+          <div className="space-y-3 border border-blue-500/30 rounded-lg p-4 bg-slate-900/50">
+            <h4 className="text-xs font-semibold text-blue-400 uppercase">
+              {apiEditingId
+                ? t({ ko: "프로바이더 수정", en: "Edit Provider", ja: "プロバイダー編集", zh: "编辑提供商" })
+                : t({ ko: "새 프로바이더 추가", en: "Add New Provider", ja: "新規プロバイダー追加", zh: "添加新提供商" })}
+            </h4>
+
+            {/* Type presets */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">
+                {t({ ko: "유형", en: "Type", ja: "タイプ", zh: "类型" })}
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {(Object.entries(API_TYPE_PRESETS) as [ApiProviderType, { label: string; base_url: string }][]).map(
+                  ([key, preset]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setApiForm((prev) => ({
+                          ...prev,
+                          type: key,
+                          base_url: preset.base_url || prev.base_url,
+                          name: prev.name || preset.label,
+                        }));
+                      }}
+                      className={`px-2.5 py-1 text-[11px] rounded-md border transition-colors ${
+                        apiForm.type === key
+                          ? "bg-blue-600/30 border-blue-500/50 text-blue-300"
+                          : "bg-slate-700/30 border-slate-600/30 text-slate-400 hover:text-slate-200 hover:border-slate-500/50"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Name */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">
+                {t({ ko: "이름", en: "Name", ja: "名前", zh: "名称" })}
+              </label>
+              <input
+                type="text"
+                value={apiForm.name}
+                onChange={(e) => setApiForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder={t({ ko: "예: My OpenAI", en: "e.g. My OpenAI", ja: "例: My OpenAI", zh: "如: My OpenAI" })}
+                className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Base URL */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Base URL</label>
+              <input
+                type="text"
+                value={apiForm.base_url}
+                onChange={(e) => setApiForm((prev) => ({ ...prev, base_url: e.target.value }))}
+                placeholder="https://api.openai.com/v1"
+                className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* API Key */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">
+                API Key {apiForm.type === "ollama" && (
+                  <span className="text-slate-600">
+                    ({t({ ko: "로컬은 보통 불필요", en: "usually not needed for local", ja: "ローカルは通常不要", zh: "本地通常不需要" })})
+                  </span>
+                )}
+              </label>
+              <input
+                type="password"
+                value={apiForm.api_key}
+                onChange={(e) => setApiForm((prev) => ({ ...prev, api_key: e.target.value }))}
+                placeholder={apiEditingId
+                  ? t({ ko: "변경하려면 입력 (빈칸=유지)", en: "Enter to change (blank=keep)", ja: "変更する場合は入力", zh: "输入以更改（空白=保持）" })
+                  : "sk-..."
+                }
+                className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleApiProviderSave}
+                disabled={apiSaving || !apiForm.name.trim() || !apiForm.base_url.trim()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {apiSaving
+                  ? t({ ko: "저장 중...", en: "Saving...", ja: "保存中...", zh: "保存中..." })
+                  : apiEditingId
+                    ? t({ ko: "수정", en: "Update", ja: "更新", zh: "更新" })
+                    : t({ ko: "추가", en: "Add", ja: "追加", zh: "添加" })}
+              </button>
+              <button
+                onClick={() => {
+                  setApiAddMode(false);
+                  setApiEditingId(null);
+                  setApiForm({ name: "", type: "openai", base_url: "https://api.openai.com/v1", api_key: "" });
+                }}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium rounded-lg transition-colors"
+              >
+                {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消" })}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Provider list */}
+        {apiProvidersLoading ? (
+          <div className="text-xs text-slate-500 animate-pulse py-4 text-center">
+            {t({ ko: "로딩 중...", en: "Loading...", ja: "読み込み中...", zh: "加载中..." })}
+          </div>
+        ) : apiProviders.length === 0 && !apiAddMode ? (
+          <div className="text-xs text-slate-500 py-6 text-center">
+            {t({
+              ko: "등록된 API 프로바이더가 없습니다. 위의 + 추가 버튼으로 시작하세요.",
+              en: "No API providers registered. Click + Add above to get started.",
+              ja: "APIプロバイダーが登録されていません。上の+追加ボタンから始めてください。",
+              zh: "没有已注册的API提供商。点击上方的+添加按钮开始。",
+            })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {apiProviders.map((provider) => {
+              const testResult = apiTestResult[provider.id];
+              const isExpanded = apiModelsExpanded[provider.id];
+              return (
+                <div
+                  key={provider.id}
+                  className={`rounded-lg border p-3 transition-colors ${
+                    provider.enabled
+                      ? "border-slate-600/50 bg-slate-800/40"
+                      : "border-slate-700/30 bg-slate-900/30 opacity-60"
+                  }`}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${
+                        provider.enabled ? "bg-emerald-400" : "bg-slate-600"
+                      }`} />
+                      <span className="text-sm font-medium text-white truncate">{provider.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400 uppercase flex-shrink-0">
+                        {provider.type}
+                      </span>
+                      {provider.has_api_key && (
+                        <span className="text-[10px] text-emerald-400 flex-shrink-0">🔑</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {/* Test */}
+                      <button
+                        onClick={() => handleApiProviderTest(provider.id)}
+                        disabled={apiTesting === provider.id}
+                        className="text-[10px] px-2 py-1 rounded bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-600/30 transition-colors disabled:opacity-50"
+                        title={t({ ko: "연결 테스트", en: "Test Connection", ja: "接続テスト", zh: "测试连接" })}
+                      >
+                        {apiTesting === provider.id ? "..." : t({ ko: "테스트", en: "Test", ja: "テスト", zh: "测试" })}
+                      </button>
+                      {/* Edit */}
+                      <button
+                        onClick={() => handleApiEditStart(provider)}
+                        className="text-[10px] px-2 py-1 rounded bg-slate-600/30 text-slate-400 border border-slate-500/30 hover:bg-slate-600/50 hover:text-slate-200 transition-colors"
+                      >
+                        {t({ ko: "수정", en: "Edit", ja: "編集", zh: "编辑" })}
+                      </button>
+                      {/* Toggle */}
+                      <button
+                        onClick={() => handleApiProviderToggle(provider.id, provider.enabled)}
+                        className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                          provider.enabled
+                            ? "bg-amber-600/20 text-amber-400 border-amber-500/30 hover:bg-amber-600/30"
+                            : "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30"
+                        }`}
+                      >
+                        {provider.enabled
+                          ? t({ ko: "비활성화", en: "Disable", ja: "無効化", zh: "禁用" })
+                          : t({ ko: "활성화", en: "Enable", ja: "有効化", zh: "启用" })}
+                      </button>
+                      {/* Delete */}
+                      <button
+                        onClick={() => handleApiProviderDelete(provider.id)}
+                        className="text-[10px] px-2 py-1 rounded bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600/30 transition-colors"
+                      >
+                        {t({ ko: "삭제", en: "Delete", ja: "削除", zh: "删除" })}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Base URL */}
+                  <div className="mt-1.5 text-[11px] font-mono text-slate-500 truncate">
+                    {provider.base_url}
+                  </div>
+
+                  {/* Test result */}
+                  {testResult && (
+                    <div className={`mt-2 text-[11px] px-2.5 py-1.5 rounded ${
+                      testResult.ok
+                        ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                        : "bg-red-500/10 text-red-400 border border-red-500/20"
+                    }`}>
+                      {testResult.ok ? "✓ " : "✗ "}{testResult.msg}
+                    </div>
+                  )}
+
+                  {/* Models */}
+                  {provider.models_cache && provider.models_cache.length > 0 && (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => setApiModelsExpanded((prev) => ({ ...prev, [provider.id]: !prev[provider.id] }))}
+                        className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+                      >
+                        {isExpanded ? "▼" : "▶"}{" "}
+                        {t({ ko: "모델 목록", en: "Models", ja: "モデル一覧", zh: "模型列表" })}{" "}
+                        ({provider.models_cache.length})
+                        {provider.models_cached_at && (
+                          <span className="text-slate-600 ml-1">
+                            · {new Date(provider.models_cached_at).toLocaleString(localeTag, { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        )}
+                      </button>
+                      {isExpanded && (
+                        <div className="mt-1.5 max-h-48 overflow-y-auto rounded border border-slate-700/30 bg-slate-900/40 p-2">
+                          {provider.models_cache.map((model) => (
+                            <div key={model} className="flex items-center justify-between text-[11px] font-mono text-slate-400 py-0.5 group/model hover:bg-slate-700/30 rounded px-1 -mx-1">
+                              <span className="truncate">{model}</span>
+                              <button
+                                onClick={() => handleApiModelAssign(provider.id, model)}
+                                className="text-[9px] px-1.5 py-0.5 bg-blue-600/60 hover:bg-blue-500 text-blue-200 rounded opacity-0 group-hover/model:opacity-100 transition-opacity whitespace-nowrap ml-2"
+                                title={t({ ko: "에이전트에 배정", en: "Assign to agent", ja: "エージェントに割り当て", zh: "分配给代理" })}
+                              >
+                                {t({ ko: "배정", en: "Assign", ja: "割当", zh: "分配" })}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Agent Assign Modal */}
+        {apiAssignTarget && (() => {
+          const spriteMap = buildSpriteMap(apiAssignAgents);
+          // 현지화 이름 헬퍼
+          const localName = (nameEn: string, nameKo: string) =>
+            localeTag === "ko" ? (nameKo || nameEn) : (nameEn || nameKo);
+          const ROLE_LABELS: Record<string, Record<string, string>> = {
+            team_leader: { ko: "팀장", en: "Team Leader", ja: "チームリーダー", zh: "组长" },
+            senior:      { ko: "시니어", en: "Senior", ja: "シニア", zh: "高级" },
+            junior:      { ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级" },
+            intern:      { ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生" },
+          };
+          const roleBadge = (role: string) => {
+            const label = ROLE_LABELS[role];
+            const text = label ? t(label as Record<"ko" | "en" | "ja" | "zh", string>) : role;
+            const color = role === "team_leader" ? "text-amber-400 bg-amber-500/15"
+              : role === "senior" ? "text-blue-400 bg-blue-500/15"
+              : role === "junior" ? "text-emerald-400 bg-emerald-500/15"
+              : "text-slate-400 bg-slate-500/15";
+            return <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${color}`}>{text}</span>;
+          };
+          // 부서별 에이전트 그룹화
+          const grouped = apiAssignDepts
+            .map((dept) => ({
+              dept,
+              agents: apiAssignAgents.filter((a) => a.department_id === dept.id),
+            }))
+            .filter((g) => g.agents.length > 0);
+          // 부서 미배정 에이전트
+          const deptIds = new Set(apiAssignDepts.map((d) => d.id));
+          const unassigned = apiAssignAgents.filter((a) => !deptIds.has(a.department_id));
+          // 에이전트 행 렌더러
+          const renderAgentRow = (agent: import("../types").Agent) => {
+            const isAssigned = agent.cli_provider === "api"
+              && agent.api_provider_id === apiAssignTarget.providerId
+              && agent.api_model === apiAssignTarget.model;
+            return (
+              <button
+                key={agent.id}
+                disabled={apiAssigning || isAssigned}
+                onClick={() => handleApiAssignToAgent(agent.id)}
+                className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center gap-2.5 ${
+                  isAssigned
+                    ? "bg-green-500/10 text-green-400 cursor-default"
+                    : "hover:bg-slate-700/60 text-slate-300"
+                } disabled:opacity-60`}
+              >
+                <AgentAvatar agent={agent} spriteMap={spriteMap} size={28} rounded="xl" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium truncate">
+                      {localName(agent.name, agent.name_ko)}
+                    </span>
+                    {roleBadge(agent.role)}
+                  </div>
+                  <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                    {agent.cli_provider === "api" && agent.api_model
+                      ? `API: ${agent.api_model}`
+                      : agent.cli_provider}
+                  </div>
+                </div>
+                {isAssigned && <span className="text-green-400 flex-shrink-0">✓</span>}
+              </button>
+            );
+          };
+
+          return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setApiAssignTarget(null)}>
+            <div className="w-96 max-h-[75vh] rounded-xl border border-slate-600 bg-slate-800 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="px-4 py-3 border-b border-slate-700">
+                <h4 className="text-sm font-semibold text-white">
+                  {t({ ko: "에이전트에 모델 배정", en: "Assign Model to Agent", ja: "エージェントにモデル割当", zh: "分配模型给代理" })}
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5 font-mono truncate">{apiAssignTarget.model}</p>
+              </div>
+              <div className="max-h-[55vh] overflow-y-auto p-2 space-y-3">
+                {apiAssignAgents.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">
+                    {t({ ko: "에이전트를 불러오는 중...", en: "Loading agents...", ja: "エージェント読み込み中...", zh: "正在加载代理..." })}
+                  </p>
+                ) : (
+                  <>
+                    {grouped.map(({ dept, agents: deptAgents }) => (
+                      <div key={dept.id}>
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-700/40">
+                          <span className="text-sm">{dept.icon}</span>
+                          <span className="text-[11px] font-semibold text-slate-300 tracking-wide">
+                            {localName(dept.name, dept.name_ko)}
+                          </span>
+                          <span className="text-[10px] text-slate-600">({deptAgents.length})</span>
+                        </div>
+                        {deptAgents.map(renderAgentRow)}
+                      </div>
+                    ))}
+                    {unassigned.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-700/40">
+                          <span className="text-sm">📁</span>
+                          <span className="text-[11px] font-semibold text-slate-500 tracking-wide">
+                            {t({ ko: "미배정", en: "Unassigned", ja: "未配属", zh: "未分配" })}
+                          </span>
+                        </div>
+                        {unassigned.map(renderAgentRow)}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="px-4 py-2.5 border-t border-slate-700 flex justify-end">
+                <button
+                  onClick={() => setApiAssignTarget(null)}
+                  className="text-xs px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded-lg transition-colors"
+                >
+                  {t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭" })}
+                </button>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
       </section>
       )}
 

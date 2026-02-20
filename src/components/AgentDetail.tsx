@@ -125,6 +125,7 @@ const CLI_LABELS: Record<string, string> = {
   opencode: "OpenCode",
   copilot: "GitHub Copilot",
   antigravity: "Antigravity",
+  api: "API Provider",
 };
 
 const SUBTASK_STATUS_ICON: Record<string, string> = {
@@ -212,6 +213,8 @@ export default function AgentDetail({
   const [editingCli, setEditingCli] = useState(false);
   const [selectedCli, setSelectedCli] = useState(agent.cli_provider);
   const [selectedOAuthAccountId, setSelectedOAuthAccountId] = useState(agent.oauth_account_id ?? "");
+  const [selectedApiProviderId, setSelectedApiProviderId] = useState(agent.api_provider_id ?? "");
+  const [selectedApiModel, setSelectedApiModel] = useState(agent.api_model ?? "");
   const [savingCli, setSavingCli] = useState(false);
   const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -240,7 +243,10 @@ export default function AgentDetail({
     );
   }, [oauthProviderKey, oauthStatus]);
   const requiresOAuthAccount = selectedCli === "copilot" || selectedCli === "antigravity";
-  const canSaveCli = !requiresOAuthAccount || Boolean(selectedOAuthAccountId);
+  const requiresApiProvider = selectedCli === "api";
+  const canSaveCli = requiresApiProvider
+    ? false  // API 프로바이더는 설정 > API 탭에서만 배정
+    : (!requiresOAuthAccount || Boolean(selectedOAuthAccountId));
 
   const xpLevel = Math.floor(agent.stats_xp / 100) + 1;
   const xpProgress = agent.stats_xp % 100;
@@ -248,7 +254,9 @@ export default function AgentDetail({
   useEffect(() => {
     setSelectedCli(agent.cli_provider);
     setSelectedOAuthAccountId(agent.oauth_account_id ?? "");
-  }, [agent.id, agent.cli_provider, agent.oauth_account_id]);
+    setSelectedApiProviderId(agent.api_provider_id ?? "");
+    setSelectedApiModel(agent.api_model ?? "");
+  }, [agent.id, agent.cli_provider, agent.oauth_account_id, agent.api_provider_id, agent.api_model]);
 
   useEffect(() => {
     if (!editingCli || !requiresOAuthAccount) return;
@@ -269,6 +277,8 @@ export default function AgentDetail({
       setSelectedOAuthAccountId(activeOAuthAccounts[0].id);
     }
   }, [requiresOAuthAccount, activeOAuthAccounts, selectedOAuthAccountId]);
+
+  // API 프로바이더는 설정 > API 탭에서만 배정하므로 별도 로딩 불필요
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -366,6 +376,16 @@ export default function AgentDetail({
                         </span>
                       )
                     )}
+                    {requiresApiProvider && (
+                      <span className="text-[10px] text-amber-300">
+                        {t({
+                          ko: "⚙️ 설정 > API 탭에서 모델을 배정하세요",
+                          en: "⚙️ Assign models in Settings > API tab",
+                          ja: "⚙️ 設定 > API タブでモデルを割り当ててください",
+                          zh: "⚙️ 请在设置 > API 标签页中分配模型",
+                        })}
+                      </span>
+                    )}
                     <button
                       disabled={savingCli || !canSaveCli}
                       onClick={async () => {
@@ -374,6 +394,8 @@ export default function AgentDetail({
                           await api.updateAgent(agent.id, {
                             cli_provider: selectedCli,
                             oauth_account_id: requiresOAuthAccount ? (selectedOAuthAccountId || null) : null,
+                            api_provider_id: requiresApiProvider ? (selectedApiProviderId || null) : null,
+                            api_model: requiresApiProvider ? (selectedApiModel || null) : null,
                           });
                           onAgentUpdated?.();
                           setEditingCli(false);
@@ -392,6 +414,8 @@ export default function AgentDetail({
                         setEditingCli(false);
                         setSelectedCli(agent.cli_provider);
                         setSelectedOAuthAccountId(agent.oauth_account_id ?? "");
+                        setSelectedApiProviderId(agent.api_provider_id ?? "");
+                        setSelectedApiModel(agent.api_model ?? "");
                       }}
                       className="text-[10px] px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded transition-colors"
                     >
@@ -404,7 +428,9 @@ export default function AgentDetail({
                     className="flex items-center gap-1 hover:text-slate-300 transition-colors"
                     title={t({ ko: "클릭하여 CLI 변경", en: "Click to change CLI", ja: "クリックして CLI を変更", zh: "点击更改 CLI" })}
                   >
-                    🔧 {CLI_LABELS[agent.cli_provider] ?? agent.cli_provider}
+                    🔧 {agent.cli_provider === "api" && agent.api_model
+                      ? `API: ${agent.api_model}`
+                      : (CLI_LABELS[agent.cli_provider] ?? agent.cli_provider)}
                     <span className="text-[9px] text-slate-600 ml-0.5">✏️</span>
                   </button>
                 )}

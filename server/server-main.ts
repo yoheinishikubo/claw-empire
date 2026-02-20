@@ -617,8 +617,10 @@ CREATE TABLE IF NOT EXISTS agents (
   name_ko TEXT NOT NULL,
   department_id TEXT REFERENCES departments(id),
   role TEXT NOT NULL CHECK(role IN ('team_leader','senior','junior','intern')),
-  cli_provider TEXT CHECK(cli_provider IN ('claude','codex','gemini','opencode','copilot','antigravity')),
+  cli_provider TEXT CHECK(cli_provider IN ('claude','codex','gemini','opencode','copilot','antigravity','api')),
   oauth_account_id TEXT,
+  api_provider_id TEXT,
+  api_model TEXT,
   avatar_emoji TEXT NOT NULL DEFAULT '🤖',
   personality TEXT,
   status TEXT NOT NULL DEFAULT 'idle' CHECK(status IN ('idle','working','break','offline')),
@@ -784,12 +786,79 @@ CREATE INDEX IF NOT EXISTS idx_meeting_minute_entries_meeting ON meeting_minute_
 CREATE INDEX IF NOT EXISTS idx_review_revision_history_task ON review_revision_history(task_id, first_round DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_oauth_accounts_provider ON oauth_accounts(provider, status, priority, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_oauth_active_accounts_provider ON oauth_active_accounts(provider, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS api_providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'openai' CHECK(type IN ('openai','anthropic','google','ollama','openrouter','together','groq','cerebras','custom')),
+  base_url TEXT NOT NULL,
+  api_key_enc TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  models_cache TEXT,
+  models_cached_at INTEGER,
+  created_at INTEGER DEFAULT (unixepoch()*1000),
+  updated_at INTEGER DEFAULT (unixepoch()*1000)
+);
 `);
 
 // Add columns to oauth_credentials for web-oauth tokens (safe to run repeatedly)
 try { db.exec("ALTER TABLE oauth_credentials ADD COLUMN access_token_enc TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE oauth_credentials ADD COLUMN refresh_token_enc TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE agents ADD COLUMN oauth_account_id TEXT"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE agents ADD COLUMN api_provider_id TEXT"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE agents ADD COLUMN api_model TEXT"); } catch { /* already exists */ }
+// 기존 DB의 cli_provider CHECK 제약 확장 (SQLite는 ALTER CHECK 미지원이므로 새 행만 해당)
+try {
+  const hasApiCheck = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='agents'").get() as any)?.sql?.includes("'api'");
+  if (!hasApiCheck) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agents_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        name_ko TEXT NOT NULL,
+        department_id TEXT REFERENCES departments(id),
+        role TEXT NOT NULL CHECK(role IN ('team_leader','senior','junior','intern')),
+        cli_provider TEXT CHECK(cli_provider IN ('claude','codex','gemini','opencode','copilot','antigravity','api')),
+        oauth_account_id TEXT,
+        api_provider_id TEXT,
+        api_model TEXT,
+        avatar_emoji TEXT NOT NULL DEFAULT '🤖',
+        personality TEXT,
+        status TEXT NOT NULL DEFAULT 'idle' CHECK(status IN ('idle','working','break','offline')),
+        current_task_id TEXT,
+        stats_tasks_done INTEGER DEFAULT 0,
+        stats_xp INTEGER DEFAULT 0,
+        created_at INTEGER DEFAULT (unixepoch()*1000)
+      );
+      INSERT INTO agents_new SELECT id, name, name_ko, department_id, role, cli_provider, oauth_account_id, NULL, NULL, avatar_emoji, personality, status, current_task_id, stats_tasks_done, stats_xp, created_at FROM agents;
+      DROP TABLE agents;
+      ALTER TABLE agents_new RENAME TO agents;
+    `);
+  }
+} catch { /* migration already done or not needed */ }
+// api_providers CHECK 제약 확장: cerebras 추가
+try {
+  const apiProvSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='api_providers'").get() as any)?.sql ?? "";
+  if (apiProvSql && !apiProvSql.includes("'cerebras'")) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS api_providers_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'openai' CHECK(type IN ('openai','anthropic','google','ollama','openrouter','together','groq','cerebras','custom')),
+        base_url TEXT NOT NULL,
+        api_key_enc TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        models_cache TEXT,
+        models_cached_at INTEGER,
+        created_at INTEGER DEFAULT (unixepoch()*1000),
+        updated_at INTEGER DEFAULT (unixepoch()*1000)
+      );
+      INSERT INTO api_providers_new SELECT * FROM api_providers;
+      DROP TABLE api_providers;
+      ALTER TABLE api_providers_new RENAME TO api_providers;
+    `);
+  }
+} catch { /* migration already done or not needed */ }
 try { db.exec("ALTER TABLE oauth_accounts ADD COLUMN label TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE oauth_accounts ADD COLUMN model_override TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE oauth_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); } catch { /* already exists */ }

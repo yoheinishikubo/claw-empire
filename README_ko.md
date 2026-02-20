@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.6-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.7-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.0.6.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.0.7.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -53,15 +53,14 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 
 ---
 
-## 최신 릴리즈 (v1.0.6)
+## 최신 릴리즈 (v1.0.7)
 
-- OAuth 모델 목록을 `opencode` CLI에 의존하지 않고 프로바이더 API(GitHub Copilot API)에서 직접 가져오도록 변경 — 3단계 해석: 프로바이더 API → opencode 보충 → 정적 폴백
-- Windows CLI 도구 감지 오류(`ENOENT` / `-4058`) 수정: `.cmd` 래퍼 실행을 위해 `execFile`/`spawn`에 `shell: true` 추가
-- Gemini CLI 버전 감지 수정: `--version`이 대화형 모드를 시작하는 문제를 해결, 설치된 `package.json`에서 버전 읽기로 변경
-- 설정 패널에서 CLI 도구가 감지되었지만 버전을 확인할 수 없는 경우 "미설치" 대신 "버전 확인 불가"로 표시
-- Windows 스킬 학습 오류(`spawn npx ENOENT`) 수정: 백그라운드 `npx skills add` 작업에서 Windows에서 `shell: true` 사용
-- 비대화형 `pnpm install`을 위한 `pnpm.onlyBuiltDependencies` 추가 (esbuild)
-- 상세 문서: [`docs/releases/v1.0.6.md`](docs/releases/v1.0.6.md)
+- **외부 API 프로바이더 시스템** — 설정 패널에 API 탭 추가. 에이전트를 외부 LLM API(OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras 및 커스텀 엔드포인트)에 연결 가능. CRUD, 연결 테스트, 모델 자동 감지 지원
+- **다이렉트 채팅 스트리밍** — API/OAuth 에이전트의 응답이 `chat_stream` WebSocket 이벤트를 통해 실시간 스트리밍되며, ChatPanel에서 에메랄드 보더 애니메이션으로 표시
+- **API 프로바이더 태스크 실행** — 외부 API 프로바이더를 사용하는 에이전트도 CLI/OAuth 에이전트와 동일한 오케스트레이션 파이프라인으로 태스크 실행(spawn, run) 가능
+- **태스크 실행 크래시 수정** — `orchestration.ts`에서 `const` 변수 mutation으로 인한 `TypeError` 수정. OAuth/API 태스크 디스패치 시 500 에러 해결
+- **모델 캐싱 레이어** — CLI/OAuth 모델 목록에 2-tier 캐싱(메모리 + SQLite `settings` 테이블) 적용으로 불필요한 원격 호출 절감
+- 상세 문서: [`docs/releases/v1.0.7.md`](docs/releases/v1.0.7.md)
 
 ---
 
@@ -149,6 +148,7 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 | **칸반 태스크 보드** | Inbox, Planned, Collaborating, In Progress, Review, Done — 드래그 앤 드롭이 가능한 완전한 태스크 생애주기 관리 |
 | **CEO 채팅 & 디렉티브** | 팀 리더와의 직접 소통; `$` 디렉티브에서 회의 여부와 작업 경로/컨텍스트(`project_path`, `project_context`) 기반 지시 지원 |
 | **멀티 프로바이더 지원** | Claude Code, Codex CLI, Gemini CLI, OpenCode, Antigravity — 하나의 대시보드에서 모두 관리 |
+| **외부 API 프로바이더** | 설정 > API 탭에서 에이전트를 외부 LLM API(OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, 커스텀)에 연결 |
 | **OAuth 연동** | 로컬 SQLite에 AES 암호화된 토큰 저장을 사용하는 GitHub & Google OAuth |
 | **실시간 WebSocket** | 실시간 상태 업데이트, 활동 피드, 에이전트 상태 동기화 |
 | **에이전트 랭킹 & XP** | 완료된 태스크로 XP를 획득하는 에이전트; 랭킹 보드에서 상위 성과자 추적 |
@@ -265,7 +265,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.6 inbox 점검","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.7 inbox 점검","skipPlannedMeeting":true}'
 ```
 
 예상 응답:
@@ -529,6 +529,8 @@ Claw-Empire는 여러 CLI 기반 AI 코딩 어시스턴트와 함께 동작합�
 | [OpenCode](https://github.com/opencode-ai/opencode) | `npm i -g opencode` | 프로바이더별 설정 |
 
 앱 내 **Settings > CLI Tools** 패널에서 프로바이더와 모델을 설정하세요.
+
+또는 CLI 설치 없이 **Settings > API** 탭에서 에이전트를 외부 LLM API에 연결할 수 있습니다. API 키는 로컬 SQLite 데이터베이스에 암호화(AES-256-GCM)되어 저장됩니다 — `.env`나 소스 코드에는 포함되지 않습니다.
 
 ---
 

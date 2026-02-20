@@ -1488,12 +1488,40 @@ function toModelInfo(slug: string): CliModelInfoServer {
   return { slug, displayName: slug };
 }
 
-app.get("/api/cli-models", async (_req, res) => {
-  const now = Date.now();
-  if (cachedCliModels && now - cachedCliModels.loadedAt < MODELS_CACHE_TTL) {
-    return res.json({ models: cachedCliModels.data });
+/** DB 캐시에서 모델 목록을 읽어옴 */
+function readModelCache(cacheKey: string): any | null {
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(cacheKey) as any;
+    if (row?.value) return JSON.parse(row.value);
+  } catch { /* 캐시 손상 시 무시 */ }
+  return null;
+}
+
+/** 모델 목록을 DB 캐시에 저장 */
+function writeModelCache(cacheKey: string, data: any): void {
+  try {
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    ).run(cacheKey, JSON.stringify(data));
+  } catch { /* 캐시 저장 실패 무시 */ }
+}
+
+app.get("/api/cli-models", async (req, res) => {
+  const refresh = req.query.refresh === "true";
+
+  // refresh 아닌 경우: 메모리 캐시 → DB 캐시 순으로 반환
+  if (!refresh) {
+    if (cachedCliModels) {
+      return res.json({ models: cachedCliModels.data });
+    }
+    const dbCached = readModelCache("cli_models_cache");
+    if (dbCached) {
+      cachedCliModels = { data: dbCached, loadedAt: Date.now() };
+      return res.json({ models: dbCached });
+    }
   }
 
+  // 실제 fetch (첫 로드 or refresh)
   const models: Record<string, CliModelInfoServer[]> = {
     claude: [
       "opus", "sonnet", "haiku",
@@ -1524,13 +1552,23 @@ app.get("/api/cli-models", async (_req, res) => {
   }
 
   cachedCliModels = { data: models, loadedAt: Date.now() };
+  writeModelCache("cli_models_cache", models);
   res.json({ models });
 });
 
-app.get("/api/oauth/models", async (_req, res) => {
-  const now = Date.now();
-  if (cachedModels && now - cachedModels.loadedAt < MODELS_CACHE_TTL) {
-    return res.json({ models: cachedModels.data });
+app.get("/api/oauth/models", async (req, res) => {
+  const refresh = req.query.refresh === "true";
+
+  // refresh 아닌 경우: 메모리 캐시 → DB 캐시 순으로 반환
+  if (!refresh) {
+    if (cachedModels) {
+      return res.json({ models: cachedModels.data });
+    }
+    const dbCached = readModelCache("oauth_models_cache");
+    if (dbCached) {
+      cachedModels = { data: dbCached, loadedAt: Date.now() };
+      return res.json({ models: dbCached });
+    }
   }
 
   try {
@@ -1577,6 +1615,7 @@ app.get("/api/oauth/models", async (_req, res) => {
     }
 
     cachedModels = { data: merged, loadedAt: Date.now() };
+    writeModelCache("oauth_models_cache", merged);
     res.json({ models: merged });
   } catch (err) {
     res.status(500).json({ error: "model_fetch_failed", message: String(err) });
@@ -2227,6 +2266,229 @@ app.post("/api/cli-usage/refresh", async (_req, res) => {
     res.status(500).json({ ok: false, error: String(e) });
   }
 });
+
+// ---------------------------------------------------------------------------
+// API Providers (direct API key-based LLM access)
+// ---------------------------------------------------------------------------
+
+const API_PROVIDER_PRESETS: Record<string, { base_url: string; models_path: string; auth_header: string }> = {
+  openai:     { base_url: "https://api.openai.com/v1",       models_path: "/models", auth_header: "Bearer" },
+  anthropic:  { base_url: "https://api.anthropic.com/v1",    models_path: "/models", auth_header: "x-api-key" },
+  google:     { base_url: "https://generativelanguage.googleapis.com/v1beta", models_path: "/models", auth_header: "key" },
+  ollama:     { base_url: "http://localhost:11434/v1",        models_path: "/models", auth_header: "" },
+  openrouter: { base_url: "https://openrouter.ai/api/v1",    models_path: "/models", auth_header: "Bearer" },
+  together:   { base_url: "https://api.together.xyz/v1",     models_path: "/models", auth_header: "Bearer" },
+  groq:       { base_url: "https://api.groq.com/openai/v1",  models_path: "/models", auth_header: "Bearer" },
+  cerebras:   { base_url: "https://api.cerebras.ai/v1",      models_path: "/models", auth_header: "Bearer" },
+  custom:     { base_url: "",                                 models_path: "/models", auth_header: "Bearer" },
+};
+
+function buildApiProviderHeaders(type: string, apiKey: string): Record<string, string> {
+  const headers: Record<string, string> = { "Accept": "application/json" };
+  if (!apiKey) return headers;
+  if (type === "anthropic") {
+    headers["x-api-key"] = apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+  } else if (type === "google") {
+    // Google uses ?key= query param, handled separately
+  } else if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
+// base_url 정규화: 사용자가 전체 경로를 입력해도 올바른 base path로 변환
+function normalizeApiBaseUrl(rawUrl: string): string {
+  let url = rawUrl.replace(/\/+$/, "");
+  url = url.replace(/\/v1\/(chat\/completions|models|messages)$/i, "/v1");
+  url = url.replace(/\/v1beta\/models\/.+$/i, "/v1beta");
+  return url;
+}
+
+function buildModelsUrl(type: string, baseUrl: string, apiKey: string): string {
+  const preset = API_PROVIDER_PRESETS[type] || API_PROVIDER_PRESETS.custom;
+  const base = normalizeApiBaseUrl(baseUrl);
+  let url = `${base}${preset.models_path}`;
+  if (type === "google" && apiKey) {
+    url += `?key=${encodeURIComponent(apiKey)}`;
+  }
+  return url;
+}
+
+// GET: list all API providers (api_key masked)
+app.get("/api/api-providers", (_req: any, res: any) => {
+  const rows = db.prepare("SELECT * FROM api_providers ORDER BY created_at ASC").all() as any[];
+  const providers = rows.map((r: any) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    base_url: r.base_url,
+    has_api_key: Boolean(r.api_key_enc),
+    enabled: Boolean(r.enabled),
+    models_cache: r.models_cache ? JSON.parse(r.models_cache) : [],
+    models_cached_at: r.models_cached_at,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+  res.json({ ok: true, providers });
+});
+
+// POST: create a new API provider
+app.post("/api/api-providers", (req: any, res: any) => {
+  const { name, type = "openai", base_url, api_key } = req.body;
+  if (!name || !base_url) {
+    return res.status(400).json({ error: "name and base_url are required" });
+  }
+  const validTypes = Object.keys(API_PROVIDER_PRESETS);
+  if (!validTypes.includes(type)) {
+    return res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
+  }
+  const id = randomUUID();
+  const now = nowMs();
+  const apiKeyEnc = api_key ? encryptSecret(api_key) : null;
+  db.prepare(
+    "INSERT INTO api_providers (id, name, type, base_url, api_key_enc, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, name.trim(), type, base_url.trim().replace(/\/+$/, ""), apiKeyEnc, now, now);
+  res.json({ ok: true, id });
+});
+
+// PUT: update an existing API provider
+app.put("/api/api-providers/:id", (req: any, res: any) => {
+  const { id } = req.params;
+  const body = req.body;
+  const updates: string[] = ["updated_at = ?"];
+  const params: unknown[] = [nowMs()];
+
+  if ("name" in body && body.name) { updates.push("name = ?"); params.push(body.name.trim()); }
+  if ("type" in body) { updates.push("type = ?"); params.push(body.type); }
+  if ("base_url" in body && body.base_url) { updates.push("base_url = ?"); params.push(body.base_url.trim().replace(/\/+$/, "")); }
+  if ("api_key" in body) {
+    updates.push("api_key_enc = ?");
+    params.push(body.api_key ? encryptSecret(body.api_key) : null);
+  }
+  if ("enabled" in body) { updates.push("enabled = ?"); params.push(body.enabled ? 1 : 0); }
+
+  params.push(id);
+  const result = db.prepare(`UPDATE api_providers SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  if (result.changes === 0) return res.status(404).json({ error: "not_found" });
+  res.json({ ok: true });
+});
+
+// DELETE: remove an API provider
+app.delete("/api/api-providers/:id", (req: any, res: any) => {
+  const { id } = req.params;
+  const result = db.prepare("DELETE FROM api_providers WHERE id = ?").run(id);
+  if (result.changes === 0) return res.status(404).json({ error: "not_found" });
+  res.json({ ok: true });
+});
+
+// POST: test connection to an API provider
+app.post("/api/api-providers/:id/test", async (req: any, res: any) => {
+  const { id } = req.params;
+  const row = db.prepare("SELECT * FROM api_providers WHERE id = ?").get(id) as any;
+  if (!row) return res.status(404).json({ error: "not_found" });
+
+  const apiKey = row.api_key_enc ? decryptSecret(row.api_key_enc) : "";
+  const url = buildModelsUrl(row.type, row.base_url, apiKey);
+  const headers = buildApiProviderHeaders(row.type, apiKey);
+
+  try {
+    const resp = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => "");
+      return res.json({ ok: false, status: resp.status, error: errBody.slice(0, 500) });
+    }
+    const data = await resp.json() as any;
+    const models = extractModelIds(row.type, data);
+    // 캐시 저장
+    const now = nowMs();
+    db.prepare("UPDATE api_providers SET models_cache = ?, models_cached_at = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(models), now, now, id);
+    res.json({ ok: true, model_count: models.length, models });
+  } catch (e: any) {
+    res.json({ ok: false, error: e.message || String(e) });
+  }
+});
+
+// GET: fetch models from an API provider
+app.get("/api/api-providers/:id/models", async (req: any, res: any) => {
+  const { id } = req.params;
+  const refresh = req.query.refresh === "true";
+  const row = db.prepare("SELECT * FROM api_providers WHERE id = ?").get(id) as any;
+  if (!row) return res.status(404).json({ error: "not_found" });
+
+  // refresh 아닌 경우: DB 캐시가 있으면 바로 반환 (TTL 없음, 명시적 refresh만)
+  if (!refresh && row.models_cache) {
+    return res.json({ ok: true, models: JSON.parse(row.models_cache), cached: true });
+  }
+
+  const apiKey = row.api_key_enc ? decryptSecret(row.api_key_enc) : "";
+  const url = buildModelsUrl(row.type, row.base_url, apiKey);
+  const headers = buildApiProviderHeaders(row.type, apiKey);
+
+  try {
+    const resp = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+    if (!resp.ok) {
+      // 기존 캐시 폴백
+      if (row.models_cache) {
+        return res.json({ ok: true, models: JSON.parse(row.models_cache), cached: true, stale: true });
+      }
+      return res.status(502).json({ error: `upstream returned ${resp.status}` });
+    }
+    const data = await resp.json() as any;
+    const models = extractModelIds(row.type, data);
+    const now = nowMs();
+    db.prepare("UPDATE api_providers SET models_cache = ?, models_cached_at = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(models), now, now, id);
+    res.json({ ok: true, models, cached: false });
+  } catch (e: any) {
+    if (row.models_cache) {
+      return res.json({ ok: true, models: JSON.parse(row.models_cache), cached: true, stale: true });
+    }
+    res.status(502).json({ error: e.message || String(e) });
+  }
+});
+
+// GET: presets for API provider types
+app.get("/api/api-providers/presets", (_req: any, res: any) => {
+  res.json({ ok: true, presets: API_PROVIDER_PRESETS });
+});
+
+function extractModelIds(type: string, data: any): string[] {
+  const models: string[] = [];
+  if (type === "google") {
+    // Google AI: { models: [{ name: "models/gemini-pro", ... }] }
+    if (Array.isArray(data?.models)) {
+      for (const m of data.models) {
+        const name = m.name || m.model || "";
+        if (name) models.push(name.replace(/^models\//, ""));
+      }
+    }
+  } else if (type === "anthropic") {
+    // Anthropic: { data: [{ id: "claude-3-5-sonnet-20241022", ... }] }
+    if (Array.isArray(data?.data)) {
+      for (const m of data.data) {
+        if (m.id) models.push(m.id);
+      }
+    }
+  } else {
+    // OpenAI-compatible: { data: [{ id: "gpt-4o", ... }] }
+    if (Array.isArray(data?.data)) {
+      for (const m of data.data) {
+        if (m.id) models.push(m.id);
+      }
+    } else if (Array.isArray(data?.models)) {
+      for (const m of data.models) {
+        const id = m.id || m.name || m.model || "";
+        if (id) models.push(id);
+      }
+    }
+  }
+  return models.sort();
+}
 
   return {
     prettyStreamJson,

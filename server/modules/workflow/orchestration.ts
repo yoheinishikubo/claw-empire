@@ -64,11 +64,12 @@ export function initializeWorkflowPartC(ctx: any): any {
   const getTaskContinuationContext = __ctx.getTaskContinuationContext;
   const hasExplicitWarningFixRequest = __ctx.hasExplicitWarningFixRequest;
   const hasStructuredJsonLines = __ctx.hasStructuredJsonLines;
-  const httpAgentCounter = __ctx.httpAgentCounter;
+  let httpAgentCounter = __ctx.httpAgentCounter;
   const interruptPidTree = __ctx.interruptPidTree;
   const isPidAlive = __ctx.isPidAlive;
   const killPidTree = __ctx.killPidTree;
   const launchHttpAgent = __ctx.launchHttpAgent;
+  const launchApiProviderAgent = __ctx.launchApiProviderAgent;
   const mergeWorktree = __ctx.mergeWorktree;
   const normalizeOAuthProvider = __ctx.normalizeOAuthProvider;
   const randomDelay = __ctx.randomDelay;
@@ -440,7 +441,7 @@ function startTaskExecutionForAgent(
   broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(execAgent.id));
 
   const provider = execAgent.cli_provider || "claude";
-  if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity"].includes(provider)) return;
+  if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(provider)) return;
   const executionSession = ensureTaskExecutionSession(taskId, execAgent.id, provider);
 
   const taskData = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as {
@@ -497,7 +498,20 @@ function startTaskExecutionForAgent(
   });
 
   appendTaskLog(taskId, "system", `RUN start (agent=${execAgent.name}, provider=${provider})`);
-  if (provider === "copilot" || provider === "antigravity") {
+  if (provider === "api") {
+    const controller = new AbortController();
+    const fakePid = -(++httpAgentCounter);
+    launchApiProviderAgent(
+      taskId,
+      execAgent.api_provider_id ?? null,
+      execAgent.api_model ?? null,
+      spawnPrompt,
+      projPath,
+      logFilePath,
+      controller,
+      fakePid,
+    );
+  } else if (provider === "copilot" || provider === "antigravity") {
     const controller = new AbortController();
     const fakePid = -(++httpAgentCounter);
     launchHttpAgent(

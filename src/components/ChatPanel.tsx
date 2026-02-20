@@ -5,10 +5,19 @@ import AgentAvatar, { buildSpriteMap } from './AgentAvatar';
 import { useI18n } from '../i18n';
 import type { LangText } from '../i18n';
 
+export interface StreamingMessage {
+  message_id: string;
+  agent_id: string;
+  agent_name: string;
+  agent_avatar: string;
+  content: string;
+}
+
 interface ChatPanelProps {
   selectedAgent: Agent | null;
   messages: Message[];
   agents: Agent[];
+  streamingMessage?: StreamingMessage | null;
   onSendMessage: (content: string, receiverType: 'agent' | 'department' | 'all', receiverId?: string, messageType?: string) => void;
   onSendAnnouncement: (content: string) => void;
   onSendDirective: (content: string) => void;
@@ -71,6 +80,7 @@ export function ChatPanel({
   selectedAgent,
   messages,
   agents,
+  streamingMessage,
   onSendMessage,
   onSendAnnouncement,
   onSendDirective,
@@ -119,10 +129,13 @@ export function ChatPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Auto-scroll to bottom on new messages
+  // 스트리밍 중인 메시지가 현재 에이전트 것인지 판별
+  const isStreamingForAgent = streamingMessage && selectedAgent && streamingMessage.agent_id === selectedAgent.id;
+
+  // Auto-scroll to bottom on new messages or streaming delta
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingMessage?.content]);
 
   // Switch mode when agent selection changes
   useEffect(() => {
@@ -427,8 +440,22 @@ export function ChatPanel({
               );
             })}
 
-            {/* Typing indicator when selected agent is working */}
-            {selectedAgent && selectedAgent.status === 'working' && (
+            {/* 스트리밍 메시지 (API/OAuth 실시간 응답) */}
+            {isStreamingForAgent && streamingMessage.content && (
+              <div className="flex items-end gap-2">
+                <AgentAvatar agent={selectedAgent} spriteMap={spriteMap} size={28} />
+                <div className="flex flex-col gap-1 max-w-[75%]">
+                  <span className="text-xs text-gray-500 px-1">{getAgentName(selectedAgent)}</span>
+                  <div className="bg-gray-700 text-gray-100 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-md border border-emerald-500/20">
+                    <MessageContent content={streamingMessage.content} />
+                    <span className="inline-block w-1.5 h-4 bg-emerald-400 rounded-sm animate-pulse ml-0.5 align-text-bottom" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Typing indicator when selected agent is working (스트리밍 중이 아닐 때만) */}
+            {selectedAgent && selectedAgent.status === 'working' && !isStreamingForAgent && (
               <div className="flex items-end gap-2">
                 <AgentAvatar agent={selectedAgent} spriteMap={spriteMap} size={28} />
                 <TypingIndicator />
