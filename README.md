@@ -196,6 +196,7 @@ Usage path: **Chat window > Report Request button**, then enter your request.
 | **Messenger Integration** | Telegram, Discord, Slack and more — send `$` CEO directives and receive task updates via OpenClaw gateway |
 | **PowerPoint Export** | Generate presentation slides from meeting minutes and reports |
 | **Connectivity QA Scripts** | Built-in `test:comm:*` scripts for CLI/OAuth/API communication validation with retry and evidence logs |
+| **In-App Update Notice** | Checks GitHub latest release and shows a top banner with OS-specific `git pull` guidance when a newer version is available |
 | **Department Management** | Planning, Development, Design, QA/QC, DevSecOps, Operations |
 
 ---
@@ -532,6 +533,10 @@ Copy `.env.example` to `.env`. All secrets stay local — never commit `.env`.
 | `OAUTH_GOOGLE_CLIENT_ID` | No | Google OAuth client ID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | No | Google OAuth client secret |
 | `OPENAI_API_KEY` | No | OpenAI API key (for Codex) |
+| `UPDATE_CHECK_ENABLED` | No | Enable in-app update check banner (`1` default, set `0` to disable) |
+| `UPDATE_CHECK_REPO` | No | GitHub repo slug used for update checks (default: `GreenSheep01201/claw-empire`) |
+| `UPDATE_CHECK_TTL_MS` | No | Update-check cache TTL in milliseconds (default: `1800000`) |
+| `UPDATE_CHECK_TIMEOUT_MS` | No | GitHub request timeout in milliseconds (default: `4000`) |
 
 When `API_AUTH_TOKEN` is enabled, remote browser clients enter it at runtime. The token is stored only in `sessionStorage` and is not embedded in Vite build artifacts.
 For `OPENCLAW_CONFIG`, absolute path is recommended. In `v1.0.5`, quoted values and leading `~` are normalized automatically.
@@ -569,6 +574,14 @@ pnpm run test:comm-status
 ```
 
 `test:comm:suite` writes machine-readable evidence to `logs/` and a markdown report to `docs/`.
+
+### In-App Update Banner
+
+When a newer release is published on GitHub, Claw-Empire shows a top banner in the UI with pull instructions and a release-note link.
+
+- Windows PowerShell: `git pull; pnpm install`
+- macOS/Linux shell: `git pull && pnpm install`
+- After pull/install, restart the server.
 
 ---
 

@@ -195,6 +195,7 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 | **메신저 연동** | Telegram, Discord, Slack 등 — OpenClaw 게이트웨이를 통해 `$` CEO 디렉티브 전송 및 태스크 업데이트 수신 |
 | **PowerPoint 내보내기** | 회의록과 보고서로부터 프레젠테이션 슬라이드 생성 |
 | **통신 QA 스크립트** | `test:comm:*` 스크립트로 CLI/OAuth/API 통신 상태를 재시도/증거 로그와 함께 검증 |
+| **인앱 업데이트 알림** | GitHub 최신 릴리즈를 확인해 새 버전이 있으면 상단 배너로 OS별 `git pull` 안내와 릴리즈 노트 링크 제공 |
 | **부서 관리** | 기획, 개발, 디자인, QA/QC, DevSecOps, 운영 |
 
 ---
@@ -531,6 +532,10 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID` | 선택 | Google OAuth 클라이언트 ID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 선택 | Google OAuth 클라이언트 시크릿 |
 | `OPENAI_API_KEY` | 선택 | OpenAI API 키 (Codex용) |
+| `UPDATE_CHECK_ENABLED` | 선택 | 인앱 업데이트 확인 배너 활성화 (`1` 기본값, `0`이면 비활성화) |
+| `UPDATE_CHECK_REPO` | 선택 | 업데이트 확인에 사용할 GitHub 저장소 슬러그 (기본값: `GreenSheep01201/claw-empire`) |
+| `UPDATE_CHECK_TTL_MS` | 선택 | 업데이트 확인 캐시 TTL(밀리초) (기본값: `1800000`) |
+| `UPDATE_CHECK_TIMEOUT_MS` | 선택 | GitHub 요청 타임아웃(밀리초) (기본값: `4000`) |
 
 `API_AUTH_TOKEN`을 활성화하면 원격 브라우저 클라이언트는 런타임에 토큰을 입력합니다. 토큰은 `sessionStorage`에만 저장되며 Vite 빌드 산출물에는 포함되지 않습니다.
 `OPENCLAW_CONFIG`는 절대경로를 권장하며, `v1.0.5`에서는 따옴표/선행 `~` 값도 자동 정규화됩니다.
@@ -568,6 +573,14 @@ pnpm run test:comm-status
 ```
 
 `test:comm:suite`는 기계 판독용 증거를 `logs/`에, 요약 리포트를 `docs/`에 생성합니다.
+
+### 인앱 업데이트 배너
+
+GitHub에 더 최신 릴리즈가 게시되면, Claw-Empire는 UI 상단에 pull 안내와 릴리즈 노트 링크를 포함한 배너를 표시합니다.
+
+- Windows PowerShell: `git pull; pnpm install`
+- macOS/Linux 셸: `git pull && pnpm install`
+- pull/install 후 서버를 재시작하세요.
 
 ---
 

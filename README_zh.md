@@ -196,6 +196,7 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 | **即时通讯集成** | Telegram、Discord、Slack 等 — 通过 OpenClaw gateway 发送 `$` CEO 指令并接收任务更新 |
 | **PowerPoint 导出** | 从会议纪要和报告生成演示文稿幻灯片 |
 | **通信 QA 脚本** | 内置 `test:comm:*` 脚本，可带重试与证据日志验证 CLI/OAuth/API 连通性 |
+| **应用内更新提示** | 检查 GitHub 最新发布，发现新版本时在顶部显示含 OS 区分 `git pull` 指引和发布说明链接的横幅 |
 | **部门管理** | 规划、开发、设计、QA/QC、DevSecOps、运营 |
 
 ---
@@ -532,6 +533,10 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID` | 否 | Google OAuth 客户端 ID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 否 | Google OAuth 客户端密钥 |
 | `OPENAI_API_KEY` | 否 | OpenAI API 密钥（用于 Codex） |
+| `UPDATE_CHECK_ENABLED` | 否 | 启用应用内更新检查横幅（默认 `1`，设为 `0` 可关闭） |
+| `UPDATE_CHECK_REPO` | 否 | 更新检查使用的 GitHub 仓库标识（默认：`GreenSheep01201/claw-empire`） |
+| `UPDATE_CHECK_TTL_MS` | 否 | 更新检查缓存 TTL（毫秒，默认：`1800000`） |
+| `UPDATE_CHECK_TIMEOUT_MS` | 否 | GitHub 请求超时（毫秒，默认：`4000`） |
 
 启用 `API_AUTH_TOKEN` 后，远程浏览器客户端会在运行时输入令牌。该令牌仅保存在 `sessionStorage`，不会嵌入 Vite 构建产物。
 `OPENCLAW_CONFIG` 建议使用绝对路径；在 `v1.0.5` 中，外层引号和前导 `~` 也会自动规范化。
@@ -569,6 +574,14 @@ pnpm run test:comm-status
 ```
 
 `test:comm:suite` 会将机器可读证据写入 `logs/`，并将汇总报告写入 `docs/`。
+
+### 应用内更新横幅
+
+当 GitHub 发布了更高版本时，Claw-Empire 会在 UI 顶部显示包含 pull 操作说明和发布说明链接的横幅。
+
+- Windows PowerShell: `git pull; pnpm install`
+- macOS/Linux shell: `git pull && pnpm install`
+- pull/install 后请重启服务。
 
 ---
 

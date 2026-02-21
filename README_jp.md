@@ -196,6 +196,7 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 | **メッセンジャー連携** | Telegram、Discord、Slack等 — OpenClawゲートウェイ経由で `$` CEOディレクティブ送信＆タスク更新受信 |
 | **PowerPointエクスポート** | 議事録やレポートからプレゼンテーションスライドを自動生成 |
 | **通信QAスクリプト** | `test:comm:*` スクリプトでCLI/OAuth/API疎通を再試行・証跡ログ付きで検証 |
+| **インアプリ更新通知** | GitHub 最新リリースを確認し、新バージョンがある場合にOS別 `git pull` 手順とリリースノートリンクを上部バナー表示 |
 | **部署管理** | 企画、開発、デザイン、QA/QC、DevSecOps、オペレーション |
 
 ---
@@ -532,6 +533,10 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID` | 任意 | Google OAuthクライアントID |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 任意 | Google OAuthクライアントシークレット |
 | `OPENAI_API_KEY` | 任意 | OpenAI APIキー（Codex用） |
+| `UPDATE_CHECK_ENABLED` | 任意 | インアプリ更新確認バナーを有効化（デフォルト `1`、`0` で無効） |
+| `UPDATE_CHECK_REPO` | 任意 | 更新確認に使う GitHub リポジトリスラッグ（デフォルト: `GreenSheep01201/claw-empire`） |
+| `UPDATE_CHECK_TTL_MS` | 任意 | 更新確認キャッシュ TTL（ミリ秒、デフォルト: `1800000`） |
+| `UPDATE_CHECK_TIMEOUT_MS` | 任意 | GitHub リクエストタイムアウト（ミリ秒、デフォルト: `4000`） |
 
 `API_AUTH_TOKEN` を有効化した場合、リモートブラウザクライアントは実行時にトークンを入力します。トークンは `sessionStorage` のみに保存され、Viteビルド成果物には埋め込まれません。
 `OPENCLAW_CONFIG` は絶対パス推奨で、`v1.0.5` では引用符/先頭 `~` も自動正規化されます。
@@ -569,6 +574,14 @@ pnpm run test:comm-status
 ```
 
 `test:comm:suite` は機械可読な証跡を `logs/` に、要約レポートを `docs/` に出力します。
+
+### インアプリ更新バナー
+
+GitHub により新しいリリースが公開されると、Claw-Empire は UI 上部に pull 手順とリリースノートリンク付きバナーを表示します。
+
+- Windows PowerShell: `git pull; pnpm install`
+- macOS/Linux シェル: `git pull && pnpm install`
+- pull/install 後にサーバーを再起動してください。
 
 ---
 
