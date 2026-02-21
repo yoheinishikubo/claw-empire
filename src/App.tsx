@@ -112,6 +112,16 @@ function detectRuntimeOs(): RuntimeOs {
   return "unknown";
 }
 
+function isForceUpdateBannerEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("force_update_banner") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function syncClientLanguage(language: string): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(LANGUAGE_STORAGE_KEY, normalizeLanguage(language));
@@ -149,6 +159,7 @@ export default function App() {
   const [showAgentStatus, setShowAgentStatus] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [runtimeOs] = useState<RuntimeOs>(() => detectRuntimeOs());
+  const [forceUpdateBanner] = useState<boolean>(() => isForceUpdateBannerEnabled());
   const [updateStatus, setUpdateStatus] = useState<api.UpdateStatus | null>(null);
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -795,20 +806,32 @@ export default function App() {
     ja: "エージェント",
     zh: "代理",
   });
+  const effectiveUpdateStatus = forceUpdateBanner
+    ? {
+        current_version: updateStatus?.current_version ?? "1.1.0",
+        latest_version: updateStatus?.latest_version ?? "1.1.1-test",
+        update_available: true,
+        release_url: updateStatus?.release_url ?? "https://github.com/GreenSheep01201/claw-empire/releases/latest",
+        checked_at: Date.now(),
+        enabled: true,
+        repo: updateStatus?.repo ?? "GreenSheep01201/claw-empire",
+        error: null,
+      }
+    : updateStatus;
   const updateBannerVisible = Boolean(
-    updateStatus?.enabled &&
-    updateStatus.update_available &&
-    updateStatus.latest_version &&
-    updateStatus.latest_version !== dismissedUpdateVersion
+    effectiveUpdateStatus?.enabled &&
+    effectiveUpdateStatus.update_available &&
+    effectiveUpdateStatus.latest_version &&
+    (forceUpdateBanner || effectiveUpdateStatus.latest_version !== dismissedUpdateVersion)
   );
-  const updateReleaseUrl = updateStatus?.release_url
-    ?? `https://github.com/${updateStatus?.repo ?? "GreenSheep01201/claw-empire"}/releases/latest`;
+  const updateReleaseUrl = effectiveUpdateStatus?.release_url
+    ?? `https://github.com/${effectiveUpdateStatus?.repo ?? "GreenSheep01201/claw-empire"}/releases/latest`;
   const updateTitle = updateBannerVisible
     ? pickLang(uiLanguage, {
-        ko: `새 버전 v${updateStatus?.latest_version} 사용 가능 (현재 v${updateStatus?.current_version}).`,
-        en: `New version v${updateStatus?.latest_version} is available (current v${updateStatus?.current_version}).`,
-        ja: `新しいバージョン v${updateStatus?.latest_version} が利用可能です（現在 v${updateStatus?.current_version}）。`,
-        zh: `发现新版本 v${updateStatus?.latest_version}（当前 v${updateStatus?.current_version}）。`,
+        ko: `새 버전 v${effectiveUpdateStatus?.latest_version} 사용 가능 (현재 v${effectiveUpdateStatus?.current_version}).`,
+        en: `New version v${effectiveUpdateStatus?.latest_version} is available (current v${effectiveUpdateStatus?.current_version}).`,
+        ja: `新しいバージョン v${effectiveUpdateStatus?.latest_version} が利用可能です（現在 v${effectiveUpdateStatus?.current_version}）。`,
+        zh: `发现新版本 v${effectiveUpdateStatus?.latest_version}（当前 v${effectiveUpdateStatus?.current_version}）。`,
       })
     : "";
   const updateHint = runtimeOs === "windows"
@@ -836,6 +859,14 @@ export default function App() {
     ja: "後で",
     zh: "稍后",
   });
+  const updateTestModeHint = forceUpdateBanner
+    ? pickLang(uiLanguage, {
+        ko: "테스트 표시 모드입니다. `?force_update_banner=1`을 제거하면 원래 상태로 돌아갑니다.",
+        en: "Test display mode is on. Remove `?force_update_banner=1` to return to normal behavior.",
+        ja: "テスト表示モードです。`?force_update_banner=1` を外すと通常動作に戻ります。",
+        zh: "当前为测试显示模式。移除 `?force_update_banner=1` 即可恢复正常行为。",
+      })
+    : "";
 
   if (loading) {
     return (
@@ -950,12 +981,15 @@ export default function App() {
             </div>
           </header>
 
-          {updateBannerVisible && updateStatus && (
+          {updateBannerVisible && effectiveUpdateStatus && (
             <div className="border-b border-amber-500/30 bg-amber-500/10 px-3 py-2.5 sm:px-4 lg:px-6">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 text-xs text-amber-100">
                   <div className="font-medium">{updateTitle}</div>
                   <div className="mt-0.5 text-[11px] text-amber-200/90">{updateHint}</div>
+                  {updateTestModeHint && (
+                    <div className="mt-0.5 text-[11px] text-amber-300/90">{updateTestModeHint}</div>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <a
@@ -969,7 +1003,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      const latest = updateStatus.latest_version ?? "";
+                      const latest = effectiveUpdateStatus.latest_version ?? "";
                       setDismissedUpdateVersion(latest);
                       if (typeof window !== "undefined") {
                         window.localStorage.setItem(UPDATE_BANNER_DISMISS_STORAGE_KEY, latest);
