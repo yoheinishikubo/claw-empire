@@ -6,11 +6,11 @@
 
 <p align="center">
   <strong>从CEO办公桌指挥您的AI代理帝国</strong><br>
-  将 <b>Claude Code</b>、<b>Codex CLI</b>、<b>Gemini CLI</b>、<b>OpenCode</b>、<b>GitHub Copilot</b>、<b>Antigravity</b> 转化为自主代理虚拟公司的本地优先AI代理办公室模拟器
+  一个本地优先的 AI 代理办公室模拟器，可将 <b>CLI</b>、<b>OAuth</b>、<b>API 连接</b> 的提供商（如 <b>Claude Code</b>、<b>Codex CLI</b>、<b>Gemini CLI</b>、<b>OpenCode</b>、<b>GitHub Copilot</b>、<b>Antigravity</b>）统一编排为自治虚拟公司
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.9.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.1.0.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -42,25 +42,32 @@
 
 ## 什么是 Claw-Empire？
 
-Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**、**Gemini CLI**、**OpenCode** 等 —— 转化为一个完整模拟的**虚拟软件公司**。您是 CEO，AI 代理是员工。看着它们跨部门协作、召开会议、完成任务、不断成长 —— 一切都通过迷人的像素风格办公室界面直观呈现。
+Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI 编程助手，转化为一个完整模拟的**虚拟软件公司**。您是 CEO，AI 代理是员工。看着它们跨部门协作、召开会议、完成任务、不断成长 —— 一切都通过迷人的像素风格办公室界面直观呈现。
 
 ### 为什么选择 Claw-Empire？
 
-- **统一界面，多款 AI 代理** — 从单一仪表板管理 Claude Code、Codex、Gemini CLI 等
+- **统一界面，多款 AI 代理** — 在单一仪表板管理 CLI/OAuth/API 接入的代理
 - **本地优先，隐私保障** — 所有数据存储在您的机器上，SQLite 数据库，无需云端依赖
 - **可视化且直观** — 像素艺术风格的办公室视图，让 AI 编排变得有趣而透明
 - **真正的自主协作** — 代理在独立的 git worktree 中工作、参加会议并产出成果
 
 ---
 
-## 最新发布 (v1.0.9)
+## 最新发布 (v1.1.0)
 
-- **报告请求工作流升级（PPT/MD）** — 强化报告任务路由与提示词约束，统一“先调研、后产出”的流程，并配合固定子模块工具链。
-- **PPT HTML 优先 + 单次设计检查点** — PPT 任务先走设计团队一次检查，再由原负责人最终重生成，完成后不再进行二次确认。
-- **终端实时提示 UX 改进** — 在状态栏上方常驻工具进度提示区，同时保留自然语言输出与执行上下文提示。
-- **终端历史保留改进** — 任务重跑时日志改为 append 并写入运行分隔线，保留历史执行记录。
-- **文档与样例补充** — 新增 Report/PPT 截图、`Sample_Slides` 源文件链接及使用路径说明（**聊天窗口 > Report Request 按钮**）。
-- 详细说明：[`docs/releases/v1.0.9.md`](docs/releases/v1.0.9.md)
+- **任务看板批量隐藏扩展（完成/保留/取消）** — 在 `新建任务` 左侧新增 `隐藏` 按钮，可一次性隐藏这些状态的数据。
+- **`进行中 / 全部` 视图切换** — 新增简洁视图模式，可立即切换是否显示已隐藏项目。
+- **技能学习弹窗防重复** — 已学习的 CLI 会显示为 `已学习`，且默认不勾选，避免重复学习。
+- **学习记忆 + 取消学习体验升级** — 默认只显示最近 3 条并支持展开，同时在标签页内可直接取消学习并显示短暂 bonk 动画反馈。
+- **跨平台 Unlearn 管道** — 在 macOS/Linux/Windows 按提供商执行删除命令，并在验证后再清理学习历史。
+- 详细说明：[`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md)
+
+### v1.1.0 技能学习/删除预览
+
+<p align="center">
+  <img src="Sample_Img/Skills.png" alt="Skills Learn and Remove" width="49%" />
+  <img src="Sample_Img/CLI.png" alt="CLI Provider Mapping for Learned Skills" width="49%" />
+</p>
 
 ---
 
@@ -131,7 +138,7 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 </td>
 <td width="50%">
 
-**设置** — 配置公司名称、CEO 名称、默认 CLI 提供商和语言偏好
+**设置** — 配置公司名称、CEO 名称、默认提供商偏好（CLI/OAuth/API）和语言偏好
 
 <img src="Sample_Img/Setting.png" alt="Settings" width="100%" />
 </td>
@@ -297,7 +304,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.9 inbox 校验","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.0 inbox 校验","skipPlannedMeeting":true}'
 ```
 
 期望结果：
@@ -547,7 +554,7 @@ pnpm start              # 运行构建后的服务器
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信 QA 检查（v1.0.9）
+### 通信 QA 检查（v1.1.0）
 
 ```bash
 # 单项检查
@@ -564,9 +571,16 @@ pnpm run test:comm-status
 
 ---
 
-## CLI 提供商配置
+<a id="cli-提供商配置"></a>
+## 提供商配置（CLI / OAuth / API）
 
-Claw-Empire 支持多款 CLI AI 编程助手，请至少安装其中一款：
+Claw-Empire 支持三种提供商接入路径：
+
+- **CLI 工具** — 安装本地 CLI 并通过本地进程执行任务
+- **OAuth 账号** — 通过安全令牌交换连接受支持提供商
+- **直接 API Key** — 在 **设置 > API** 选项卡绑定外部 LLM API
+
+若使用 CLI 模式，请至少安装其中一款：
 
 | 提供商 | 安装方式 | 认证 |
 |--------|---------|------|
@@ -578,6 +592,7 @@ Claw-Empire 支持多款 CLI AI 编程助手，请至少安装其中一款：
 在应用内的 **设置 > CLI 工具** 面板中配置提供商和模型。
 
 此外，还可以无需安装 CLI 工具，直接通过 **设置 > API** 选项卡将代理连接到外部 LLM API。API 密钥以加密形式（AES-256-GCM）存储在本地 SQLite 数据库中，不会保存在 `.env` 或源代码中。
+技能学习/取消学习自动化目前面向具备 CLI 连接能力的提供商。
 
 ---
 
@@ -598,7 +613,7 @@ claw-empire/
 │   │   ├── ChatPanel.tsx      # CEO 与代理通信
 │   │   ├── SettingsPanel.tsx  # 公司和提供商设置
 │   │   ├── SkillsLibrary.tsx  # 代理技能管理
-│   │   └── TerminalPanel.tsx  # 实时 CLI 输出查看器
+│   │   └── TerminalPanel.tsx  # 实时执行输出查看器
 │   ├── hooks/                 # usePolling, useWebSocket
 │   └── types/                 # TypeScript 类型定义
 ├── public/sprites/            # 12 款像素风格代理角色

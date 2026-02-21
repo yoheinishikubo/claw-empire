@@ -6,11 +6,11 @@
 
 <p align="center">
   <strong>Command Your AI Agent Empire from the CEO Desk</strong><br>
-  A local-first AI agent office simulator that turns <b>Claude Code</b>, <b>Codex CLI</b>, <b>Gemini CLI</b>, <b>OpenCode</b>, <b>GitHub Copilot</b>, and <b>Antigravity</b> into a virtual company of autonomous agents.
+  A local-first AI agent office simulator that orchestrates <b>CLI</b>, <b>OAuth</b>, and <b>API-connected</b> providers (including <b>Claude Code</b>, <b>Codex CLI</b>, <b>Gemini CLI</b>, <b>OpenCode</b>, <b>GitHub Copilot</b>, and <b>Antigravity</b>) as a virtual company of autonomous agents.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.0.9.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.1.0.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -42,25 +42,32 @@
 
 ## What is Claw-Empire?
 
-Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, **Codex CLI**, **Gemini CLI**, **OpenCode**, and more — into a fully simulated **virtual software company**. You are the CEO. Your AI agents are the employees. Watch them collaborate across departments, hold meetings, deliver tasks, and level up — all visualized through a charming pixel-art office interface.
+Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OAuth**, or **direct API keys** — into a fully simulated **virtual software company**. You are the CEO. Your AI agents are the employees. Watch them collaborate across departments, hold meetings, deliver tasks, and level up — all visualized through a charming pixel-art office interface.
 
 ### Why Claw-Empire?
 
-- **One interface, many AI agents** — Manage Claude Code, Codex, Gemini CLI, and others from a single dashboard
+- **One interface, many AI agents** — Manage CLI, OAuth, and API-backed agents from a single dashboard
 - **Local-first & private** — All data stays on your machine. SQLite database, no cloud dependency
 - **Visual & intuitive** — Pixel-art office view makes AI orchestration fun and transparent
 - **Real autonomous collaboration** — Agents work in isolated git worktrees, attend meetings, and produce deliverables
 
 ---
 
-## Latest Release (v1.0.9)
+## Latest Release (v1.1.0)
 
-- **Report Request Workflow Upgrade (PPT/MD)** — Strengthened report routing and prompt constraints so report tasks follow research-first flow and use pinned tool submodules.
-- **PPT HTML-First + One-Pass Design Checkpoint** — PPT tasks now pause for one design checkpoint, then resume final regeneration and close without second confirmation.
-- **Terminal Live Hint UX** — Added persistent tool-progress hint panel above status bar; keeps human output visible while showing active tool/hint context.
-- **Terminal History Retention** — Task logs now append per run with run separators, so repeated runs keep prior terminal history.
-- **Docs + Samples for Report/PPT** — Added report/PPT screenshots, `Sample_Slides` sources, and explicit usage path: **Chat window > Report Request button**.
-- Full notes: [`docs/releases/v1.0.9.md`](docs/releases/v1.0.9.md)
+- **Task Board Bulk Hide (Done/Pending/Cancelled)** — Added a dedicated `Hide` control next to `New Task` so completed, on-hold, and cancelled items can be hidden in one action.
+- **`Active / All` Visibility Toggle** — Added concise board view switching (`Progressing/All` intent) so hidden-task visibility can be toggled instantly.
+- **Skills Learn Modal Guardrails** — Already learned providers now show as `Learned` and are unchecked by default to avoid duplicate learning runs.
+- **Skills Memory + Unlearn UX** — Memory tab now defaults to recent 3 records with expand support, includes in-tab unlearn actions, and plays short bonk animations on unlearn.
+- **Cross-Platform Unlearn Pipeline** — Unlearn now runs provider-aware CLI removal on macOS/Linux/Windows with post-action verification before history cleanup.
+- Full notes: [`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md)
+
+### v1.1.0 Skills Learn/Remove Preview
+
+<p align="center">
+  <img src="Sample_Img/Skills.png" alt="Skills Learn and Remove" width="49%" />
+  <img src="Sample_Img/CLI.png" alt="CLI Provider Mapping for Learned Skills" width="49%" />
+</p>
 
 ---
 
@@ -131,7 +138,7 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 </td>
 <td width="50%">
 
-**Settings** — Configure company name, CEO name, default CLI provider, and language preferences
+**Settings** — Configure company name, CEO name, default provider preferences (CLI/OAuth/API), and language preferences
 
 <img src="Sample_Img/Setting.png" alt="Settings" width="100%" />
 </td>
@@ -297,7 +304,7 @@ If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.9 inbox smoke test","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.0 inbox smoke test","skipPlannedMeeting":true}'
 ```
 
 Expected:
@@ -547,7 +554,7 @@ pnpm start              # run the built server
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### Communication QA Checks (v1.0.9)
+### Communication QA Checks (v1.1.0)
 
 ```bash
 # Individual checks
@@ -564,9 +571,16 @@ pnpm run test:comm-status
 
 ---
 
-## CLI Provider Setup
+<a id="cli-provider-setup"></a>
+## Provider Setup (CLI / OAuth / API)
 
-Claw-Empire works with multiple CLI-based AI coding assistants. Install at least one:
+Claw-Empire supports three provider paths:
+
+- **CLI tools** — install local coding CLIs and run tasks through local processes
+- **OAuth accounts** — connect supported providers (for example GitHub/Google-backed flows) via secure token exchange
+- **Direct API keys** — bind agents to external LLM APIs from **Settings > API**
+
+For CLI mode, install at least one:
 
 | Provider | Install | Auth |
 |----------|---------|------|
@@ -578,6 +592,7 @@ Claw-Empire works with multiple CLI-based AI coding assistants. Install at least
 Configure providers and models in the **Settings > CLI Tools** panel within the app.
 
 Alternatively, connect agents to external LLM APIs (no CLI installation required) via the **Settings > API** tab. API keys are stored encrypted (AES-256-GCM) in the local SQLite database — not in `.env` or source code.
+Skills learn/unlearn automation is currently designed for CLI-capable providers.
 
 ---
 
@@ -598,7 +613,7 @@ claw-empire/
 │   │   ├── ChatPanel.tsx      # CEO-to-agent communication
 │   │   ├── SettingsPanel.tsx  # Company and provider settings
 │   │   ├── SkillsLibrary.tsx  # Agent skills management
-│   │   └── TerminalPanel.tsx  # Real-time CLI output viewer
+│   │   └── TerminalPanel.tsx  # Real-time execution output viewer
 │   ├── hooks/                 # usePolling, useWebSocket
 │   └── types/                 # TypeScript type definitions
 ├── public/sprites/            # 12 pixel-art agent sprites

@@ -2196,6 +2196,15 @@ const SKILL_LEARN_PROVIDER_TO_AGENT: Record<SkillLearnProvider, string> = {
   gemini: "gemini-cli",
   opencode: "opencode",
 };
+const SKILL_HISTORY_PROVIDER_TO_AGENT: Record<SkillHistoryProvider, string | null> = {
+  claude: "claude-code",
+  codex: "codex",
+  gemini: "gemini-cli",
+  opencode: "opencode",
+  copilot: "github-copilot",
+  antigravity: "antigravity",
+  api: null,
+};
 
 const SKILL_LEARN_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/;
 const SKILL_LEARN_MAX_LOG_LINES = 120;
@@ -2205,6 +2214,8 @@ const SKILL_LEARN_HISTORY_RETENTION_DAYS = 180;
 const SKILL_LEARN_HISTORY_RETENTION_MS = SKILL_LEARN_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const SKILL_LEARN_HISTORY_MAX_ROWS_PER_PROVIDER = 2_000;
 const SKILL_LEARN_HISTORY_MAX_QUERY_LIMIT = 200;
+const SKILL_UNLEARN_TIMEOUT_MS = 20_000;
+const SKILLS_NPX_CMD = process.platform === "win32" ? "npx.cmd" : "npx";
 const skillLearnJobs = new Map<string, SkillLearnJob>();
 
 function isSkillLearnProvider(value: string): value is SkillLearnProvider {
@@ -2240,6 +2251,181 @@ function normalizeSkillLearnSkillId(skillId: string, repo: string): string {
   const repoTail = repo.split("/").filter(Boolean).pop();
   if (repoTail) return repoTail;
   return "unknown-skill";
+}
+
+function stripAnsiControl(value: string): string {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function buildSkillUnlearnCandidates(skillId: string, repo: string): string[] {
+  const out: string[] = [];
+  const pushUnique = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (!out.includes(trimmed)) out.push(trimmed);
+  };
+
+  pushUnique(skillId);
+  if (skillId.includes("#")) {
+    const tail = skillId.split("#").filter(Boolean).pop();
+    if (tail) pushUnique(tail);
+  }
+  if (skillId.includes(":")) {
+    const tail = skillId.split(":").filter(Boolean).pop();
+    if (tail) pushUnique(tail);
+  }
+  if (skillId.includes("/")) {
+    const tail = skillId.split("/").filter(Boolean).pop();
+    if (tail) pushUnique(tail);
+  }
+  const repoTail = repo.split("/").filter(Boolean).pop();
+  if (repoTail) pushUnique(repoTail);
+  return out;
+}
+
+function formatExecError(err: unknown): string {
+  if (err instanceof Error) return err.message || String(err);
+  return String(err);
+}
+
+type SkillLinkState = "linked" | "not_linked" | "unverifiable";
+
+function resolveAgentSkillDir(agent: string): string | null {
+  if (agent === "claude-code") return path.join(process.cwd(), ".claude", "skills");
+  if (agent === "codex") return path.join(process.cwd(), ".codex", "skills");
+  if (agent === "gemini-cli") return path.join(process.cwd(), ".gemini", "skills");
+  if (agent === "opencode") return path.join(process.cwd(), ".opencode", "skills");
+  if (agent === "github-copilot") return path.join(process.cwd(), ".copilot", "skills");
+  if (agent === "antigravity") return path.join(process.cwd(), ".antigravity", "skills");
+  return null;
+}
+
+function detectSkillLinkStateFromFilesystem(agent: string, candidates: string[]): SkillLinkState {
+  const agentSkillDir = resolveAgentSkillDir(agent);
+  if (!agentSkillDir || !fs.existsSync(agentSkillDir)) {
+    return "unverifiable";
+  }
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(path.join(agentSkillDir, candidate))) {
+        return "linked";
+      }
+    } catch {
+      // ignore and continue checks
+    }
+  }
+  return "not_linked";
+}
+
+async function runSkillUnlearnForProvider(
+  provider: SkillHistoryProvider,
+  repo: string,
+  skillId: string,
+): Promise<{
+  ok: boolean;
+  skipped: boolean;
+  agent: string | null;
+  removedSkill: string | null;
+  message: string;
+  attempts: Array<{ skill: string; output: string }>;
+}> {
+  const agent = SKILL_HISTORY_PROVIDER_TO_AGENT[provider] ?? null;
+  if (!agent) {
+    return {
+      ok: true,
+      skipped: true,
+      agent: null,
+      removedSkill: null,
+      message: "no_local_cli_agent_for_provider",
+      attempts: [],
+    };
+  }
+
+  const candidates = buildSkillUnlearnCandidates(skillId, repo);
+  const attempts: Array<{ skill: string; output: string }> = [];
+  const preState = detectSkillLinkStateFromFilesystem(agent, candidates);
+  if (preState === "not_linked") {
+    return {
+      ok: true,
+      skipped: true,
+      agent,
+      removedSkill: null,
+      message: "skill_already_unlinked",
+      attempts,
+    };
+  }
+  const strictVerify = preState !== "unverifiable";
+
+  let removedSkill: string | null = null;
+  let sawNoMatching = true;
+  for (const candidate of candidates) {
+    const args = [
+      "--yes",
+      "skills@latest",
+      "remove",
+      "--yes",
+      "--agent",
+      agent,
+      "--skill",
+      candidate,
+    ];
+    try {
+      const rawOutput = await execWithTimeout(SKILLS_NPX_CMD, args, SKILL_UNLEARN_TIMEOUT_MS);
+      const output = stripAnsiControl(rawOutput || "").trim();
+      attempts.push({ skill: candidate, output });
+      if (/no matching skills found/i.test(output)) {
+        continue;
+      }
+      sawNoMatching = false;
+      removedSkill = candidate;
+      break;
+    } catch (err) {
+      return {
+        ok: false,
+        skipped: false,
+        agent,
+        removedSkill: null,
+        message: formatExecError(err),
+        attempts,
+      };
+    }
+  }
+
+  const postState = detectSkillLinkStateFromFilesystem(agent, candidates);
+  attempts.push({ skill: "__verify__", output: `state=${postState}` });
+  if (strictVerify && postState === "linked") {
+    return {
+      ok: false,
+      skipped: false,
+      agent,
+      removedSkill: null,
+      message: "cli_unlearn_verify_failed_fs_still_linked",
+      attempts,
+    };
+  }
+
+  if (removedSkill) {
+    return {
+      ok: true,
+      skipped: false,
+      agent,
+      removedSkill,
+      message: "cli_skill_remove_ok",
+      attempts,
+    };
+  }
+
+  return {
+    ok: true,
+    skipped: true,
+    agent,
+    removedSkill: null,
+    message: sawNoMatching
+      ? (strictVerify ? "no_matching_installed_skill_found_for_unlearn" : "no_matching_installed_skill_found_unverifiable_scope")
+      : "cli_unlearn_unverifiable_scope",
+    attempts,
+  };
 }
 
 function buildSkillLearnLabel(repo: string, skillId: string): string {
@@ -2409,7 +2595,7 @@ function createSkillLearnJob(repo: string, skillId: string, providers: SkillLear
 
     let child;
     try {
-      child = spawn("npx", args, {
+      child = spawn(SKILLS_NPX_CMD, args, {
         cwd: process.cwd(),
         env: { ...process.env, FORCE_COLOR: "0" },
         stdio: ["ignore", "pipe", "pipe"],
@@ -2632,6 +2818,57 @@ app.get("/api/skills/available", (req, res) => {
   }>;
 
   res.json({ ok: true, skills });
+});
+
+app.post("/api/skills/unlearn", async (req, res) => {
+  pruneSkillLearningHistory();
+  const rawProvider = String(req.body?.provider ?? "").trim().toLowerCase();
+  const provider = isSkillHistoryProvider(rawProvider) ? rawProvider : null;
+  if (!provider) {
+    return res.status(400).json({ error: "invalid provider" });
+  }
+
+  const repo = String(req.body?.repo ?? "").trim();
+  if (!repo || !SKILL_LEARN_REPO_RE.test(repo)) {
+    return res.status(400).json({ error: "invalid repo format" });
+  }
+
+  const inputSkillId = String(req.body?.skillId ?? req.body?.skill_id ?? "").trim();
+  const skillId = normalizeSkillLearnSkillId(inputSkillId, repo);
+  const cliResult = await runSkillUnlearnForProvider(provider, repo, skillId);
+  if (!cliResult.ok) {
+    return res.status(409).json({
+      error: cliResult.message || "cli_unlearn_failed",
+      code: "cli_unlearn_failed",
+      provider,
+      repo,
+      skill_id: skillId,
+      agent: cliResult.agent,
+      attempts: cliResult.attempts,
+    });
+  }
+
+  const removed = db.prepare(`
+    DELETE FROM skill_learning_history
+    WHERE provider = ?
+      AND repo = ?
+      AND skill_id = ?
+      AND status = 'succeeded'
+  `).run(provider, repo, skillId).changes;
+
+  res.json({
+    ok: true,
+    provider,
+    repo,
+    skill_id: skillId,
+    removed,
+    cli: {
+      skipped: cliResult.skipped,
+      agent: cliResult.agent,
+      skill: cliResult.removedSkill,
+      message: cliResult.message,
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------

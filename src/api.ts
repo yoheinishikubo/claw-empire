@@ -758,6 +758,26 @@ export async function getAvailableLearnedSkills(input: {
   return j.skills ?? [];
 }
 
+export async function unlearnSkill(input: {
+  provider: SkillHistoryProvider;
+  repo: string;
+  skillId?: string;
+}): Promise<{
+  ok: boolean;
+  provider: SkillHistoryProvider;
+  repo: string;
+  skill_id: string;
+  removed: number;
+}> {
+  return post('/api/skills/unlearn', input) as Promise<{
+    ok: boolean;
+    provider: SkillHistoryProvider;
+    repo: string;
+    skill_id: string;
+    removed: number;
+  }>;
+}
+
 // Gateway Channel Messaging
 export type GatewayTarget = {
   sessionKey: string;

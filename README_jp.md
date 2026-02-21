@@ -6,11 +6,11 @@
 
 <p align="center">
   <strong>CEOデスクからAIエージェント帝国を指揮しよう</strong><br>
-  <b>Claude Code</b>、<b>Codex CLI</b>、<b>Gemini CLI</b>、<b>OpenCode</b>、<b>GitHub Copilot</b>、<b>Antigravity</b>を自律エージェントの仮想企業に変えるローカルファーストAIエージェントオフィスシミュレーター
+  <b>CLI</b>、<b>OAuth</b>、<b>API連携</b>プロバイダー（<b>Claude Code</b>、<b>Codex CLI</b>、<b>Gemini CLI</b>、<b>OpenCode</b>、<b>GitHub Copilot</b>、<b>Antigravity</b> など）を自律エージェントの仮想企業として統合運用するローカルファーストAIエージェントオフィスシミュレーター
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.9-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.0.9.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.1.0.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -42,25 +42,32 @@
 
 ## Claw-Empireとは？
 
-Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude Code**、**Codex CLI**、**Gemini CLI**、**OpenCode** など — を完全にシミュレートされた**仮想ソフトウェア会社**へと変革します。あなたがCEOです。AIエージェントたちが社員として働きます。部署をまたいで協力し、会議を開き、タスクを完遂し、レベルアップしていく様子を、魅力的なピクセルアートのオフィスインターフェースを通じてリアルタイムに観察できます。
+Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコーディングアシスタントを、完全にシミュレートされた**仮想ソフトウェア会社**へと変革します。あなたがCEOです。AIエージェントたちが社員として働きます。部署をまたいで協力し、会議を開き、タスクを完遂し、レベルアップしていく様子を、魅力的なピクセルアートのオフィスインターフェースを通じてリアルタイムに観察できます。
 
 ### なぜClaw-Empireなのか？
 
-- **一つのインターフェースで複数のAIエージェントを管理** — Claude Code、Codex、Gemini CLIなどを単一のダッシュボードから一元管理
+- **一つのインターフェースで複数のAIエージェントを管理** — CLI/OAuth/API接続エージェントを単一のダッシュボードから一元管理
 - **ローカルファースト＆プライバシー保護** — すべてのデータはローカルに保存。SQLiteデータベースを使用し、クラウド依存ゼロ
 - **直感的なビジュアル体験** — ピクセルアートのオフィスビューがAIオーケストレーションを楽しく、わかりやすく表現
 - **真の自律コラボレーション** — エージェントは独立したgit worktreeで作業し、会議に参加して成果物を生み出す
 
 ---
 
-## 最新リリース (v1.0.9)
+## 最新リリース (v1.1.0)
 
-- **レポート依頼ワークフロー強化（PPT/MD）** — レポートタスクのルーティングとプロンプト制約を強化し、調査先行・固定サブモジュール利用の流れを標準化しました。
-- **PPTのHTML先行 + 1回デザインチェックポイント** — PPTタスクはデザイン部門の1回チェック後に担当者が最終再生成し、2次確認なしでクローズします。
-- **ターミナルのライブヒントUX改善** — ステータスバー上部にツール進行ヒントパネルを常時表示し、自然言語出力と進捗文脈を同時に確認できます。
-- **ターミナル履歴保持の改善** — 再実行時ログをappend保存し、実行区切りを記録して過去実行の履歴を保持します。
-- **ドキュメント/サンプル拡充** — Report/PPTスクリーンショット、`Sample_Slides` ソース、利用手順（**チャット画面 > Report Request ボタン**）を追加しました。
-- 詳細: [`docs/releases/v1.0.9.md`](docs/releases/v1.0.9.md)
+- **タスクボード一括非表示の拡張（完了/保留/キャンセル）** — `新規タスク` の左に `非表示` ボタンを追加し、対象状態をまとめて非表示にできます。
+- **`進行中 / すべて` 表示トグル** — 非表示データを含めるかどうかをワンタップで切り替えられる表示モードを追加しました。
+- **スキル学習モーダルの重複防止** — 既に学習済みのCLIは `学習済み` 表示となり、初期状態で未選択になるため二重学習を防ぎます。
+- **学習メモリ + 学習取消 UX 改善** — 直近3件のプレビュー表示、展開表示、タブ内の学習取消、短い bonk アニメーションを追加しました。
+- **クロスプラットフォーム Unlearn パイプライン** — macOS/Linux/Windows でプロバイダー別削除コマンドを実行し、検証後に履歴を整理します。
+- 詳細: [`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md)
+
+### v1.1.0 スキル学習/削除プレビュー
+
+<p align="center">
+  <img src="Sample_Img/Skills.png" alt="Skills Learn and Remove" width="49%" />
+  <img src="Sample_Img/CLI.png" alt="CLI Provider Mapping for Learned Skills" width="49%" />
+</p>
 
 ---
 
@@ -131,7 +138,7 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 </td>
 <td width="50%">
 
-**設定** — 会社名、CEO名、デフォルトCLIプロバイダー、言語などの環境設定
+**設定** — 会社名、CEO名、デフォルトプロバイダー設定（CLI/OAuth/API）、言語などの環境設定
 
 <img src="Sample_Img/Setting.png" alt="Settings" width="100%" />
 </td>
@@ -297,7 +304,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.0.9 inbox 検証","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.0 inbox 検証","skipPlannedMeeting":true}'
 ```
 
 期待値:
@@ -547,7 +554,7 @@ pnpm start              # ビルド済みサーバーを起動
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信QAチェック（v1.0.9）
+### 通信QAチェック（v1.1.0）
 
 ```bash
 # 個別チェック
@@ -564,9 +571,16 @@ pnpm run test:comm-status
 
 ---
 
-## CLIプロバイダーの設定
+<a id="cliプロバイダーの設定"></a>
+## プロバイダー設定（CLI / OAuth / API）
 
-Claw-Empireは複数のCLIベースAIコーディングアシスタントに対応しています。少なくとも一つをインストールしてください：
+Claw-Empireは次の3種類のプロバイダー接続に対応しています：
+
+- **CLIツール** — ローカルCLIをインストールしてプロセス実行
+- **OAuthアカウント** — 対応プロバイダーを安全なトークン連携で接続
+- **直接APIキー** — **Settings > API** タブから外部LLM APIへ接続
+
+CLIモードを利用する場合は、少なくとも一つをインストールしてください：
 
 | プロバイダー | インストール | 認証 |
 |-------------|------------|------|
@@ -578,6 +592,7 @@ Claw-Empireは複数のCLIベースAIコーディングアシスタントに対�
 アプリ内の **Settings > CLI Tools** パネルでプロバイダーとモデルを設定してください。
 
 または、CLI をインストールせずに **Settings > API** タブからエージェントを外部 LLM API に接続することも可能です。APIキーはローカルSQLiteデータベースに暗号化（AES-256-GCM）して保存されます — `.env` やソースコードには含まれません。
+スキル学習/解除の自動化は、現在CLI連携プロバイダーを対象に設計されています。
 
 ---
 
@@ -598,7 +613,7 @@ claw-empire/
 │   │   ├── ChatPanel.tsx      # CEO-エージェント間コミュニケーション
 │   │   ├── SettingsPanel.tsx  # 会社・プロバイダー設定
 │   │   ├── SkillsLibrary.tsx  # エージェントスキル管理
-│   │   └── TerminalPanel.tsx  # リアルタイムCLI出力ビューアー
+│   │   └── TerminalPanel.tsx  # リアルタイム実行出力ビューアー
 │   ├── hooks/                 # usePolling, useWebSocket
 │   └── types/                 # TypeScript型定義
 ├── public/sprites/            # 12種類のピクセルアートエージェントスプライト
