@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.1.0.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.1.1.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,21 +53,21 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ---
 
-## 最新リリース (v1.1.0)
+## 最新リリース (v1.1.1)
 
-- **タスクボード一括非表示の拡張（完了/保留/キャンセル）** — `新規タスク` の左に `非表示` ボタンを追加し、対象状態をまとめて非表示にできます。
-- **`進行中 / すべて` 表示トグル** — 非表示データを含めるかどうかをワンタップで切り替えられる表示モードを追加しました。
-- **スキル学習モーダルの重複防止** — 既に学習済みのCLIは `学習済み` 表示となり、初期状態で未選択になるため二重学習を防ぎます。
-- **学習メモリ + 学習取消 UX 改善** — 直近3件のプレビュー表示、展開表示、タブ内の学習取消、短い bonk アニメーションを追加しました。
-- **クロスプラットフォーム Unlearn パイプライン** — macOS/Linux/Windows でプロバイダー別削除コマンドを実行し、検証後に履歴を整理します。
-- 詳細: [`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md)
+- **Office Manager 追加** — Officeタブに部屋テーマを編集できる `Office Manager` パネルを追加しました。
+- **設定対象を拡張** — 各部署に加えて `CEO Office` と `Break Room` の色設定が可能です。
+- **編集中のライブハイライト** — メイン色/プリセット/トーン変更時に対象エリアをリアルタイムで強調表示します。
+- **トーン中心プリセット** — プリセット選択時はメイン色を固定し、トーンのみ変更されます。
+- **レポート文書ページネーション** — レポートポップアップで `Prev/Next` による文書ページ移動が可能になりました。
+- **配布デフォルトのテーマ同期** — ルームテーマを `settings.roomThemes` に保存し、初期配布デフォルトとして反映できます。
+- 詳細: [`docs/releases/v1.1.1.md`](docs/releases/v1.1.1.md)
 
-### v1.1.0 スキル学習/削除プレビュー
+### v1.1.1 オフィスプレビュー
 
 <p align="center">
-  <img src="Sample_Img/Skills_Learning_Memory.png" alt="Skills Learning Memory" width="32%" />
-  <img src="Sample_Img/Skill_Learn.png" alt="Skill Learn" width="32%" />
-  <img src="Sample_Img/Skill_Remove.png" alt="Skill Remove" width="32%" />
+  <img src="Sample_Img/Office.png" alt="Office View" width="49%" />
+  <img src="Sample_Img/Office_Manager.png" alt="Office Manager Panel" width="49%" />
 </p>
 
 ---
@@ -306,7 +306,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.0 inbox 検証","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.1 inbox 検証","skipPlannedMeeting":true}'
 ```
 
 期待値:
@@ -560,7 +560,7 @@ pnpm start              # ビルド済みサーバーを起動
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信QAチェック（v1.1.0）
+### 通信QAチェック（v1.1.1）
 
 ```bash
 # 個別チェック

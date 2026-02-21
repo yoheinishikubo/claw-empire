@@ -1,5 +1,6 @@
 # Releases
 
+- [`v1.1.1`](v1.1.1.md) - Office Manager rollout (department/CEO/break-room theme control + live room highlight), tone-first preset behavior, report document pagination, and DB-backed room-theme defaults/persistence
 - [`v1.1.0`](v1.1.0.md) - PR #19 integration and release consolidation for Task Board bulk hide controls (Done/Pending/Cancelled), Active/All visibility toggle, Skills Learn/Unlearn UX upgrades, cross-platform unlearn verification, and post-release in-app update banner guidance
 - [`v1.0.9`](v1.0.9.md) - Report-request/PPT workflow hardening (HTML-first + one-pass design checkpoint + final regen/no second review), terminal live-hint UX and parser improvements, task log append retention, and multilingual README/report-doc updates
 - [`v1.0.8`](v1.0.8.md) - Active agents status panel + kill control, task completion report popup/history, planning-lead consolidated archive generation, long-run stability updates (`--max-turns 200`, timeout/orphan handling), and CLI/OAuth/API communication QA test suite

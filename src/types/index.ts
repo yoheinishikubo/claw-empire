@@ -235,6 +235,13 @@ export interface ProviderModelConfig {
   subModelReasoningLevel?: string;  // 알바생 추론 레벨 (codex만 해당)
 }
 
+export interface RoomTheme {
+  floor1: number;
+  floor2: number;
+  wall: number;
+  accent: number;
+}
+
 export interface CompanySettings {
   companyName: string;
   ceoName: string;
@@ -244,6 +251,7 @@ export interface CompanySettings {
   language: UiLanguage;
   defaultProvider: CliProvider;
   providerModelConfig?: Record<string, ProviderModelConfig>;
+  roomThemes?: Record<string, RoomTheme>;
 }
 
 export const DEFAULT_SETTINGS: CompanySettings = {

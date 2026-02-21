@@ -4,7 +4,8 @@ import type {
   TaskStatus, TaskType, CliProvider, AgentRole,
   MessageType, ReceiverType, SubTask, MeetingMinute,
   MeetingPresence,
-  CliModelInfo
+  CliModelInfo,
+  RoomTheme
 } from './types';
 
 const base = '';
@@ -443,6 +444,10 @@ export async function getSettings(): Promise<CompanySettings> {
 
 export async function saveSettings(settings: CompanySettings): Promise<void> {
   await put('/api/settings', settings);
+}
+
+export async function saveRoomThemes(roomThemes: Record<string, RoomTheme>): Promise<void> {
+  await put('/api/settings', { roomThemes });
 }
 
 export interface UpdateStatus {

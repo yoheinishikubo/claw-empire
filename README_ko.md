@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.1.0.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.1.1.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -53,21 +53,21 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 
 ---
 
-## 최신 릴리즈 (v1.1.0)
+## 최신 릴리즈 (v1.1.1)
 
-- **업무 보드 일괄 숨김 확장 (완료/보류/취소)** — `새 업무` 좌측에 `숨김` 버튼을 추가해 대상 상태를 한 번에 숨길 수 있습니다.
-- **`진행중 / 모두보기` 토글 추가** — 숨김 상태 포함 여부를 즉시 전환할 수 있도록 보드 가시성 모드를 단순화했습니다.
-- **스킬 학습 모달 안전장치 강화** — 이미 학습된 CLI는 `학습됨`으로 표시되고 기본 선택이 해제되어 중복 학습을 방지합니다.
-- **학습 메모리 + 학습취소 UX 개선** — 최근 3개 기본 표시/펼치기, 탭 내 학습 취소, 짧은 bonk 애니메이션 피드백을 추가했습니다.
-- **크로스플랫폼 Unlearn 파이프라인** — macOS/Linux/Windows에서 프로바이더별 제거 명령을 실행하고 검증 후 이력을 정리합니다.
-- 상세 문서: [`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md)
+- **오피스 매니저 추가** — 오피스 탭 상단에서 방별 테마를 조정하는 `Office Manager` 패널을 제공합니다.
+- **설정 대상 확장** — 각 부서뿐 아니라 `CEO 오피스`, `휴게실`까지 색상 설정이 가능합니다.
+- **실시간 편집 하이라이트** — 메인색상/프리셋/톤 조작 시 해당 사무실 영역이 즉시 강조되어 위치를 바로 확인할 수 있습니다.
+- **톤 중심 프리셋** — 프리셋 선택은 메인색상은 유지하고 톤만 바꾸며, 현재 메인색상 기준으로 추천 톤이 동적으로 갱신됩니다.
+- **보고서 문서 페이지네이션** — 보고서 팝업 문서 목록에 `이전/다음` 페이지 탐색을 추가해 긴 문서를 더 쉽게 확인할 수 있습니다.
+- **배포 기본 테마 동기화** — 룸 테마를 서버 `settings.roomThemes`와 동기화하고 신규 배포 기본값으로 사용할 수 있습니다.
+- 상세 문서: [`docs/releases/v1.1.1.md`](docs/releases/v1.1.1.md)
 
-### v1.1.0 스킬 학습/삭제 미리보기
+### v1.1.1 오피스 미리보기
 
 <p align="center">
-  <img src="Sample_Img/Skills_Learning_Memory.png" alt="Skills Learning Memory" width="32%" />
-  <img src="Sample_Img/Skill_Learn.png" alt="Skill Learn" width="32%" />
-  <img src="Sample_Img/Skill_Remove.png" alt="Skill Remove" width="32%" />
+  <img src="Sample_Img/Office.png" alt="Office View" width="49%" />
+  <img src="Sample_Img/Office_Manager.png" alt="Office Manager Panel" width="49%" />
 </p>
 
 ---
@@ -305,7 +305,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.0 inbox 점검","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.1 inbox 점검","skipPlannedMeeting":true}'
 ```
 
 예상 응답:
@@ -559,7 +559,7 @@ pnpm start              # 빌드된 서버 실행
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 통신 QA 점검 (v1.1.0)
+### 통신 QA 점검 (v1.1.1)
 
 ```bash
 # 개별 점검

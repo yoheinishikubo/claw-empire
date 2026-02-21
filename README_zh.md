@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.1.0.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.1.1.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,21 +53,21 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ---
 
-## 最新发布 (v1.1.0)
+## 最新发布 (v1.1.1)
 
-- **任务看板批量隐藏扩展（完成/保留/取消）** — 在 `新建任务` 左侧新增 `隐藏` 按钮，可一次性隐藏这些状态的数据。
-- **`进行中 / 全部` 视图切换** — 新增简洁视图模式，可立即切换是否显示已隐藏项目。
-- **技能学习弹窗防重复** — 已学习的 CLI 会显示为 `已学习`，且默认不勾选，避免重复学习。
-- **学习记忆 + 取消学习体验升级** — 默认只显示最近 3 条并支持展开，同时在标签页内可直接取消学习并显示短暂 bonk 动画反馈。
-- **跨平台 Unlearn 管道** — 在 macOS/Linux/Windows 按提供商执行删除命令，并在验证后再清理学习历史。
-- 详细说明：[`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md)
+- **新增 Office Manager** — 在 Office 标签页中加入房间主题管理面板。
+- **主题范围扩展** — 除各部门外，现可直接配置 `CEO Office` 与 `Break Room`。
+- **编辑时实时高亮** — 调整主色/预设/色调时，会实时高亮对应办公区域。
+- **预设改为色调优先** — 点击预设只改变色调，不会改动主色。
+- **报告文档分页** — 报告弹窗支持 `Prev/Next` 文档分页浏览。
+- **部署默认主题同步** — 房间主题同步到 `settings.roomThemes`，可作为新部署默认值。
+- 详细说明：[`docs/releases/v1.1.1.md`](docs/releases/v1.1.1.md)
 
-### v1.1.0 技能学习/删除预览
+### v1.1.1 办公室预览
 
 <p align="center">
-  <img src="Sample_Img/Skills_Learning_Memory.png" alt="Skills Learning Memory" width="32%" />
-  <img src="Sample_Img/Skill_Learn.png" alt="Skill Learn" width="32%" />
-  <img src="Sample_Img/Skill_Remove.png" alt="Skill Remove" width="32%" />
+  <img src="Sample_Img/Office.png" alt="Office View" width="49%" />
+  <img src="Sample_Img/Office_Manager.png" alt="Office Manager Panel" width="49%" />
 </p>
 
 ---
@@ -306,7 +306,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.0 inbox 校验","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.1 inbox 校验","skipPlannedMeeting":true}'
 ```
 
 期望结果：
@@ -560,7 +560,7 @@ pnpm start              # 运行构建后的服务器
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信 QA 检查（v1.1.0）
+### 通信 QA 检查（v1.1.1）
 
 ```bash
 # 单项检查

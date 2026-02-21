@@ -11,6 +11,7 @@ import SkillsLibrary from "./components/SkillsLibrary";
 import TaskReportPopup from "./components/TaskReportPopup";
 import ReportHistory from "./components/ReportHistory";
 import AgentStatusPanel from "./components/AgentStatusPanel";
+import OfficeRoomManager from "./components/OfficeRoomManager";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type {
   Department,
@@ -23,6 +24,7 @@ import type {
   SubTask,
   MeetingPresence,
   MeetingReviewDecision,
+  RoomTheme,
 } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import {
@@ -77,6 +79,41 @@ const MAX_LIVE_SUBAGENTS = 600;
 const MAX_CROSS_DEPT_DELIVERIES = 240;
 const MAX_CEO_OFFICE_CALLS = 480;
 const UPDATE_BANNER_DISMISS_STORAGE_KEY = "climpire_update_banner_dismissed";
+const ROOM_THEMES_STORAGE_KEY = "climpire_room_themes";
+type RoomThemeMap = Record<string, RoomTheme>;
+
+function isRoomTheme(value: unknown): value is RoomTheme {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.floor1 === "number" &&
+    Number.isFinite(v.floor1) &&
+    typeof v.floor2 === "number" &&
+    Number.isFinite(v.floor2) &&
+    typeof v.wall === "number" &&
+    Number.isFinite(v.wall) &&
+    typeof v.accent === "number" &&
+    Number.isFinite(v.accent)
+  );
+}
+
+function isRoomThemeMap(value: unknown): value is RoomThemeMap {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.values(value).every(isRoomTheme);
+}
+
+function readStoredRoomThemes(): { themes: RoomThemeMap; hasStored: boolean } {
+  if (typeof window === "undefined") return { themes: {}, hasStored: false };
+  try {
+    const raw = window.localStorage.getItem(ROOM_THEMES_STORAGE_KEY);
+    if (!raw) return { themes: {}, hasStored: false };
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRoomThemeMap(parsed)) return { themes: {}, hasStored: false };
+    return { themes: parsed, hasStored: true };
+  } catch {
+    return { themes: {}, hasStored: false };
+  }
+}
 
 function appendCapped<T>(prev: T[], item: T, max: number): T[] {
   if (prev.length < max) return [...prev, item];
@@ -129,6 +166,9 @@ function syncClientLanguage(language: string): void {
 }
 
 export default function App() {
+  const initialRoomThemes = useMemo(() => readStoredRoomThemes(), []);
+  const hasLocalRoomThemesRef = useRef<boolean>(initialRoomThemes.hasStored);
+
   // Core state
   const [view, setView] = useState<View>("office");
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -157,6 +197,9 @@ export default function App() {
   const [taskReport, setTaskReport] = useState<TaskReportDetail | null>(null);
   const [showReportHistory, setShowReportHistory] = useState(false);
   const [showAgentStatus, setShowAgentStatus] = useState(false);
+  const [showRoomManager, setShowRoomManager] = useState(false);
+  const [activeRoomThemeTargetId, setActiveRoomThemeTargetId] = useState<string | null>(null);
+  const [customRoomThemes, setCustomRoomThemes] = useState<RoomThemeMap>(() => initialRoomThemes.themes);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [runtimeOs] = useState<RuntimeOs>(() => detectRuntimeOs());
   const [forceUpdateBanner] = useState<boolean>(() => isForceUpdateBannerEnabled());
@@ -227,6 +270,29 @@ export default function App() {
 
       setSettings(nextSettings);
       syncClientLanguage(nextSettings.language);
+      const dbRoomThemes = isRoomThemeMap(nextSettings.roomThemes)
+        ? nextSettings.roomThemes
+        : undefined;
+
+      if (!hasLocalRoomThemesRef.current && dbRoomThemes && Object.keys(dbRoomThemes).length > 0) {
+        setCustomRoomThemes(dbRoomThemes);
+        hasLocalRoomThemesRef.current = true;
+        try {
+          window.localStorage.setItem(ROOM_THEMES_STORAGE_KEY, JSON.stringify(dbRoomThemes));
+        } catch {
+          // ignore quota errors
+        }
+      }
+
+      if (
+        hasLocalRoomThemesRef.current &&
+        Object.keys(initialRoomThemes.themes).length > 0 &&
+        (!dbRoomThemes || Object.keys(dbRoomThemes).length === 0)
+      ) {
+        api.saveRoomThemes(initialRoomThemes.themes).catch((error) => {
+          console.error("Room theme sync to DB failed:", error);
+        });
+      }
 
       if (
         shouldAutoAssignLanguage &&
@@ -794,6 +860,36 @@ export default function App() {
     ja: "全社告知",
     zh: "全员公告",
   })}`;
+  const roomManagerLabel = `🏢 ${pickLang(uiLanguage, {
+    ko: "사무실 관리",
+    en: "Office Manager",
+    ja: "オフィス管理",
+    zh: "办公室管理",
+  })}`;
+  const roomManagerDepartments = useMemo(
+    () => [
+      {
+        id: "ceoOffice",
+        name: pickLang(uiLanguage, {
+          ko: "CEO 오피스",
+          en: "CEO Office",
+          ja: "CEOオフィス",
+          zh: "CEO办公室",
+        }),
+      },
+      ...departments,
+      {
+        id: "breakRoom",
+        name: pickLang(uiLanguage, {
+          ko: "휴게실",
+          en: "Break Room",
+          ja: "休憩室",
+          zh: "休息室",
+        }),
+      },
+    ],
+    [departments, uiLanguage]
+  );
   const reportLabel = `📋 ${pickLang(uiLanguage, {
     ko: "보고서",
     en: "Reports",
@@ -970,6 +1066,13 @@ export default function App() {
                 <span className="sm:hidden">📢</span>
                 <span className="hidden sm:inline">{announcementLabel}</span>
               </button>
+              <button
+                onClick={() => setShowRoomManager(true)}
+                className="rounded-lg border border-violet-500/30 bg-violet-600/20 px-2.5 py-1.5 text-xs text-violet-400 transition-colors hover:bg-violet-600/30 sm:px-3 sm:text-sm"
+              >
+                <span className="sm:hidden">🏢</span>
+                <span className="hidden sm:inline">{roomManagerLabel}</span>
+              </button>
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <div
                   className={`w-2 h-2 rounded-full ${
@@ -1040,6 +1143,8 @@ export default function App() {
                 onOpenActiveMeetingMinutes={(taskId) =>
                   setTaskPanel({ taskId, tab: "minutes" })
                 }
+                customDeptThemes={customRoomThemes}
+                themeHighlightTargetId={activeRoomThemeTargetId}
                 onSelectAgent={(a) => setSelectedAgent(a)}
                 onSelectDepartment={(dept) => {
                   const leader = agents.find(
@@ -1198,6 +1303,30 @@ export default function App() {
             agents={agents}
             uiLanguage={uiLanguage}
             onClose={() => setShowAgentStatus(false)}
+          />
+        )}
+
+        {/* Office Room Manager */}
+        {showRoomManager && (
+          <OfficeRoomManager
+            departments={roomManagerDepartments}
+            customThemes={customRoomThemes}
+            onActiveDeptChange={setActiveRoomThemeTargetId}
+            onThemeChange={(themes) => {
+              setCustomRoomThemes(themes);
+              hasLocalRoomThemesRef.current = true;
+              try {
+                window.localStorage.setItem(ROOM_THEMES_STORAGE_KEY, JSON.stringify(themes));
+              } catch { /* ignore quota errors */ }
+              api.saveRoomThemes(themes).catch((error) => {
+                console.error("Save room themes failed:", error);
+              });
+            }}
+            onClose={() => {
+              setShowRoomManager(false);
+              setActiveRoomThemeTargetId(null);
+            }}
+            language={uiLanguage}
           />
         )}
       </div>

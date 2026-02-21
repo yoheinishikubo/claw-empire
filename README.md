@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.1.0.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.1.1.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,21 +53,21 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ---
 
-## Latest Release (v1.1.0)
+## Latest Release (v1.1.1)
 
-- **Task Board Bulk Hide (Done/Pending/Cancelled)** — Added a dedicated `Hide` control next to `New Task` so completed, on-hold, and cancelled items can be hidden in one action.
-- **`Active / All` Visibility Toggle** — Added concise board view switching (`Progressing/All` intent) so hidden-task visibility can be toggled instantly.
-- **Skills Learn Modal Guardrails** — Already learned providers now show as `Learned` and are unchecked by default to avoid duplicate learning runs.
-- **Skills Memory + Unlearn UX** — Memory tab now defaults to recent 3 records with expand support, includes in-tab unlearn actions, and plays short bonk animations on unlearn.
-- **Cross-Platform Unlearn Pipeline** — Unlearn now runs provider-aware CLI removal on macOS/Linux/Windows with post-action verification before history cleanup.
-- Full notes: [`docs/releases/v1.1.0.md`](docs/releases/v1.1.0.md)
+- **Office Manager** — Added a dedicated `Office Manager` panel in the Office tab for room theme editing.
+- **Theme Scope Expansion** — Theme controls now include all departments, plus `CEO Office` and `Break Room`.
+- **Live Edit Highlighting** — While changing main color/preset/tone, the corresponding office area is highlighted in real time.
+- **Tone-first Presets** — Presets now adjust tone only (main color remains stable) and auto-regenerate by the active main color.
+- **Report Document Pagination** — Added page-based navigation (`Prev/Next`) in the report popup for large document bundles.
+- **DB-backed Theme Defaults** — Room themes are now synced to backend settings and can be shipped as deployment defaults.
+- Full notes: [`docs/releases/v1.1.1.md`](docs/releases/v1.1.1.md)
 
-### v1.1.0 Skills Learn/Remove Preview
+### v1.1.1 Office Preview
 
 <p align="center">
-  <img src="Sample_Img/Skills_Learning_Memory.png" alt="Skills Learning Memory" width="32%" />
-  <img src="Sample_Img/Skill_Learn.png" alt="Skill Learn" width="32%" />
-  <img src="Sample_Img/Skill_Remove.png" alt="Skill Remove" width="32%" />
+  <img src="Sample_Img/Office.png" alt="Office View" width="49%" />
+  <img src="Sample_Img/Office_Manager.png" alt="Office Manager Panel" width="49%" />
 </p>
 
 ---
@@ -306,7 +306,7 @@ If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.0 inbox smoke test","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.1 inbox smoke test","skipPlannedMeeting":true}'
 ```
 
 Expected:
@@ -560,7 +560,7 @@ pnpm start              # run the built server
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### Communication QA Checks (v1.1.0)
+### Communication QA Checks (v1.1.1)
 
 ```bash
 # Individual checks

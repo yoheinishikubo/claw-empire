@@ -57,6 +57,8 @@ interface OfficeViewProps {
   ceoOfficeCalls?: CeoOfficeCall[];
   onCeoOfficeCallProcessed?: (id: string) => void;
   onOpenActiveMeetingMinutes?: (taskId: string) => void;
+  customDeptThemes?: Record<string, { floor1: number; floor2: number; wall: number; accent: number }>;
+  themeHighlightTargetId?: string | null;
   onSelectAgent: (agent: Agent) => void;
   onSelectDepartment: (dept: Department) => void;
 }
@@ -167,12 +169,34 @@ const MOBILE_MOVE_CODES = {
   right: ["ArrowRight", "KeyD"],
 } as const;
 type MobileMoveDirection = keyof typeof MOBILE_MOVE_CODES;
+type RoomTheme = { floor1: number; floor2: number; wall: number; accent: number };
 
-const BREAK_THEME = {
-  floor1: 0x2a2218,
-  floor2: 0x332a1e,
-  wall: 0x6b5234,
-  accent: 0xe8a849,
+const OFFICE_PASTEL = {
+  creamWhite: 0xf8f3ec,
+  creamDeep: 0xebdfcf,
+  softMint: 0xbfded5,
+  softMintDeep: 0x8fbcb0,
+  dustyRose: 0xd5a5ae,
+  dustyRoseDeep: 0xb67d89,
+  warmSand: 0xd6b996,
+  warmWood: 0xb8906d,
+  cocoa: 0x6f4d3a,
+  ink: 0x2f2530,
+  slate: 0x586378,
+};
+
+const DEFAULT_CEO_THEME: RoomTheme = {
+  floor1: 0xe5d9b9,
+  floor2: 0xdfd0a8,
+  wall: 0x998243,
+  accent: 0xa77d0c,
+};
+
+const DEFAULT_BREAK_THEME: RoomTheme = {
+  floor1: 0xf7e2b7,
+  floor2: 0xf6dead,
+  wall: 0xa99c83,
+  accent: 0xf0c878,
 };
 
 type SupportedLocale = UiLanguage;
@@ -498,22 +522,115 @@ const BREAK_SPOTS = [
   { x: -144, y: 56, dir: 'R' },  // 하이테이블 오른쪽
 ];
 
-const DEPT_THEME: Record<
-  string,
-  { floor1: number; floor2: number; wall: number; accent: number }
-> = {
-  dev: { floor1: 0x1e2d4a, floor2: 0x24365a, wall: 0x2a4a7a, accent: 0x3b82f6 },
-  design: { floor1: 0x281e4a, floor2: 0x30265a, wall: 0x4a2a7a, accent: 0x8b5cf6 },
-  planning: { floor1: 0x2e2810, floor2: 0x38321a, wall: 0x7a6a2a, accent: 0xf59e0b },
-  operations: { floor1: 0x142e22, floor2: 0x1a382a, wall: 0x2a7a4a, accent: 0x10b981 },
-  qa: { floor1: 0x2e1414, floor2: 0x381a1a, wall: 0x7a2a2a, accent: 0xef4444 },
-  devsecops: { floor1: 0x2e1e0e, floor2: 0x382816, wall: 0x7a4a1a, accent: 0xf97316 },
+const DEPT_THEME: Record<string, RoomTheme> = {
+  dev: { floor1: 0xd8e8f5, floor2: 0xcce1f2, wall: 0x6c96b7, accent: 0x5a9fd4 },
+  design: { floor1: 0xe8def2, floor2: 0xe1d4ee, wall: 0x9378ad, accent: 0x9a6fc4 },
+  planning: { floor1: 0xf0e1c5, floor2: 0xeddaba, wall: 0xae9871, accent: 0xd4a85a },
+  operations: { floor1: 0xd0eede, floor2: 0xc4ead5, wall: 0x6eaa89, accent: 0x5ac48a },
+  qa: { floor1: 0xf0cbcb, floor2: 0xedc0c0, wall: 0xae7979, accent: 0xd46a6a },
+  devsecops: { floor1: 0xf0d5c5, floor2: 0xedcdba, wall: 0xae8871, accent: 0xd4885a },
 };
 
 function hashStr(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
   return Math.abs(h);
+}
+
+function blendColor(from: number, to: number, t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  const fr = (from >> 16) & 0xff;
+  const fg = (from >> 8) & 0xff;
+  const fb = from & 0xff;
+  const tr = (to >> 16) & 0xff;
+  const tg = (to >> 8) & 0xff;
+  const tb = to & 0xff;
+  const r = Math.round(fr + (tr - fr) * clamped);
+  const g = Math.round(fg + (tg - fg) * clamped);
+  const b = Math.round(fb + (tb - fb) * clamped);
+  return (r << 16) | (g << 8) | b;
+}
+
+function isLightColor(color: number): boolean {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150;
+}
+
+function contrastTextColor(bgColor: number, darkColor: number = OFFICE_PASTEL.ink, lightColor: number = 0xffffff): number {
+  return isLightColor(bgColor) ? darkColor : lightColor;
+}
+
+function drawBandGradient(
+  g: Graphics,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  from: number,
+  to: number,
+  bands: number = 8,
+  alpha: number = 1,
+): void {
+  const safeBands = Math.max(2, bands);
+  const bandH = h / safeBands;
+  for (let i = 0; i < safeBands; i++) {
+    const color = blendColor(from, to, i / (safeBands - 1));
+    g.rect(x, y + i * bandH, w, bandH + 0.75).fill({ color, alpha });
+  }
+}
+
+function drawBunting(
+  parent: Container,
+  x: number,
+  y: number,
+  w: number,
+  colorA: number,
+  colorB: number,
+  alpha: number = 0.7,
+): void {
+  const g = new Graphics();
+  g.moveTo(x, y).lineTo(x + w, y).stroke({ width: 1, color: 0x33261a, alpha: 0.6 });
+  const flagCount = Math.max(6, Math.floor(w / 24));
+  const step = w / flagCount;
+  for (let i = 0; i < flagCount; i++) {
+    const fx = x + i * step + step / 2;
+    const fy = y + (i % 2 === 0 ? 1 : 2.5);
+    g.moveTo(fx - 4.2, fy).lineTo(fx + 4.2, fy).lineTo(fx, fy + 6.2)
+      .fill({ color: i % 2 === 0 ? colorA : colorB, alpha });
+    g.moveTo(fx, fy).lineTo(fx, fy + 1.8).stroke({ width: 0.5, color: 0xffffff, alpha: 0.14 });
+  }
+  parent.addChild(g);
+}
+
+function drawRoomAtmosphere(
+  parent: Container,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  wallColor: number,
+  accent: number,
+): void {
+  const g = new Graphics();
+  const topPanelH = Math.max(20, Math.min(34, h * 0.22));
+  drawBandGradient(
+    g,
+    x + 1,
+    y + 1,
+    w - 2,
+    topPanelH,
+    blendColor(wallColor, 0xffffff, 0.24),
+    blendColor(wallColor, 0xffffff, 0.05),
+    7,
+    0.75,
+  );
+  g.rect(x + 1, y + topPanelH + 1, w - 2, 1.2).fill({ color: blendColor(wallColor, 0xffffff, 0.3), alpha: 0.28 });
+  g.rect(x + 1, y + h - 14, w - 2, 10).fill({ color: blendColor(wallColor, 0x000000, 0.5), alpha: 0.14 });
+  g.rect(x + 3, y + h - 14, w - 6, 1).fill({ color: blendColor(accent, 0xffffff, 0.45), alpha: 0.22 });
+  parent.addChild(g);
 }
 
 /* ================================================================== */
@@ -526,176 +643,666 @@ function drawTiledFloor(
 ) {
   for (let ty = 0; ty < h; ty += TILE) {
     for (let tx = 0; tx < w; tx += TILE) {
-      g.rect(x + tx, y + ty, TILE, TILE).fill(((tx / TILE + ty / TILE) & 1) === 0 ? c1 : c2);
+      const isEven = ((tx / TILE + ty / TILE) & 1) === 0;
+      g.rect(x + tx, y + ty, TILE, TILE).fill(isEven ? c1 : c2);
+      // Top-left highlight (warm light)
+      g.moveTo(x + tx, y + ty).lineTo(x + tx + TILE, y + ty)
+        .stroke({ width: 0.3, color: 0xffffff, alpha: 0.15 });
+      g.moveTo(x + tx, y + ty).lineTo(x + tx, y + ty + TILE)
+        .stroke({ width: 0.3, color: 0xffffff, alpha: 0.10 });
+      // Bottom-right shadow (warm dark)
+      g.moveTo(x + tx, y + ty + TILE).lineTo(x + tx + TILE, y + ty + TILE)
+        .stroke({ width: 0.3, color: 0x8a7a60, alpha: 0.10 });
+      g.moveTo(x + tx + TILE, y + ty).lineTo(x + tx + TILE, y + ty + TILE)
+        .stroke({ width: 0.3, color: 0x8a7a60, alpha: 0.08 });
     }
   }
 }
 
+/** Draw a soft ambient glow (radial gradient approximation using concentric ellipses) */
+function drawAmbientGlow(parent: Container, cx: number, cy: number, radius: number, color: number, alpha: number = 0.15) {
+  const g = new Graphics();
+  const steps = 6;
+  for (let i = steps; i >= 1; i--) {
+    const r = radius * (i / steps);
+    const a = alpha * (1 - i / (steps + 1));
+    g.ellipse(cx, cy, r, r * 0.6).fill({ color, alpha: a });
+  }
+  parent.addChild(g);
+  return g;
+}
+
+/** Draw a small window on the wall with warm sunlight filter and curtains */
+function drawWindow(parent: Container, x: number, y: number, w: number = 24, h: number = 18) {
+  const g = new Graphics();
+  // Outer frame shadow
+  g.roundRect(x + 1.5, y + 1.5, w, h, 2).fill({ color: 0x000000, alpha: 0.12 });
+  // Frame (warmer wood-tone)
+  g.roundRect(x, y, w, h, 2).fill(0x8a7a68);
+  g.roundRect(x, y, w, h, 2).stroke({ width: 0.5, color: 0xa09080, alpha: 0.4 });
+  // Glass panes (warm sky gradient tones)
+  const pw = (w - 5) / 2, ph = (h - 5) / 2;
+  g.rect(x + 2, y + 2, pw, ph).fill(0x8abcdd);
+  g.rect(x + pw + 3, y + 2, pw, ph).fill(0x9accee);
+  g.rect(x + 2, y + ph + 3, pw, ph).fill(0x9accee);
+  g.rect(x + pw + 3, y + ph + 3, pw, ph).fill(0x8abcdd);
+  // Cloud silhouettes (more puffy)
+  g.circle(x + 6, y + 5, 1.5).fill({ color: 0xffffff, alpha: 0.2 });
+  g.circle(x + 8, y + 5.5, 2.2).fill({ color: 0xffffff, alpha: 0.18 });
+  g.circle(x + 10, y + 5.8, 1.8).fill({ color: 0xffffff, alpha: 0.16 });
+  g.circle(x + w - 7, y + h - 7, 1.5).fill({ color: 0xffffff, alpha: 0.14 });
+  g.circle(x + w - 9, y + h - 6.5, 1.8).fill({ color: 0xffffff, alpha: 0.12 });
+  // Warm sunlight overlay on glass
+  g.rect(x + 2, y + 2, w - 4, h - 4).fill({ color: 0xffe8a0, alpha: 0.10 });
+  // Grid bars (wooden mullions)
+  g.rect(x + w / 2 - 0.6, y + 2, 1.2, h - 4).fill({ color: 0x7a6a58, alpha: 0.4 });
+  g.rect(x + 2, y + h / 2 - 0.5, w - 4, 1).fill({ color: 0x7a6a58, alpha: 0.35 });
+  // Reflection highlight (brighter, diagonal)
+  g.moveTo(x + 3, y + 3).lineTo(x + 8, y + 3).lineTo(x + 3, y + 6.5).fill({ color: 0xffffff, alpha: 0.28 });
+  g.rect(x + pw + 4, y + 3, 3, 2).fill({ color: 0xffffff, alpha: 0.12 });
+  // Mini curtains (soft dusty rose)
+  g.moveTo(x + 1, y + 1).quadraticCurveTo(x + 3, y + h * 0.4, x + 1, y + h - 2)
+    .stroke({ width: 1.5, color: 0xd8b0b8, alpha: 0.35 });
+  g.moveTo(x + w - 1, y + 1).quadraticCurveTo(x + w - 3, y + h * 0.4, x + w - 1, y + h - 2)
+    .stroke({ width: 1.5, color: 0xd8b0b8, alpha: 0.35 });
+  // Curtain top valance
+  g.roundRect(x, y, w, 2, 1).fill({ color: 0xd8b0b8, alpha: 0.25 });
+  // Sill (warmer wood) with tiny plant
+  g.rect(x - 2, y + h, w + 4, 3).fill(0x8a7a68);
+  g.rect(x - 2, y + h, w + 4, 1.2).fill({ color: 0xa09080, alpha: 0.3 });
+  // Tiny windowsill plant
+  g.circle(x + w / 2, y + h - 1, 2).fill(0x7cb898);
+  g.circle(x + w / 2 - 1, y + h - 2, 1.5).fill(0x92c8aa);
+  g.roundRect(x + w / 2 - 1.5, y + h, 3, 2, 0.5).fill(0xd88060);
+  // Sunlight beam cast below window (warm ambient glow on floor)
+  g.moveTo(x, y + h + 3).lineTo(x + w, y + h + 3)
+    .lineTo(x + w + 8, y + h + 22).lineTo(x - 8, y + h + 22)
+    .fill({ color: 0xffeebb, alpha: 0.05 });
+  g.moveTo(x + 2, y + h + 5).lineTo(x + w - 2, y + h + 5)
+    .lineTo(x + w + 4, y + h + 16).lineTo(x - 4, y + h + 16)
+    .fill({ color: 0xffeebb, alpha: 0.03 });
+  // Warm sunlight streaming through window
+  g.rect(x + 1, y + h + 3, w - 2, 12).fill({ color: 0xfff4d0, alpha: 0.05 });
+  parent.addChild(g);
+  return g;
+}
+
+/** Draw a small wall clock with shadow and detail */
+function drawWallClock(parent: Container, x: number, y: number) {
+  const g = new Graphics();
+  // Shadow behind clock
+  g.circle(x + 1, y + 1, 8).fill({ color: 0x000000, alpha: 0.12 });
+  // Outer ring (frame)
+  g.circle(x, y, 8).fill(0xdddddd);
+  g.circle(x, y, 8).stroke({ width: 1.8, color: 0x555555 });
+  // Inner face
+  g.circle(x, y, 6.5).fill(0xfcfcf8);
+  // Hour marks (thicker at 12/3/6/9)
+  for (let i = 0; i < 12; i++) {
+    const angle = (i * Math.PI * 2) / 12 - Math.PI / 2;
+    const r = 5.2;
+    const isCardinal = i % 3 === 0;
+    g.circle(x + Math.cos(angle) * r, y + Math.sin(angle) * r, isCardinal ? 0.6 : 0.35).fill(0x333333);
+  }
+  // Hour hand
+  g.moveTo(x, y).lineTo(x + 2, y - 3.5).stroke({ width: 1, color: 0x222222 });
+  // Minute hand
+  g.moveTo(x, y).lineTo(x + 3.5, y + 1.2).stroke({ width: 0.6, color: 0x444444 });
+  // Center dot
+  g.circle(x, y, 1).fill(0xcc3333);
+  g.circle(x, y, 0.5).fill(0xff5555);
+  parent.addChild(g);
+  return g;
+}
+
+/** Draw a small picture frame on the wall */
+function drawPictureFrame(parent: Container, x: number, y: number) {
+  const g = new Graphics();
+  g.roundRect(x, y, 16, 12, 1).fill(0x8b6914);
+  g.rect(x + 1.5, y + 1.5, 13, 9).fill(0x445577);
+  // Tiny landscape
+  g.rect(x + 1.5, y + 7, 13, 3.5).fill(0x448844);
+  g.circle(x + 11, y + 4, 1.5).fill(0xffdd44);
+  parent.addChild(g);
+  return g;
+}
+
+/** Draw a small rug/carpet under desk area */
+function drawRug(parent: Container, cx: number, cy: number, w: number, h: number, color: number) {
+  const g = new Graphics();
+  g.roundRect(cx - w / 2, cy - h / 2, w, h, 3).fill({ color, alpha: 0.3 });
+  // Border pattern
+  g.roundRect(cx - w / 2 + 2, cy - h / 2 + 2, w - 4, h - 4, 2)
+    .stroke({ width: 0.8, color, alpha: 0.2 });
+  // Inner pattern
+  g.roundRect(cx - w / 2 + 5, cy - h / 2 + 5, w - 10, h - 10, 1)
+    .stroke({ width: 0.4, color: 0xffffff, alpha: 0.06 });
+  parent.addChild(g);
+  return g;
+}
+
+/** Draw a ceiling light fixture */
+function drawCeilingLight(parent: Container, x: number, y: number, color: number) {
+  const g = new Graphics();
+  // Soft outer glow
+  g.ellipse(x, y + 10, 20, 6).fill({ color: 0xfff5dd, alpha: 0.04 });
+  // Light cone (downward, warm metal)
+  g.rect(x - 2, y, 4, 3).fill(0x908070);
+  g.rect(x - 5, y + 3, 10, 2).fill(0xb8a890);
+  // Bulb highlight
+  g.rect(x - 1, y + 1, 2, 2).fill({ color: 0xffffff, alpha: 0.2 });
+  // Warm glow
+  g.ellipse(x, y + 8, 16, 5).fill({ color, alpha: 0.06 });
+  g.ellipse(x, y + 7, 10, 3.5).fill({ color, alpha: 0.10 });
+  g.ellipse(x, y + 6, 5, 2).fill({ color: 0xfff5dd, alpha: 0.08 });
+  parent.addChild(g);
+  return g;
+}
+
+/** Draw a trash can */
+function drawTrashCan(parent: Container, x: number, y: number) {
+  const g = new Graphics();
+  // Can body (trapezoid-ish)
+  g.roundRect(x - 4, y, 8, 10, 1).fill(0x777788);
+  g.roundRect(x - 4.5, y - 1, 9, 2, 1).fill(0x888899);
+  // Paper sticking out
+  g.roundRect(x - 2, y - 3, 4, 3, 0.5).fill(0xeeeeee);
+  parent.addChild(g);
+  return g;
+}
+
+/** Draw a water cooler */
+function drawWaterCooler(parent: Container, x: number, y: number) {
+  const g = new Graphics();
+  // Base
+  g.roundRect(x - 5, y + 10, 10, 14, 1).fill(0xdddddd);
+  // Water bottle
+  g.roundRect(x - 4, y, 8, 12, 3).fill(0x88ccff);
+  g.roundRect(x - 4, y, 8, 12, 3).stroke({ width: 0.5, color: 0x66aadd });
+  // Water level
+  g.rect(x - 3, y + 3, 6, 8).fill({ color: 0x44aaff, alpha: 0.4 });
+  // Tap
+  g.rect(x + 3, y + 16, 3, 2).fill(0x999999);
+  parent.addChild(g);
+  return g;
+}
+
 function drawDesk(parent: Container, dx: number, dy: number, working: boolean): Graphics {
   const g = new Graphics();
-  // Shadow
-  g.ellipse(dx + DESK_W / 2, dy + DESK_H + 1, DESK_W / 2 + 1, 3).fill({ color: 0x000000, alpha: 0.15 });
-  // Desk body
-  g.roundRect(dx, dy, DESK_W, DESK_H, 2).fill(0xa0792c);
-  g.roundRect(dx + 1, dy + 1, DESK_W - 2, DESK_H - 2, 1).fill(0xb8893c);
+  // Shadow (softer, multi-layer)
+  g.ellipse(dx + DESK_W / 2, dy + DESK_H + 4, DESK_W / 2 + 6, 6).fill({ color: 0x000000, alpha: 0.06 });
+  g.ellipse(dx + DESK_W / 2, dy + DESK_H + 3, DESK_W / 2 + 4, 5).fill({ color: 0x000000, alpha: 0.10 });
+  g.ellipse(dx + DESK_W / 2, dy + DESK_H + 2, DESK_W / 2 + 2, 3.5).fill({ color: 0x000000, alpha: 0.12 });
+  // Desk legs (subtle, peeking below)
+  g.roundRect(dx + 3, dy + DESK_H - 2, 3, 6, 1).fill(0xb89060);
+  g.roundRect(dx + DESK_W - 6, dy + DESK_H - 2, 3, 6, 1).fill(0xb89060);
+  // Desk body (warm wood grain with richer layering)
+  g.roundRect(dx, dy, DESK_W, DESK_H, 3).fill(0xbe9860);
+  g.roundRect(dx + 1, dy + 1, DESK_W - 2, DESK_H - 2, 2).fill(0xd4b478);
+  g.roundRect(dx + 2, dy + 2, DESK_W - 4, DESK_H - 4, 1.5).fill(0xe0c490);
+  // Subtle desk-top gradient (warm highlight)
+  g.roundRect(dx + 2, dy + 2, DESK_W - 4, 6, 1).fill({ color: 0xf5dca0, alpha: 0.25 });
+  // Wood grain lines (warm, varied width)
+  for (let i = 0; i < 4; i++) {
+    const w = 0.25 + (i % 2) * 0.1;
+    g.moveTo(dx + 4, dy + 5 + i * 5.5)
+      .lineTo(dx + DESK_W - 4, dy + 5 + i * 5.5)
+      .stroke({ width: w, color: 0xc4a060, alpha: 0.2 });
+  }
+  // Desk edge highlight (warmer, with bottom shadow)
+  g.moveTo(dx + 2, dy + 1).lineTo(dx + DESK_W - 2, dy + 1)
+    .stroke({ width: 0.6, color: 0xf0d890, alpha: 0.45 });
+  g.moveTo(dx + 2, dy + DESK_H - 1).lineTo(dx + DESK_W - 2, dy + DESK_H - 1)
+    .stroke({ width: 0.5, color: 0xa88050, alpha: 0.2 });
   // ── Keyboard at TOP (closest to character above) ──
-  g.roundRect(dx + DESK_W / 2 - 8, dy + 2, 16, 5, 1).fill(0x3a3a4a);
+  g.roundRect(dx + DESK_W / 2 - 10, dy + 2, 20, 7, 1.5).fill(0x788498);
+  g.roundRect(dx + DESK_W / 2 - 10, dy + 2, 20, 7, 1.5).stroke({ width: 0.3, color: 0x5c6a80, alpha: 0.5 });
+  // Keyboard highlight
+  g.moveTo(dx + DESK_W / 2 - 8, dy + 2.5).lineTo(dx + DESK_W / 2 + 8, dy + 2.5)
+    .stroke({ width: 0.4, color: 0xffffff, alpha: 0.1 });
   for (let r = 0; r < 2; r++) {
-    for (let c = 0; c < 4; c++) {
-      g.rect(dx + DESK_W / 2 - 6 + c * 3.5, dy + 2.8 + r * 2.2, 2.5, 1.5).fill(0x555568);
+    for (let c = 0; c < 6; c++) {
+      g.roundRect(dx + DESK_W / 2 - 8 + c * 2.8, dy + 3.2 + r * 2.6, 2, 1.6, 0.3).fill(0xd4d9e6);
     }
   }
-  // Paper stack (left)
-  g.rect(dx + 3, dy + 2, 9, 10).fill(0xf5f0e0);
-  g.rect(dx + 4, dy + 3, 9, 10).fill(0xfaf5ea);
-  // Coffee mug (right)
-  g.circle(dx + DESK_W - 8, dy + 7, 3.5).fill(0xeeeeee);
-  g.circle(dx + DESK_W - 8, dy + 7, 2).fill(0x6b4226);
+  // Spacebar
+  g.roundRect(dx + DESK_W / 2 - 5, dy + 3.2 + 5.2, 10, 1.4, 0.3).fill(0xd4d9e6);
+  // Paper stack (left, with slight rotation feel)
+  g.ellipse(dx + 7, dy + 14, 6, 2).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.06 });
+  g.rect(dx + 3, dy + 3, 9, 10).fill(0xf0e8dc);
+  g.rect(dx + 3.5, dy + 2.5, 8.5, 10).fill(0xf4ede3);
+  g.rect(dx + 4, dy + 2, 9, 10.5).fill(0xfffbf4);
+  // Text lines on paper (more detailed)
+  for (let i = 0; i < 4; i++) {
+    const lw = 3 + (i * 1.7 % 4);
+    g.moveTo(dx + 5, dy + 4 + i * 2.2)
+      .lineTo(dx + 5 + lw, dy + 4 + i * 2.2)
+      .stroke({ width: 0.35, color: 0xb0a898, alpha: 0.3 + (i % 2) * 0.1 });
+  }
+  // Paper clip on paper
+  g.moveTo(dx + 11, dy + 3).lineTo(dx + 11, dy + 7)
+    .stroke({ width: 0.5, color: 0xaaaaaa, alpha: 0.5 });
+  g.moveTo(dx + 11, dy + 3).quadraticCurveTo(dx + 13, dy + 3, dx + 13, dy + 5)
+    .stroke({ width: 0.5, color: 0xaaaaaa, alpha: 0.5 });
+  // Coffee mug (dusty rose accent, with steam)
+  g.ellipse(dx + DESK_W - 8, dy + 8.5, 4.5, 1.8).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.07 });
+  g.circle(dx + DESK_W - 8, dy + 7, 4.2).fill(0xf0dee5);
+  g.circle(dx + DESK_W - 8, dy + 7, 4.2).stroke({ width: 0.5, color: 0xc5a0b0 });
+  g.circle(dx + DESK_W - 8, dy + 7, 2.8).fill(0x8a6248);
+  // Mug inner rim highlight
+  g.circle(dx + DESK_W - 8, dy + 7, 2.8).stroke({ width: 0.3, color: 0xa07050, alpha: 0.4 });
+  // Mug handle
+  g.moveTo(dx + DESK_W - 3.8, dy + 5.5)
+    .quadraticCurveTo(dx + DESK_W - 1.5, dy + 7, dx + DESK_W - 3.8, dy + 8.5)
+    .stroke({ width: 0.9, color: 0xd7c0c9 });
+  // Tiny steam wisps above mug
+  g.moveTo(dx + DESK_W - 9, dy + 3).quadraticCurveTo(dx + DESK_W - 10, dy + 1, dx + DESK_W - 9, dy - 0.5)
+    .stroke({ width: 0.4, color: 0xcccccc, alpha: 0.2 });
+  g.moveTo(dx + DESK_W - 7, dy + 3).quadraticCurveTo(dx + DESK_W - 6, dy + 1, dx + DESK_W - 7, dy - 0.5)
+    .stroke({ width: 0.4, color: 0xcccccc, alpha: 0.15 });
   // ── Monitor at BOTTOM (character looks down at it) ──
-  const mx = dx + DESK_W / 2 - 8;
-  const my = dy + DESK_H - 14;
-  g.roundRect(mx, my, 16, 11, 1.5).fill(0x222233);
-  g.roundRect(mx + 1.5, my + 1, 13, 8, 1).fill(working ? 0x4499ff : 0x1a1a28);
+  const mx = dx + DESK_W / 2 - 10;
+  const my = dy + DESK_H - 16;
+  // Monitor shadow
+  g.ellipse(mx + 10, my + 13, 11, 2.5).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.07 });
+  // Monitor bezel
+  g.roundRect(mx, my, 20, 13, 2).fill(0x3e4858);
+  g.roundRect(mx, my, 20, 13, 2).stroke({ width: 0.6, color: 0x5a6678 });
+  // Screen
+  g.roundRect(mx + 1.5, my + 1, 17, 10, 1).fill(working ? 0x89c8b9 : 0x1e2836);
   if (working) {
-    for (let i = 0; i < 3; i++) {
-      g.moveTo(mx + 3.5, my + 2.5 + i * 2.2)
-        .lineTo(mx + 3.5 + 4 + Math.random() * 4, my + 2.5 + i * 2.2)
-        .stroke({ width: 0.7, color: 0xaaddff, alpha: 0.6 });
+    // Code lines on screen (colorful IDE look)
+    const codeColors = [0xe1fff8, 0xf8d876, 0xa8d8ea, 0xf0b8c8];
+    for (let i = 0; i < 4; i++) {
+      const lineW = 3 + (i * 2.3 % 7);
+      const indent = i === 2 ? 2 : 0;
+      g.moveTo(mx + 3.5 + indent, my + 2.5 + i * 2.2)
+        .lineTo(mx + 3.5 + indent + lineW, my + 2.5 + i * 2.2)
+        .stroke({ width: 0.7, color: codeColors[i % codeColors.length], alpha: 0.6 });
     }
+    // Cursor blink line
+    g.rect(mx + 4, my + 2.5, 0.5, 1.5).fill({ color: 0xffffff, alpha: 0.5 });
+    // Screen glow on desk
+    g.ellipse(mx + 10, my + 15, 12, 3).fill({ color: 0xa3ded1, alpha: 0.06 });
+  } else {
+    // Screensaver: tiny stars on dark screen
+    g.circle(mx + 5, my + 4, 0.5).fill({ color: 0xffffff, alpha: 0.15 });
+    g.circle(mx + 13, my + 6, 0.4).fill({ color: 0xffffff, alpha: 0.12 });
+    g.circle(mx + 9, my + 8, 0.3).fill({ color: 0xffffff, alpha: 0.1 });
   }
-  // Monitor stand (below monitor)
-  g.rect(mx + 6, my - 2, 4, 2).fill(0x444455);
-  g.rect(mx + 4, my - 3, 8, 1.5).fill(0x555566);
+  // Monitor webcam dot
+  g.circle(mx + 10, my + 0.5, 0.6).fill({ color: 0x44dd66, alpha: 0.3 });
+  // Monitor stand (slimmer, modern)
+  g.rect(mx + 8, my - 2.5, 4, 3).fill(0x4e5a70);
+  g.roundRect(mx + 5, my - 4, 10, 2, 1).fill(0x5e6a82);
+  g.roundRect(mx + 5, my - 4, 10, 1, 1).fill({ color: 0x7a88a0, alpha: 0.3 });
+  // Pencil holder (right of monitor, cuter)
+  g.roundRect(dx + DESK_W - 7, dy + DESK_H - 11, 5, 7, 1.5).fill(0x9ab8c8);
+  g.roundRect(dx + DESK_W - 7, dy + DESK_H - 11, 5, 7, 1.5).stroke({ width: 0.3, color: 0x7a9aac, alpha: 0.4 });
+  // Pencils (varied colors)
+  g.rect(dx + DESK_W - 6.5, dy + DESK_H - 15, 1, 5).fill(0xffcb76);
+  g.rect(dx + DESK_W - 5.5, dy + DESK_H - 14, 1, 4).fill(0xd5a5ae);
+  g.rect(dx + DESK_W - 4.5, dy + DESK_H - 13.5, 1, 3.5).fill(0x8abfd0);
+  // Sticky notes near monitor (stack of 2 colors)
+  g.roundRect(mx + 15, my + 1, 4, 4, 0.5).fill(0xf8dea8);
+  g.roundRect(mx + 15.5, my + 0.5, 3.5, 3.5, 0.5).fill(0xfce8c0);
+  g.moveTo(mx + 16, my + 2.5).lineTo(mx + 18, my + 2.5).stroke({ width: 0.3, color: 0xa5804f, alpha: 0.4 });
+  g.moveTo(mx + 16, my + 3.5).lineTo(mx + 17.5, my + 3.5).stroke({ width: 0.3, color: 0xa5804f, alpha: 0.3 });
+  // Tiny succulent on desk corner
+  g.circle(dx + 3, dy + DESK_H - 4, 2.5).fill(0x7cb898);
+  g.circle(dx + 2, dy + DESK_H - 5, 1.8).fill(0x92c8aa);
+  g.circle(dx + 4, dy + DESK_H - 5, 1.5).fill(0x9dd9c2);
+  g.roundRect(dx + 1, dy + DESK_H - 2, 4, 2.5, 0.8).fill(0xd88060);
   parent.addChild(g);
   return g;
 }
 
 function drawChair(parent: Container, cx: number, cy: number, color: number) {
   const g = new Graphics();
-  // Seat cushion (wide so it peeks out around the character)
-  g.ellipse(cx, cy, 16, 10).fill({ color: 0x000000, alpha: 0.1 });
-  g.ellipse(cx, cy, 15, 9).fill(color);
-  g.ellipse(cx, cy, 15, 9).stroke({ width: 1, color: 0x000000, alpha: 0.12 });
-  // Armrests (stick out on both sides)
-  g.roundRect(cx - 17, cy - 6, 5, 14, 2).fill(color);
-  g.roundRect(cx + 12, cy - 6, 5, 14, 2).fill(color);
-  // Chair back (wide arc behind)
-  g.roundRect(cx - 14, cy - 12, 28, 6, 4).fill(color);
-  g.roundRect(cx - 14, cy - 12, 28, 6, 4).stroke({ width: 1, color: 0x000000, alpha: 0.1 });
+  const chairBase = blendColor(color, OFFICE_PASTEL.creamWhite, 0.18);
+  const chairMid = blendColor(color, OFFICE_PASTEL.creamWhite, 0.08);
+  const chairShadow = blendColor(color, OFFICE_PASTEL.ink, 0.22);
+  const chairDark = blendColor(color, OFFICE_PASTEL.ink, 0.35);
+  // Floor shadow
+  g.ellipse(cx, cy + 5, 18, 6).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.08 });
+  // Wheel base (star pattern)
+  g.circle(cx - 8, cy + 3, 1.5).fill({ color: 0x555555, alpha: 0.3 });
+  g.circle(cx + 8, cy + 3, 1.5).fill({ color: 0x555555, alpha: 0.3 });
+  g.circle(cx, cy + 4, 1.5).fill({ color: 0x555555, alpha: 0.3 });
+  // Seat cushion
+  g.ellipse(cx, cy, 16, 10).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.06 });
+  g.ellipse(cx, cy, 15, 9).fill(chairBase);
+  g.ellipse(cx, cy, 15, 9).stroke({ width: 1, color: chairShadow, alpha: 0.25 });
+  // Seat highlight (subtle dome)
+  g.ellipse(cx - 1, cy - 1.5, 11, 5.5).fill({ color: 0xffffff, alpha: 0.12 });
+  g.ellipse(cx, cy + 3, 10, 3).fill({ color: chairShadow, alpha: 0.08 });
+  // Cushion stitch line
+  g.ellipse(cx, cy, 10, 6).stroke({ width: 0.3, color: chairShadow, alpha: 0.12 });
+  // Armrests (rounded, softer)
+  g.roundRect(cx - 17, cy - 5, 5, 13, 2.5).fill(chairMid);
+  g.roundRect(cx - 17, cy - 5, 5, 13, 2.5).stroke({ width: 0.5, color: chairShadow, alpha: 0.2 });
+  g.roundRect(cx + 12, cy - 5, 5, 13, 2.5).fill(chairMid);
+  g.roundRect(cx + 12, cy - 5, 5, 13, 2.5).stroke({ width: 0.5, color: chairShadow, alpha: 0.2 });
+  // Armrest top highlight
+  g.roundRect(cx - 16, cy - 4.5, 3, 1, 0.5).fill({ color: 0xffffff, alpha: 0.12 });
+  g.roundRect(cx + 13, cy - 4.5, 3, 1, 0.5).fill({ color: 0xffffff, alpha: 0.12 });
+  // Backrest (ergonomic curve)
+  g.roundRect(cx - 14, cy - 13, 28, 7, 4).fill(chairShadow);
+  g.roundRect(cx - 14, cy - 13, 28, 7, 4).stroke({ width: 0.8, color: chairDark, alpha: 0.25 });
+  // Backrest top highlight
+  g.roundRect(cx - 12, cy - 12, 24, 2.5, 2).fill({ color: blendColor(chairBase, 0xffffff, 0.4), alpha: 0.4 });
+  // Backrest lumbar support detail
+  g.roundRect(cx - 10, cy - 9, 20, 2, 1).fill({ color: chairBase, alpha: 0.3 });
+  // Seat cushion center detail
+  g.ellipse(cx, cy - 0.5, 9, 3.2).fill({ color: blendColor(chairBase, OFFICE_PASTEL.softMint, 0.22), alpha: 0.5 });
   parent.addChild(g);
 }
 
-function drawPlant(parent: Container, x: number, y: number) {
+function drawPlant(parent: Container, x: number, y: number, variant: number = 0) {
   const g = new Graphics();
-  g.roundRect(x - 4, y, 8, 6, 1.5).fill(0xcc6633);
-  g.circle(x, y - 3, 5).fill(0x33aa44);
-  g.circle(x - 3, y - 5, 3).fill(0x44bb55);
-  g.circle(x + 3, y - 5, 3).fill(0x44bb55);
-  g.circle(x, y - 7, 2.5).fill(0x55cc66);
+  // Pot shadow (softer, larger)
+  g.ellipse(x, y + 8, 8, 3).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.10 });
+  g.ellipse(x, y + 7, 7, 2.5).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.07 });
+  // Pot body (warm terra cotta with richer shading)
+  g.roundRect(x - 5, y, 10, 7, 2).fill(0xd07858);
+  g.roundRect(x - 4.5, y + 0.5, 9, 6, 1.5).fill(0xd88060);
+  g.roundRect(x - 4, y + 1, 8, 5, 1.5).fill(0xe89070);
+  // Pot highlight stripe
+  g.roundRect(x - 3, y + 2, 6, 1, 0.5).fill({ color: 0xffffff, alpha: 0.08 });
+  // Pot rim (thicker, with detail)
+  g.roundRect(x - 6, y - 1.5, 12, 3.5, 1.8).fill(0xe08060);
+  g.roundRect(x - 5.5, y - 1, 11, 2, 1.2).fill(0xf0a080);
+  g.roundRect(x - 5, y - 1, 10, 1.2, 1).fill({ color: 0xffffff, alpha: 0.12 });
+  // Pot decorative band
+  g.roundRect(x - 4, y + 4, 8, 1, 0.5).fill({ color: 0xc06848, alpha: 0.3 });
+  // Soil (richer)
+  g.ellipse(x, y, 4.5, 1.8).fill(0x5e4530);
+  g.ellipse(x - 1, y + 0.2, 2.5, 1).fill({ color: 0x7a5840, alpha: 0.5 });
+  // Tiny soil pebble
+  g.circle(x + 2.5, y - 0.3, 0.7).fill({ color: 0x8a6a50, alpha: 0.4 });
+  if (variant % 4 === 0) {
+    // Bushy monstera-style plant (soft mint)
+    g.rect(x - 0.4, y - 2, 0.8, 3).fill(0x6aaa88);
+    g.circle(x, y - 4, 6.5).fill(0x78bfa4);
+    g.circle(x - 3, y - 6, 4.5).fill(0x89cfb5);
+    g.circle(x + 3, y - 6.5, 4).fill(0x89cfb5);
+    g.circle(x, y - 8.5, 4).fill(0x9dd9c2);
+    g.circle(x - 2, y - 10, 2.8).fill(0xb7e7d5);
+    g.circle(x + 2.5, y - 9.5, 2.2).fill(0xb7e7d5);
+    // Leaf veins
+    g.moveTo(x, y - 4).lineTo(x, y - 8).stroke({ width: 0.3, color: 0x5e9f7f, alpha: 0.3 });
+    g.moveTo(x - 2, y - 6).lineTo(x - 4, y - 8).stroke({ width: 0.2, color: 0x5e9f7f, alpha: 0.2 });
+    g.moveTo(x + 2, y - 6).lineTo(x + 4, y - 8).stroke({ width: 0.2, color: 0x5e9f7f, alpha: 0.2 });
+    // Highlight leaves
+    g.circle(x + 2, y - 7, 1.8).fill({ color: 0xffffff, alpha: 0.18 });
+    g.circle(x - 2, y - 9.5, 1.2).fill({ color: 0xffffff, alpha: 0.12 });
+  } else if (variant % 4 === 1) {
+    // Tall cactus (mint-sage, more detailed)
+    g.roundRect(x - 2.5, y - 12, 5, 12, 2.5).fill(0x6eaa88);
+    g.roundRect(x - 2, y - 10, 4, 10, 2).fill(0x82bc9a);
+    g.roundRect(x - 1.5, y - 9, 3, 8, 1.5).fill(0x92c8aa);
+    // Cactus ribs
+    g.moveTo(x - 1, y - 11).lineTo(x - 1, y - 1).stroke({ width: 0.25, color: 0x5a9a78, alpha: 0.3 });
+    g.moveTo(x + 1, y - 11).lineTo(x + 1, y - 1).stroke({ width: 0.25, color: 0x5a9a78, alpha: 0.3 });
+    // Arms (more rounded)
+    g.roundRect(x - 7, y - 7, 5, 2.5, 1.2).fill(0x72b090);
+    g.roundRect(x - 7, y - 10, 2.5, 5, 1.2).fill(0x82bc9a);
+    g.roundRect(x + 2, y - 5, 5, 2.5, 1.2).fill(0x72b090);
+    g.roundRect(x + 4.5, y - 8, 2.5, 5, 1.2).fill(0x82bc9a);
+    // Spines (tiny dots)
+    for (let i = 0; i < 5; i++) {
+      g.circle(x + (i % 2 === 0 ? 2.5 : -2.5), y - 2 - i * 2, 0.3).fill({ color: 0xd8d0c0, alpha: 0.4 });
+    }
+    // Flower on top
+    g.circle(x, y - 13, 2).fill(0xe3a8b2);
+    g.circle(x - 1.2, y - 13.5, 1.5).fill(0xedb8c2);
+    g.circle(x + 1.2, y - 13.5, 1.5).fill(0xedb8c2);
+    g.circle(x, y - 13, 1).fill(0xf6d57a);
+  } else if (variant % 4 === 2) {
+    // Flower pot (mint stem + dusty blossoms, more flowers)
+    g.rect(x - 0.5, y - 9, 1, 9).fill(0x6aaa88);
+    g.rect(x - 2.5, y - 6, 0.8, 5).fill(0x7ab898);
+    g.rect(x + 2, y - 5, 0.8, 4).fill(0x7ab898);
+    // Leaves
+    g.circle(x, y - 3.5, 5).fill(0x6eaa88);
+    g.circle(x - 3.5, y - 5.5, 3.5).fill(0x82bc9a);
+    g.circle(x + 3.5, y - 5.5, 3).fill(0x82bc9a);
+    g.circle(x, y - 7, 3).fill(0x92c8aa);
+    // Flowers (multiple, varied)
+    g.circle(x, y - 10, 3).fill(0xe09aaa);
+    g.circle(x - 1, y - 10.5, 1.8).fill(0xeaacb8);
+    g.circle(x + 1, y - 10.5, 1.8).fill(0xeaacb8);
+    g.circle(x, y - 10, 1.5).fill(0xf6d685);
+    g.circle(x - 4, y - 8, 2.5).fill(0x9fbede);
+    g.circle(x - 4, y - 8, 1.2).fill(0xf8efba);
+    g.circle(x + 3.5, y - 8.5, 2).fill(0xf2b28a);
+    g.circle(x + 3.5, y - 8.5, 1).fill(0xf7df97);
+    // Tiny bud
+    g.circle(x + 1.5, y - 12, 1.2).fill(0xe8a0b0);
+  } else {
+    // Snake plant / sansevieria (tall pointed leaves)
+    const leafColors = [0x5e9a78, 0x6eaa88, 0x7cb898, 0x5a9070];
+    for (let i = 0; i < 4; i++) {
+      const lx = x + (i - 1.5) * 2.5;
+      const lh = 10 + (i % 2) * 3;
+      g.moveTo(lx, y).lineTo(lx - 1.5, y - lh * 0.6).lineTo(lx, y - lh).lineTo(lx + 1.5, y - lh * 0.6).lineTo(lx, y)
+        .fill(leafColors[i]);
+      // Leaf highlight stripe
+      g.moveTo(lx, y).lineTo(lx, y - lh + 1).stroke({ width: 0.3, color: 0xb8e0c8, alpha: 0.25 });
+    }
+    // Yellow leaf edge detail
+    g.moveTo(x - 2, y - 8).lineTo(x - 3, y - 5).stroke({ width: 0.3, color: 0xc8d8a8, alpha: 0.25 });
+  }
   parent.addChild(g);
 }
 
 function drawWhiteboard(parent: Container, x: number, y: number) {
   const g = new Graphics();
+  // Shadow behind board (deeper, offset)
+  g.roundRect(x + 2, y + 2, 38, 22, 2).fill({ color: 0x000000, alpha: 0.15 });
+  g.roundRect(x + 1, y + 1, 38, 22, 2).fill({ color: 0x000000, alpha: 0.08 });
+  // Frame (warmer silver)
   g.roundRect(x, y, 38, 22, 2).fill(0xcccccc);
-  g.roundRect(x + 2, y + 2, 34, 18, 1).fill(0xf8f8f0);
+  g.roundRect(x, y, 38, 22, 2).stroke({ width: 0.5, color: 0xaaaaaa });
+  // Frame highlight (top edge)
+  g.moveTo(x + 2, y + 0.5).lineTo(x + 36, y + 0.5)
+    .stroke({ width: 0.5, color: 0xffffff, alpha: 0.15 });
+  // White surface
+  g.roundRect(x + 2, y + 2, 34, 18, 1).fill(0xfaf8f2);
+  // Content: colored lines + shapes
   const cc = [0x3b82f6, 0xef4444, 0x22c55e, 0xf59e0b];
   for (let i = 0; i < 3; i++) {
     g.moveTo(x + 5, y + 5 + i * 5)
       .lineTo(x + 5 + 8 + Math.random() * 16, y + 5 + i * 5)
-      .stroke({ width: 1, color: cc[i], alpha: 0.7 });
+      .stroke({ width: 1, color: cc[i], alpha: 0.6 });
   }
+  // Small sticky notes
+  g.rect(x + 26, y + 4, 6, 5).fill({ color: 0xffee88, alpha: 0.8 });
+  g.rect(x + 26, y + 11, 6, 5).fill({ color: 0x88eeff, alpha: 0.8 });
+  // Marker tray
+  g.roundRect(x + 8, y + 21, 22, 3, 1).fill(0x999999);
+  // Markers
+  g.roundRect(x + 10, y + 20, 2, 3, 0.5).fill(0x3366ff);
+  g.roundRect(x + 13, y + 20, 2, 3, 0.5).fill(0xff3333);
+  g.roundRect(x + 16, y + 20, 2, 3, 0.5).fill(0x33aa33);
   parent.addChild(g);
 }
 
 function drawBookshelf(parent: Container, x: number, y: number) {
   const g = new Graphics();
-  g.roundRect(x, y, 28, 18, 2).fill(0x8b6914);
-  g.rect(x + 1, y + 1, 26, 16).fill(0x654a0e);
-  g.moveTo(x + 1, y + 9).lineTo(x + 27, y + 9).stroke({ width: 1, color: 0x8b6914 });
-  const colors = [0xcc3333, 0x3366cc, 0x33aa55, 0xccaa33, 0x9944aa];
-  for (let i = 0; i < 4; i++) {
-    g.rect(x + 3 + i * 5.5, y + 2, 4, 6).fill(colors[i % colors.length]);
-    g.rect(x + 3 + i * 6, y + 10, 4, 6).fill(colors[(i + 2) % colors.length]);
+  // Shadow (deeper, offset)
+  g.roundRect(x + 2, y + 2, 28, 18, 2).fill({ color: 0x000000, alpha: 0.12 });
+  g.roundRect(x + 1, y + 1, 28, 18, 2).fill({ color: 0x000000, alpha: 0.08 });
+  // Shelf frame (warmer wood)
+  g.roundRect(x, y, 28, 18, 2).fill(0xb89050);
+  g.roundRect(x, y, 28, 18, 2).stroke({ width: 0.5, color: 0xa07838 });
+  g.rect(x + 1, y + 1, 26, 16).fill(0xa88040);
+  // Frame top highlight
+  g.moveTo(x + 2, y + 0.5).lineTo(x + 26, y + 0.5)
+    .stroke({ width: 0.4, color: 0xd8b060, alpha: 0.4 });
+  // Middle shelf
+  g.rect(x + 1, y + 8.5, 26, 1.5).fill(0xc09848);
+  // Books (warmer pastel tones for charm)
+  const colors = [0xdd5555, 0x5588dd, 0x55bb66, 0xddbb44, 0xaa66cc, 0xe88855];
+  const widths = [3.5, 4, 3, 4.5, 3.5, 4];
+  let bx = x + 2;
+  for (let i = 0; i < 5 && bx < x + 25; i++) {
+    const w = widths[i % widths.length];
+    const h = 5 + (i % 3);
+    g.rect(bx, y + 8 - h, w, h).fill(colors[i]);
+    // Book spine line
+    g.moveTo(bx + w / 2, y + 8 - h + 1).lineTo(bx + w / 2, y + 7)
+      .stroke({ width: 0.3, color: 0xffffff, alpha: 0.15 });
+    bx += w + 0.8;
   }
+  bx = x + 2;
+  for (let i = 0; i < 4 && bx < x + 25; i++) {
+    const w = widths[(i + 2) % widths.length];
+    const h = 4.5 + (i % 2);
+    g.rect(bx, y + 17 - h, w, h).fill(colors[(i + 3) % colors.length]);
+    bx += w + 1;
+  }
+  // Tiny trophy/figure on shelf
+  g.rect(x + 23, y + 2, 2, 4).fill(0xddaa33);
+  g.circle(x + 24, y + 1, 1.5).fill(0xffcc44);
   parent.addChild(g);
 }
 
 function drawCoffeeMachine(parent: Container, x: number, y: number) {
   const g = new Graphics();
-  g.roundRect(x, y, 20, 28, 2).fill(0x555555);
-  g.roundRect(x + 1, y + 1, 18, 26, 1).fill(0x666666);
-  // buttons
-  g.circle(x + 6, y + 6, 2).fill(0xff4444);
-  g.circle(x + 14, y + 6, 2).fill(0x44ff44);
-  // nozzle
-  g.rect(x + 8, y + 12, 4, 6).fill(0x333333);
-  // cup
-  g.roundRect(x + 6, y + 20, 8, 6, 1).fill(0xffffff);
-  g.rect(x + 7, y + 21, 6, 3).fill(0x6b4226);
+  // Shadow
+  g.ellipse(x + 10, y + 30, 13, 3.5).fill({ color: OFFICE_PASTEL.cocoa, alpha: 0.10 });
+  // Body (warmer, more premium feel)
+  g.roundRect(x, y, 20, 28, 3).fill(0x7e8898);
+  g.roundRect(x + 0.5, y + 0.5, 19, 27, 2.5).fill(0x939daf);
+  g.roundRect(x + 1, y + 1, 18, 26, 2).fill(0xa1abc1);
+  // Chrome top panel
+  g.roundRect(x + 2, y + 2, 16, 5, 1.5).fill(0xc4cdd9);
+  g.roundRect(x + 2, y + 2, 16, 2, 1).fill({ color: 0xffffff, alpha: 0.1 });
+  // Brand logo (tiny coffee icon)
+  g.circle(x + 10, y + 4.5, 1.5).fill(0x8d654c);
+  g.circle(x + 10, y + 4.5, 0.8).fill(0xb89070);
+  // Buttons (with glow rings)
+  g.circle(x + 6, y + 9, 2.5).fill(0xc07080);
+  g.circle(x + 6, y + 9, 1.8).fill(0xe28e9f);
+  g.circle(x + 6, y + 9, 0.8).fill(0xf3b8c3);
+  g.circle(x + 14, y + 9, 2.5).fill(0x70a088);
+  g.circle(x + 14, y + 9, 1.8).fill(0x8ebda7);
+  g.circle(x + 14, y + 9, 0.8).fill(0xb5dbc7);
+  // Display (LED screen with text)
+  g.roundRect(x + 3, y + 12, 14, 4, 0.8).fill(0x1e2e40);
+  g.roundRect(x + 3, y + 12, 14, 4, 0.8).stroke({ width: 0.3, color: 0x4a5a6a, alpha: 0.5 });
+  g.moveTo(x + 4.5, y + 14).lineTo(x + 12, y + 14)
+    .stroke({ width: 0.5, color: 0xb8f0de, alpha: 0.6 });
+  g.circle(x + 15, y + 14, 0.5).fill({ color: 0x44dd66, alpha: 0.5 });
+  // Nozzle / drip area
+  g.rect(x + 6, y + 17, 8, 2).fill(0x4b556a);
+  g.roundRect(x + 7.5, y + 19, 5, 4, 0.5).fill(0x3a4558);
+  // Drip tray
+  g.roundRect(x + 4, y + 23, 12, 1.5, 0.5).fill(0x5a6478);
+  // Cup with latte art
+  g.roundRect(x + 5.5, y + 21, 9, 7, 2).fill(0xfdf8f4);
+  g.roundRect(x + 5.5, y + 21, 9, 7, 2).stroke({ width: 0.4, color: 0xd9cfc6 });
+  g.ellipse(x + 10, y + 23, 3.5, 1.5).fill(0x8d654c);
+  // Latte art heart
+  g.circle(x + 9.3, y + 22.8, 0.8).fill(0xf0e0d0);
+  g.circle(x + 10.7, y + 22.8, 0.8).fill(0xf0e0d0);
+  g.moveTo(x + 8.5, y + 23).lineTo(x + 10, y + 24.2).lineTo(x + 11.5, y + 23)
+    .fill({ color: 0xf0e0d0, alpha: 0.8 });
+  // Handle
+  g.moveTo(x + 14.5, y + 22).quadraticCurveTo(x + 16.5, y + 24.5, x + 14.5, y + 27)
+    .stroke({ width: 1, color: 0xf2e9e2 });
   parent.addChild(g);
 }
 
 function drawSofa(parent: Container, x: number, y: number, color: number) {
   const g = new Graphics();
-  // seat
-  g.roundRect(x, y, 80, 18, 4).fill(color);
-  g.roundRect(x + 2, y + 2, 76, 14, 3).fill(color + 0x111111);
-  // backrest
-  g.roundRect(x + 4, y - 8, 72, 10, 3).fill(color - 0x111111);
-  // armrests
-  g.roundRect(x - 4, y - 6, 8, 22, 3).fill(color - 0x080808);
-  g.roundRect(x + 76, y - 6, 8, 22, 3).fill(color - 0x080808);
-  // cushion lines
-  g.moveTo(x + 27, y + 3).lineTo(x + 27, y + 15).stroke({ width: 0.8, color: 0x000000, alpha: 0.15 });
-  g.moveTo(x + 53, y + 3).lineTo(x + 53, y + 15).stroke({ width: 0.8, color: 0x000000, alpha: 0.15 });
+  const seatBase = blendColor(color, OFFICE_PASTEL.creamWhite, 0.18);
+  const seatFront = blendColor(seatBase, OFFICE_PASTEL.ink, 0.08);
+  const seatBack = blendColor(seatBase, OFFICE_PASTEL.ink, 0.18);
+  const seatDark = blendColor(seatBase, OFFICE_PASTEL.ink, 0.28);
+  // Floor shadow
+  g.ellipse(x + 40, y + 20, 44, 5).fill({ color: 0x000000, alpha: 0.06 });
+  // Sofa feet (tiny wooden)
+  g.roundRect(x + 2, y + 16, 4, 3, 1).fill(0xb89060);
+  g.roundRect(x + 74, y + 16, 4, 3, 1).fill(0xb89060);
+  // Seat cushion
+  g.roundRect(x, y, 80, 18, 5).fill(seatBase);
+  g.roundRect(x + 2, y + 2, 76, 14, 4).fill(seatFront);
+  // Seat highlight (top edge)
+  g.moveTo(x + 6, y + 1.5).lineTo(x + 74, y + 1.5).stroke({ width: 0.6, color: 0xffffff, alpha: 0.14 });
+  // Backrest (taller, with detail)
+  g.roundRect(x + 3, y - 10, 74, 12, 4).fill(seatBack);
+  g.roundRect(x + 3, y - 10, 74, 12, 4).stroke({ width: 0.5, color: seatDark, alpha: 0.15 });
+  // Backrest highlight
+  g.roundRect(x + 6, y - 9, 68, 3, 2).fill({ color: 0xffffff, alpha: 0.08 });
+  // Armrests (rounder, softer)
+  g.roundRect(x - 5, y - 8, 9, 24, 4).fill(seatBack);
+  g.roundRect(x - 5, y - 8, 9, 24, 4).stroke({ width: 0.5, color: seatDark, alpha: 0.12 });
+  g.roundRect(x + 76, y - 8, 9, 24, 4).fill(seatBack);
+  g.roundRect(x + 76, y - 8, 9, 24, 4).stroke({ width: 0.5, color: seatDark, alpha: 0.12 });
+  // Armrest top highlights
+  g.roundRect(x - 3, y - 7, 5, 2, 1).fill({ color: 0xffffff, alpha: 0.1 });
+  g.roundRect(x + 78, y - 7, 5, 2, 1).fill({ color: 0xffffff, alpha: 0.1 });
+  // Cushion divider lines (softer)
+  g.moveTo(x + 27, y + 3).lineTo(x + 27, y + 14).stroke({ width: 0.6, color: 0x000000, alpha: 0.1 });
+  g.moveTo(x + 53, y + 3).lineTo(x + 53, y + 14).stroke({ width: 0.6, color: 0x000000, alpha: 0.1 });
+  // Cushion puff highlights
+  g.ellipse(x + 14, y + 7, 8, 4).fill({ color: 0xffffff, alpha: 0.06 });
+  g.ellipse(x + 40, y + 7, 8, 4).fill({ color: 0xffffff, alpha: 0.06 });
+  g.ellipse(x + 66, y + 7, 8, 4).fill({ color: 0xffffff, alpha: 0.06 });
+  // Decorative throw pillow (cute accent)
+  g.roundRect(x + 6, y - 3, 10, 8, 3).fill(blendColor(color, 0xffffff, 0.3));
+  g.roundRect(x + 6, y - 3, 10, 8, 3).stroke({ width: 0.4, color: seatDark, alpha: 0.15 });
+  // Pillow pattern (tiny star)
+  g.star(x + 11, y + 1, 5, 1.5, 0.8, 0).fill({ color: 0xffffff, alpha: 0.15 });
   parent.addChild(g);
 }
 
 function drawCoffeeTable(parent: Container, x: number, y: number) {
   const g = new Graphics();
   // table top (elliptical)
-  g.ellipse(x + 18, y + 5, 18, 8).fill(0x8b6914);
-  g.ellipse(x + 18, y + 5, 16, 6).fill(0xa0792c);
+  g.ellipse(x + 18, y + 5, 18, 8).fill(0xb89060);
+  g.ellipse(x + 18, y + 5, 16, 6).fill(0xd0a878);
   // legs
-  g.rect(x + 6, y + 10, 3, 8).fill(0x654a0e);
-  g.rect(x + 27, y + 10, 3, 8).fill(0x654a0e);
+  g.rect(x + 6, y + 10, 3, 8).fill(0xa07840);
+  g.rect(x + 27, y + 10, 3, 8).fill(0xa07840);
   // coffee cup
-  g.roundRect(x + 12, y + 1, 5, 4, 1).fill(0xffffff);
-  g.rect(x + 13, y + 2, 3, 2).fill(0x6b4226);
+  g.roundRect(x + 12, y + 1, 5, 4, 1).fill(0xfffaf6);
+  g.rect(x + 13, y + 2, 3, 2).fill(0x8d654c);
   // snack plate
-  g.ellipse(x + 24, y + 4, 4, 2.5).fill(0xeeeeee);
-  g.circle(x + 23, y + 3.5, 1.5).fill(0xddaa44);
-  g.circle(x + 25.5, y + 4, 1.5).fill(0xcc8833);
+  g.ellipse(x + 24, y + 4, 4, 2.5).fill(0xf4ede6);
+  g.circle(x + 23, y + 3.5, 1.5).fill(0xedc27a);
+  g.circle(x + 25.5, y + 4, 1.5).fill(0xdba282);
   parent.addChild(g);
 }
 
 function drawHighTable(parent: Container, x: number, y: number) {
   const g = new Graphics();
   // table top
-  g.roundRect(x, y, 36, 14, 2).fill(0x8b6914);
-  g.roundRect(x + 1, y + 1, 34, 12, 1).fill(0xa0792c);
+  g.roundRect(x, y, 36, 14, 2).fill(0xb89060);
+  g.roundRect(x + 1, y + 1, 34, 12, 1).fill(0xd0a878);
   // legs
-  g.rect(x + 4, y + 14, 3, 16).fill(0x654a0e);
-  g.rect(x + 29, y + 14, 3, 16).fill(0x654a0e);
+  g.rect(x + 4, y + 14, 3, 16).fill(0xa07840);
+  g.rect(x + 29, y + 14, 3, 16).fill(0xa07840);
   // crossbar
-  g.rect(x + 6, y + 24, 24, 2).fill(0x654a0e);
+  g.rect(x + 6, y + 24, 24, 2).fill(0xa07840);
   parent.addChild(g);
 }
 
 function drawVendingMachine(parent: Container, x: number, y: number) {
   const g = new Graphics();
-  g.roundRect(x, y, 22, 30, 2).fill(0x334455);
-  g.roundRect(x + 1, y + 1, 20, 28, 1).fill(0x445566);
+  g.roundRect(x, y, 22, 30, 2).fill(0x7e8da6);
+  g.roundRect(x + 1, y + 1, 20, 28, 1).fill(0x98a7c0);
   // display rows of drinks
-  const drinkColors = [0xff4444, 0x44aaff, 0x44ff44, 0xffaa33, 0xff66aa, 0x8844ff];
+  const drinkColors = [0xea9ba8, 0x8fb9d8, 0x9fceac, 0xf3c07e, 0xdfafc9, 0xb29ed7];
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
       g.roundRect(x + 3 + c * 6, y + 3 + r * 7, 4, 5, 1).fill(drinkColors[(r * 3 + c) % drinkColors.length]);
     }
   }
   // dispense slot
-  g.roundRect(x + 4, y + 24, 14, 4, 1).fill(0x222233);
+  g.roundRect(x + 4, y + 24, 14, 4, 1).fill(0x4f5a72);
   parent.addChild(g);
 }
 
@@ -748,6 +1355,8 @@ export default function OfficeView({
   ceoOfficeCalls,
   onCeoOfficeCallProcessed,
   onOpenActiveMeetingMinutes,
+  customDeptThemes,
+  themeHighlightTargetId,
   onSelectAgent, onSelectDepartment,
 }: OfficeViewProps) {
   const { language, t } = useI18n();
@@ -784,6 +1393,7 @@ export default function OfficeView({
   const ceoMeetingSeatsRef = useRef<Array<{ x: number; y: number }>>([]);
   const totalHRef = useRef(600);
   const officeWRef = useRef(MIN_OFFICE_W);
+  const ceoOfficeRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const breakRoomRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const breakAnimItemsRef = useRef<Array<{
     sprite: Container; baseX: number; baseY: number;
@@ -792,10 +1402,12 @@ export default function OfficeView({
   const breakBubblesRef = useRef<Container[]>([]);
   const localeRef = useRef<SupportedLocale>(language);
   localeRef.current = language;
+  const themeHighlightTargetIdRef = useRef<string | null>(themeHighlightTargetId ?? null);
+  themeHighlightTargetIdRef.current = themeHighlightTargetId ?? null;
 
   // Latest data via refs (avoids stale closures)
-  const dataRef = useRef({ departments, agents, tasks, subAgents, unreadAgentIds, meetingPresence });
-  dataRef.current = { departments, agents, tasks, subAgents, unreadAgentIds, meetingPresence };
+  const dataRef = useRef({ departments, agents, tasks, subAgents, unreadAgentIds, meetingPresence, customDeptThemes });
+  dataRef.current = { departments, agents, tasks, subAgents, unreadAgentIds, meetingPresence, customDeptThemes };
   const cbRef = useRef({ onSelectAgent, onSelectDepartment });
   cbRef.current = { onSelectAgent, onSelectDepartment };
   const activeMeetingTaskIdRef = useRef<string | null>(activeMeetingTaskId ?? null);
@@ -938,11 +1550,14 @@ export default function OfficeView({
     breakAnimItemsRef.current = [];
     breakBubblesRef.current = [];
     breakSteamParticlesRef.current = null;
+    ceoOfficeRectRef.current = null;
     breakRoomRectRef.current = null;
     ceoMeetingSeatsRef.current = [];
 
-    const { departments, agents, tasks, subAgents, unreadAgentIds: unread } = dataRef.current;
+    const { departments, agents, tasks, subAgents, unreadAgentIds: unread, customDeptThemes: customThemes } = dataRef.current;
     const activeLocale = localeRef.current;
+    const ceoTheme = customThemes?.ceoOffice ?? DEFAULT_CEO_THEME;
+    const breakTheme = customThemes?.breakRoom ?? DEFAULT_BREAK_THEME;
 
     // Assign unique sprite numbers to each agent (1-12, no duplicates)
     const spriteMap = new Map<string, number>();
@@ -980,37 +1595,63 @@ export default function OfficeView({
 
     // ── BUILDING SHELL ──
     const bg = new Graphics();
-    bg.roundRect(0, 0, OFFICE_W, totalH, 6).fill(0x12161f);
-    bg.roundRect(0, 0, OFFICE_W, totalH, 6).stroke({ width: 3, color: 0x2a3040 });
+    bg.roundRect(0, 0, OFFICE_W, totalH, 6).fill(0xf5f0e8);
+    drawBandGradient(bg, 2, 2, OFFICE_W - 4, totalH - 4, 0xf8f4ec, 0xf0ece4, 14, 0.82);
+    bg.roundRect(2, 2, OFFICE_W - 4, totalH - 4, 5).stroke({ width: 1.5, color: 0xd8cfc0, alpha: 0.55 });
+    bg.roundRect(0, 0, OFFICE_W, totalH, 6).stroke({ width: 3, color: 0xe0d8cc });
+    for (let i = 0; i < 22; i++) {
+      const sx = 12 + ((i * 97) % Math.max(24, OFFICE_W - 24));
+      const sy = 12 + ((i * 131) % Math.max(24, totalH - 24));
+      bg.circle(sx, sy, i % 3 === 0 ? 1.1 : 0.8).fill({ color: 0xd0c8b8, alpha: i % 2 === 0 ? 0.12 : 0.08 });
+    }
     app.stage.addChild(bg);
 
     // ── CEO ZONE ──
     const ceoLayer = new Container();
+    ceoOfficeRectRef.current = { x: 4, y: 4, w: OFFICE_W - 8, h: CEO_ZONE_H - 4 };
     const ceoFloor = new Graphics();
-    drawTiledFloor(ceoFloor, 4, 4, OFFICE_W - 8, CEO_ZONE_H - 4, 0x3a2e12, 0x443818);
+    drawTiledFloor(ceoFloor, 4, 4, OFFICE_W - 8, CEO_ZONE_H - 4, ceoTheme.floor1, ceoTheme.floor2);
     ceoLayer.addChild(ceoFloor);
+    drawRoomAtmosphere(ceoLayer, 4, 4, OFFICE_W - 8, CEO_ZONE_H - 4, ceoTheme.wall, ceoTheme.accent);
     const ceoBorder = new Graphics();
     ceoBorder.roundRect(4, 4, OFFICE_W - 8, CEO_ZONE_H - 4, 3)
-      .stroke({ width: 2, color: 0xd4a017 });
+      .stroke({ width: 2, color: blendColor(ceoTheme.wall, ceoTheme.accent, 0.55) });
     ceoBorder.roundRect(3, 3, OFFICE_W - 6, CEO_ZONE_H - 2, 4)
-      .stroke({ width: 1, color: 0xf5c842, alpha: 0.25 });
+      .stroke({ width: 1, color: blendColor(ceoTheme.accent, 0xffffff, 0.2), alpha: 0.35 });
     ceoLayer.addChild(ceoBorder);
 
     const ceoLabel = new Text({
       text: pickLocale(activeLocale, LOCALE_TEXT.ceoOffice),
-      style: new TextStyle({ fontSize: 10, fill: 0xf5c842, fontWeight: "bold", fontFamily: "monospace", letterSpacing: 2 }),
+      style: new TextStyle({ fontSize: 10, fill: 0xffffff, fontWeight: "bold", fontFamily: "monospace", letterSpacing: 2 }),
     });
+    const ceoLabelBg = new Graphics();
+    ceoLabelBg
+      .roundRect(10, 6, ceoLabel.width + 8, 14, 3)
+      .fill({ color: blendColor(ceoTheme.accent, ceoTheme.wall, 0.35), alpha: 1 });
+    ceoLabelBg
+      .roundRect(10, 6, ceoLabel.width + 8, 14, 3)
+      .stroke({ width: 1, color: blendColor(ceoTheme.accent, 0xffffff, 0.2), alpha: 0.8 });
     ceoLabel.position.set(12, 8);
+    ceoLayer.addChild(ceoLabelBg);
     ceoLayer.addChild(ceoLabel);
+    drawBunting(
+      ceoLayer,
+      148,
+      11,
+      Math.max(120, OFFICE_W - 300),
+      blendColor(ceoTheme.accent, 0xffffff, 0.2),
+      blendColor(ceoTheme.wall, ceoTheme.accent, 0.45),
+      0.7,
+    );
 
     // CEO desk
     const cdx = 50, cdy = 28;
     const cdg = new Graphics();
-    cdg.roundRect(cdx, cdy, 64, 34, 3).fill(0x5c3d0a);
-    cdg.roundRect(cdx + 1, cdy + 1, 62, 32, 2).fill(0x8b6914);
-    cdg.roundRect(cdx + 19, cdy + 2, 26, 16, 2).fill(0x222233);
-    cdg.roundRect(cdx + 20.5, cdy + 3.5, 23, 12, 1).fill(0x335599);
-    cdg.roundRect(cdx + 22, cdy + 24, 20, 7, 2).fill(0xd4a017);
+    cdg.roundRect(cdx, cdy, 64, 34, 3).fill(0xb8925c);
+    cdg.roundRect(cdx + 1, cdy + 1, 62, 32, 2).fill(0xd0a870);
+    cdg.roundRect(cdx + 19, cdy + 2, 26, 16, 2).fill(0x2a2a3a);
+    cdg.roundRect(cdx + 20.5, cdy + 3.5, 23, 12, 1).fill(0x4488cc);
+    cdg.roundRect(cdx + 22, cdy + 24, 20, 7, 2).fill(0xe8c060);
     ceoLayer.addChild(cdg);
     const ceoPlateText = new Text({
       text: "CEO",
@@ -1019,7 +1660,7 @@ export default function OfficeView({
     ceoPlateText.anchor.set(0.5, 0.5);
     ceoPlateText.position.set(cdx + 32, cdy + 27.5);
     ceoLayer.addChild(ceoPlateText);
-    drawChair(ceoLayer, cdx + 32, cdy + 46, 0xb8860b);
+    drawChair(ceoLayer, cdx + 32, cdy + 46, 0xd4a860);
 
     // 6-seat collaboration table in CEO OFFICE
     const mtW = 220;
@@ -1027,9 +1668,9 @@ export default function OfficeView({
     const mtX = Math.floor((OFFICE_W - mtW) / 2);
     const mtY = 48;
     const mt = new Graphics();
-    mt.roundRect(mtX, mtY, mtW, mtH, 12).fill(0x6f4f1e);
-    mt.roundRect(mtX + 3, mtY + 3, mtW - 6, mtH - 6, 10).fill(0x9d7440);
-    mt.roundRect(mtX + 64, mtY + 8, 92, 12, 5).fill({ color: 0xf7d89a, alpha: 0.35 });
+    mt.roundRect(mtX, mtY, mtW, mtH, 12).fill(0xb89060);
+    mt.roundRect(mtX + 3, mtY + 3, mtW - 6, mtH - 6, 10).fill(0xd0a878);
+    mt.roundRect(mtX + 64, mtY + 8, 92, 12, 5).fill({ color: 0xf7e4c0, alpha: 0.45 });
     if (activeMeetingTaskIdRef.current && meetingMinutesOpenRef.current) {
       mt.eventMode = "static";
       mt.cursor = "pointer";
@@ -1043,13 +1684,13 @@ export default function OfficeView({
 
     const meetingSeatX = [mtX + 40, mtX + 110, mtX + 180];
     for (const sx of meetingSeatX) {
-      drawChair(ceoLayer, sx, mtY - 4, 0x8a6230);
-      drawChair(ceoLayer, sx, mtY + mtH + 10, 0x8a6230);
+      drawChair(ceoLayer, sx, mtY - 4, 0xc4a070);
+      drawChair(ceoLayer, sx, mtY + mtH + 10, 0xc4a070);
     }
 
     const meetingLabel = new Text({
       text: pickLocale(activeLocale, LOCALE_TEXT.collabTable),
-      style: new TextStyle({ fontSize: 7, fill: 0xf4c862, fontWeight: "bold", fontFamily: "monospace", letterSpacing: 1 }),
+      style: new TextStyle({ fontSize: 7, fill: 0x7a5c2a, fontWeight: "bold", fontFamily: "monospace", letterSpacing: 1 }),
     });
     meetingLabel.anchor.set(0.5, 0.5);
     meetingLabel.position.set(mtX + mtW / 2, mtY + mtH / 2);
@@ -1109,19 +1750,19 @@ export default function OfficeView({
     stats.forEach((s, i) => {
       const sx = OFFICE_W - 340 + i * 82, sy = 12;
       const sg = new Graphics();
-      sg.roundRect(sx, sy, 74, 26, 4).fill({ color: 0xf5c842, alpha: 0.1 });
-      sg.roundRect(sx, sy, 74, 26, 4).stroke({ width: 1, color: 0xf5c842, alpha: 0.25 });
+      sg.roundRect(sx, sy, 74, 26, 4).fill({ color: 0xfff4d8, alpha: 0.85 });
+      sg.roundRect(sx, sy, 74, 26, 4).stroke({ width: 1, color: 0xe8c870, alpha: 0.5 });
       ceoLayer.addChild(sg);
       const ti = new Text({ text: s.icon, style: new TextStyle({ fontSize: 10 }) });
       ti.position.set(sx + 4, sy + 4);
       ceoLayer.addChild(ti);
       ceoLayer.addChild(Object.assign(new Text({
         text: s.label,
-        style: new TextStyle({ fontSize: 7, fill: 0xd4a017, fontFamily: "monospace" }),
+        style: new TextStyle({ fontSize: 7, fill: 0x8b7040, fontFamily: "monospace" }),
       }), { x: sx + 18, y: sy + 2 }));
       ceoLayer.addChild(Object.assign(new Text({
         text: s.val,
-        style: new TextStyle({ fontSize: 10, fill: 0xffffff, fontWeight: "bold", fontFamily: "monospace" }),
+        style: new TextStyle({ fontSize: 10, fill: 0x5a4020, fontWeight: "bold", fontFamily: "monospace" }),
       }), { x: sx + 18, y: sy + 13 }));
     });
 
@@ -1131,7 +1772,7 @@ export default function OfficeView({
       style: new TextStyle({
         fontSize: 10,
         fontWeight: "bold",
-        fill: 0xd9c48a,
+        fill: 0x8b7040,
         fontFamily: "monospace",
       }),
     });
@@ -1144,7 +1785,7 @@ export default function OfficeView({
         text: pickLocale(activeLocale, LOCALE_TEXT.meetingTableHint),
         style: new TextStyle({
           fontSize: 12,
-          fill: 0xffe7a5,
+          fill: 0x8b6b30,
           fontWeight: "bold",
           fontFamily: "system-ui, sans-serif",
         }),
@@ -1154,19 +1795,49 @@ export default function OfficeView({
       ceoLayer.addChild(meetingHint);
     }
 
-    drawPlant(ceoLayer, 18, 62);
-    drawPlant(ceoLayer, OFFICE_W - 22, 62);
+    // CEO office ambient glow (warm golden)
+    drawAmbientGlow(ceoLayer, OFFICE_W / 2, CEO_ZONE_H / 2, OFFICE_W * 0.35, ceoTheme.accent, 0.08);
+
+    // Wall decorations
+    drawPictureFrame(ceoLayer, 14, 14);
+    drawWallClock(ceoLayer, OFFICE_W - 30, 18);
+
+    // Plants with variety
+    drawPlant(ceoLayer, 18, 62, 0);
+    drawPlant(ceoLayer, OFFICE_W - 22, 62, 2);
+
+    // Water cooler
+    drawWaterCooler(ceoLayer, 28, 30);
+
+    // Keep CEO room label above wall decorations for readability.
+    ceoLayer.addChild(ceoLabelBg);
+    ceoLayer.addChild(ceoLabel);
 
     app.stage.addChild(ceoLayer);
 
     // ── HALLWAY ──
     const hallY = CEO_ZONE_H;
     const hallG = new Graphics();
-    hallG.rect(4, hallY, OFFICE_W - 8, HALLWAY_H).fill(0x1a1e28);
-    for (let dx = 20; dx < OFFICE_W - 20; dx += 16) {
-      hallG.rect(dx, hallY + HALLWAY_H / 2, 6, 1).fill({ color: 0x444c5c, alpha: 0.3 });
+    hallG.rect(4, hallY, OFFICE_W - 8, HALLWAY_H).fill(0xe8dcc8);
+    drawBandGradient(hallG, 4, hallY, OFFICE_W - 8, HALLWAY_H, 0xf0e4d0, 0xe8dcc8, 5, 0.38);
+    // Tiled hallway floor pattern
+    for (let dx = 4; dx < OFFICE_W - 4; dx += TILE * 2) {
+      hallG.rect(dx, hallY, TILE * 2, HALLWAY_H).fill({ color: 0xf0e4d0, alpha: 0.5 });
+      hallG.rect(dx + TILE * 2, hallY, TILE * 2, HALLWAY_H).fill({ color: 0xe8dcc8, alpha: 0.3 });
     }
+    // Center dashed line
+    for (let dx = 20; dx < OFFICE_W - 20; dx += 16) {
+      hallG.rect(dx, hallY + HALLWAY_H / 2, 6, 1).fill({ color: 0xc8b898, alpha: 0.4 });
+    }
+    // Edge trim (top and bottom, warm accent)
+    hallG.rect(4, hallY, OFFICE_W - 8, 1.5).fill({ color: 0xd4c4a8, alpha: 0.5 });
+    hallG.rect(4, hallY + HALLWAY_H - 1.5, OFFICE_W - 8, 1.5).fill({ color: 0xd4c4a8, alpha: 0.5 });
+    // Warm ambient light in center
+    hallG.ellipse(OFFICE_W / 2, hallY + HALLWAY_H / 2 + 1, Math.max(120, OFFICE_W * 0.28), 6).fill({ color: 0xfff8e0, alpha: 0.08 });
+    // Small potted plants along hallway
     app.stage.addChild(hallG);
+    drawPlant(app.stage as Container, 30, hallY + HALLWAY_H - 6, 2);
+    drawPlant(app.stage as Container, OFFICE_W - 30, hallY + HALLWAY_H - 6, 1);
 
     // ── DEPARTMENT ROOMS ──
     departments.forEach((dept, deptIdx) => {
@@ -1174,7 +1845,8 @@ export default function OfficeView({
       const row = Math.floor(deptIdx / gridCols);
       const rx = roomStartX + col * (roomW + roomGap);
       const ry = deptStartY + row * (roomH + roomGap);
-      const theme = DEPT_THEME[dept.id] || DEPT_THEME.dev;
+      const theme = customThemes?.[dept.id] || DEPT_THEME[dept.id] || DEPT_THEME.dev;
+      const deptAgents = agents.filter(a => a.department_id === dept.id);
       roomRectsRef.current.push({ dept, x: rx, y: ry, w: roomW, h: roomH });
 
       const room = new Container();
@@ -1182,6 +1854,7 @@ export default function OfficeView({
       const floorG = new Graphics();
       drawTiledFloor(floorG, rx, ry, roomW, roomH, theme.floor1, theme.floor2);
       room.addChild(floorG);
+      drawRoomAtmosphere(room, rx, ry, roomW, roomH, theme.wall, theme.accent);
 
       const wallG = new Graphics();
       wallG.roundRect(rx, ry, roomW, roomH, 3).stroke({ width: 2.5, color: theme.wall });
@@ -1189,12 +1862,13 @@ export default function OfficeView({
 
       // Door opening
       const doorG = new Graphics();
-      doorG.rect(rx + roomW / 2 - 16, ry - 2, 32, 5).fill(0x12161f);
+      doorG.rect(rx + roomW / 2 - 16, ry - 2, 32, 5).fill(0xf5f0e8);
       room.addChild(doorG);
 
       // Sign
       const signW = 84;
       const signBg = new Graphics();
+      signBg.roundRect(rx + roomW / 2 - signW / 2 + 1, ry - 3, signW, 18, 4).fill({ color: 0x000000, alpha: 0.12 });
       signBg.roundRect(rx + roomW / 2 - signW / 2, ry - 4, signW, 18, 4).fill(theme.accent);
       signBg.eventMode = "static";
       signBg.cursor = "pointer";
@@ -1202,23 +1876,45 @@ export default function OfficeView({
       room.addChild(signBg);
       const signTxt = new Text({
         text: `${dept.icon || "🏢"} ${activeLocale === "ko" ? (dept.name_ko || dept.name) : dept.name}`,
-        style: new TextStyle({ fontSize: 9, fill: 0xffffff, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
+        style: new TextStyle({ fontSize: 9, fill: 0xffffff, fontWeight: "bold", fontFamily: "system-ui, sans-serif", dropShadow: { alpha: 0.2, distance: 1, color: 0x000000 } }),
       });
       signTxt.anchor.set(0.5, 0.5);
       signTxt.position.set(rx + roomW / 2, ry + 5);
       room.addChild(signTxt);
 
+      // Ambient glow from ceiling light
+      drawCeilingLight(room, rx + roomW / 2, ry + 14, theme.accent);
+      drawAmbientGlow(room, rx + roomW / 2, ry + roomH / 2, roomW * 0.4, theme.accent, 0.04);
+      drawBunting(room, rx + 12, ry + 16, roomW - 24, blendColor(theme.accent, 0xffffff, 0.2), blendColor(theme.wall, 0xffffff, 0.4), 0.52);
+
+      // Wall decorations
       drawWhiteboard(room, rx + roomW - 48, ry + 18);
       drawBookshelf(room, rx + 6, ry + 18);
-      drawPlant(room, rx + 8, ry + roomH - 14);
-      drawPlant(room, rx + roomW - 12, ry + roomH - 14);
+      drawWallClock(room, rx + roomW - 16, ry + 12);
+      drawWindow(room, rx + roomW / 2 - 12, ry + 16);
+      if (roomW > 240) {
+        drawWindow(room, rx + roomW / 2 - 40, ry + 16, 20, 16);
+        drawWindow(room, rx + roomW / 2 + 20, ry + 16, 20, 16);
+      }
+      if (roomW > 200) {
+        drawPictureFrame(room, rx + 40, ry + 20);
+      }
+
+      // Floor decorations
+      drawPlant(room, rx + 8, ry + roomH - 14, deptIdx);
+      drawPlant(room, rx + roomW - 12, ry + roomH - 14, deptIdx + 1);
+      drawTrashCan(room, rx + roomW - 14, ry + roomH - 26);
+
+      // Area rug under desk zone
+      if (deptAgents.length > 0) {
+        drawRug(room, rx + roomW / 2, ry + 38 + Math.min(agentRows, 2) * SLOT_H / 2, roomW - 40, Math.min(agentRows, 2) * SLOT_H - 10, theme.accent);
+      }
 
       // Agents (all dept members keep desks; break agents' sprites move to break room)
-      const deptAgents = agents.filter(a => a.department_id === dept.id);
       if (deptAgents.length === 0) {
         const et = new Text({
           text: pickLocale(activeLocale, LOCALE_TEXT.noAssignedAgent),
-          style: new TextStyle({ fontSize: 10, fill: 0x556677, fontFamily: "system-ui, sans-serif" }),
+          style: new TextStyle({ fontSize: 10, fill: 0x9a8a7a, fontFamily: "system-ui, sans-serif" }),
         });
         et.anchor.set(0.5, 0.5);
         et.position.set(rx + roomW / 2, ry + roomH / 2);
@@ -1244,12 +1940,12 @@ export default function OfficeView({
         // ── Name tag (above character) ──
         const nt = new Text({
           text: activeLocale === "ko" ? (agent.name_ko || agent.name) : agent.name,
-          style: new TextStyle({ fontSize: 7, fill: 0xffffff, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
+          style: new TextStyle({ fontSize: 7, fill: 0x3a3a4a, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
         });
         nt.anchor.set(0.5, 0);
         const ntW = nt.width + 6;
         const ntBg = new Graphics();
-        ntBg.roundRect(ax - ntW / 2, nameY, ntW, 12, 3).fill({ color: 0x000000, alpha: 0.5 });
+        ntBg.roundRect(ax - ntW / 2, nameY, ntW, 12, 3).fill({ color: 0xffffff, alpha: 0.85 });
         room.addChild(ntBg);
         nt.position.set(ax, nameY + 2);
         room.addChild(nt);
@@ -1281,12 +1977,12 @@ export default function OfficeView({
               zh: agent.role,
             },
           ),
-          style: new TextStyle({ fontSize: 6, fill: 0xffffff, fontFamily: "system-ui, sans-serif" }),
+          style: new TextStyle({ fontSize: 6, fill: contrastTextColor(theme.accent), fontFamily: "system-ui, sans-serif" }),
         });
         rt.anchor.set(0.5, 0.5);
         const rtW = rt.width + 5;
         const rtBg = new Graphics();
-        rtBg.roundRect(ax - rtW / 2, nameY + 13, rtW, 9, 2).fill({ color: theme.accent, alpha: 0.7 });
+        rtBg.roundRect(ax - rtW / 2, nameY + 13, rtW, 9, 2).fill({ color: theme.accent, alpha: 0.82 });
         room.addChild(rtBg);
         rt.position.set(ax, nameY + 17.5);
         room.addChild(rt);
@@ -1298,12 +1994,29 @@ export default function OfficeView({
         if (isBreak) {
           // Desk (on top of empty chair)
           drawDesk(room, ax - DESK_W / 2, deskY, false);
+          const awayTagY = charFeetY - TARGET_CHAR_H / 2;
+          const awayTagBgColor = blendColor(theme.accent, 0x101826, 0.78);
           const awayTag = new Text({
             text: pickLocale(activeLocale, LOCALE_TEXT.breakRoom),
-            style: new TextStyle({ fontSize: 7, fill: 0xe8a849, fontFamily: "system-ui, sans-serif" }),
+            style: new TextStyle({
+              fontSize: 8,
+              fill: contrastTextColor(awayTagBgColor),
+              fontWeight: "bold",
+              fontFamily: "system-ui, sans-serif",
+            }),
           });
           awayTag.anchor.set(0.5, 0.5);
-          awayTag.position.set(ax, charFeetY - TARGET_CHAR_H / 2);
+          const awayTagW = awayTag.width + 10;
+          const awayTagH = awayTag.height + 4;
+          const awayTagBg = new Graphics();
+          awayTagBg
+            .roundRect(ax - awayTagW / 2, awayTagY - awayTagH / 2, awayTagW, awayTagH, 3)
+            .fill({ color: awayTagBgColor, alpha: 0.9 });
+          awayTagBg
+            .roundRect(ax - awayTagW / 2, awayTagY - awayTagH / 2, awayTagW, awayTagH, 3)
+            .stroke({ width: 1, color: blendColor(theme.accent, 0xffffff, 0.2), alpha: 0.85 });
+          room.addChild(awayTagBg);
+          awayTag.position.set(ax, awayTagY + 0.5);
           room.addChild(awayTag);
         } else {
           // ── Character sprite (drawn BEFORE desk so legs hide behind it) ──
@@ -1460,43 +2173,68 @@ export default function OfficeView({
 
     // Floor
     const brFloor = new Graphics();
-    drawTiledFloor(brFloor, brx, bry, brw, brh, BREAK_THEME.floor1, BREAK_THEME.floor2);
+    drawTiledFloor(brFloor, brx, bry, brw, brh, breakTheme.floor1, breakTheme.floor2);
     breakRoom.addChild(brFloor);
+    drawRoomAtmosphere(breakRoom, brx, bry, brw, brh, breakTheme.wall, breakTheme.accent);
 
     // Wall border
     const brBorder = new Graphics();
     brBorder.roundRect(brx, bry, brw, brh, 3)
-      .stroke({ width: 2, color: BREAK_THEME.wall });
+      .stroke({ width: 2, color: breakTheme.wall });
     brBorder.roundRect(brx - 1, bry - 1, brw + 2, brh + 2, 4)
-      .stroke({ width: 1, color: BREAK_THEME.accent, alpha: 0.25 });
+      .stroke({ width: 1, color: breakTheme.accent, alpha: 0.25 });
     breakRoom.addChild(brBorder);
 
     // Sign
     const brSignW = 84;
     const brSignBg = new Graphics();
-    brSignBg.roundRect(brx + brw / 2 - brSignW / 2, bry - 4, brSignW, 18, 4).fill(BREAK_THEME.accent);
+    brSignBg.roundRect(brx + brw / 2 - brSignW / 2 + 1, bry - 3, brSignW, 18, 4).fill({ color: 0x000000, alpha: 0.12 });
+    brSignBg.roundRect(brx + brw / 2 - brSignW / 2, bry - 4, brSignW, 18, 4).fill(breakTheme.accent);
     breakRoom.addChild(brSignBg);
+    const breakSignTextColor = contrastTextColor(breakTheme.accent);
     const brSignTxt = new Text({
       text: pickLocale(activeLocale, LOCALE_TEXT.breakRoom),
-      style: new TextStyle({ fontSize: 9, fill: 0xffffff, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
+      style: new TextStyle({ fontSize: 9, fill: breakSignTextColor, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
     });
     brSignTxt.anchor.set(0.5, 0.5);
     brSignTxt.position.set(brx + brw / 2, bry + 5);
     breakRoom.addChild(brSignTxt);
 
+    // Break room ambient glow
+    drawAmbientGlow(breakRoom, brx + brw / 2, bry + brh / 2, brw * 0.3, breakTheme.accent, 0.05);
+    drawCeilingLight(breakRoom, brx + brw / 3, bry + 6, breakTheme.accent);
+    drawCeilingLight(breakRoom, brx + brw * 2 / 3, bry + 6, breakTheme.accent);
+    drawBunting(
+      breakRoom,
+      brx + 14,
+      bry + 16,
+      brw - 28,
+      blendColor(OFFICE_PASTEL.softMint, 0xffffff, 0.18),
+      blendColor(OFFICE_PASTEL.dustyRose, 0xffffff, 0.08),
+      0.64,
+    );
+
     // Furniture layout (relative to room left)
     const furnitureBaseX = brx + 16;
     drawCoffeeMachine(breakRoom, furnitureBaseX, bry + 20);
-    drawPlant(breakRoom, furnitureBaseX + 30, bry + 38);
-    drawSofa(breakRoom, furnitureBaseX + 50, bry + 56, 0x8b4513);
+    drawPlant(breakRoom, furnitureBaseX + 30, bry + 38, 1);
+    drawSofa(breakRoom, furnitureBaseX + 50, bry + 56, 0xc89da6);
     drawCoffeeTable(breakRoom, furnitureBaseX + 140, bry + 58);
 
     // Right side furniture (from room right edge)
     const furnitureRightX = brx + brw - 16;
     drawVendingMachine(breakRoom, furnitureRightX - 26, bry + 20);
-    drawPlant(breakRoom, furnitureRightX - 36, bry + 38);
-    drawSofa(breakRoom, furnitureRightX - 120, bry + 56, 0x6b3a2a);
+    drawPlant(breakRoom, furnitureRightX - 36, bry + 38, 2);
+    drawSofa(breakRoom, furnitureRightX - 120, bry + 56, 0x91bcae);
     drawHighTable(breakRoom, furnitureRightX - 170, bry + 24);
+
+    // Extra decor: wall pictures, clock
+    drawPictureFrame(breakRoom, brx + brw / 2 - 8, bry + 14);
+    drawWallClock(breakRoom, brx + brw / 2 + 30, bry + 18);
+    drawTrashCan(breakRoom, furnitureBaseX + 24, bry + brh - 14);
+
+    // Rug under lounge area
+    drawRug(breakRoom, brx + brw / 2, bry + brh / 2 + 10, brw * 0.5, brh * 0.45, breakTheme.accent);
 
     // Steam particles container (for coffee machine)
     const steamContainer = new Container();
@@ -1558,12 +2296,12 @@ export default function OfficeView({
       // Small name tag
       const nameTag = new Text({
         text: activeLocale === "ko" ? (agent.name_ko || agent.name) : agent.name,
-        style: new TextStyle({ fontSize: 6, fill: 0xffffff, fontFamily: "system-ui, sans-serif" }),
+        style: new TextStyle({ fontSize: 6, fill: 0x4a3a2a, fontFamily: "system-ui, sans-serif" }),
       });
       nameTag.anchor.set(0.5, 0);
       const ntW = nameTag.width + 4;
       const ntBg = new Graphics();
-      ntBg.roundRect(spotX - ntW / 2, spotY + 2, ntW, 9, 2).fill({ color: 0x000000, alpha: 0.4 });
+      ntBg.roundRect(spotX - ntW / 2, spotY + 2, ntW, 9, 2).fill({ color: 0xffffff, alpha: 0.8 });
       breakRoom.addChild(ntBg);
       nameTag.position.set(spotX, spotY + 3);
       breakRoom.addChild(nameTag);
@@ -1595,11 +2333,11 @@ export default function OfficeView({
         const bubbleTop = spotY - TARGET_CHAR_H * 0.85 - bh - 4;
 
         const bubbleG = new Graphics();
-        bubbleG.roundRect(spotX - bw / 2, bubbleTop, bw, bh, 4).fill(0xfff8e8);
+        bubbleG.roundRect(spotX - bw / 2, bubbleTop, bw, bh, 4).fill(0xfff8f0);
         bubbleG.roundRect(spotX - bw / 2, bubbleTop, bw, bh, 4)
-          .stroke({ width: 1.2, color: BREAK_THEME.accent, alpha: 0.5 });
+          .stroke({ width: 1.2, color: breakTheme.accent, alpha: 0.5 });
         // Tail
-        bubbleG.moveTo(spotX - 3, bubbleTop + bh).lineTo(spotX, bubbleTop + bh + 4).lineTo(spotX + 3, bubbleTop + bh).fill(0xfff8e8);
+        bubbleG.moveTo(spotX - 3, bubbleTop + bh).lineTo(spotX, bubbleTop + bh + 4).lineTo(spotX + 3, bubbleTop + bh).fill(0xfff8f0);
         breakRoom.addChild(bubbleG);
         bubbleText.position.set(spotX, bubbleTop + bh - 3);
         breakRoom.addChild(bubbleText);
@@ -1659,11 +2397,11 @@ export default function OfficeView({
 
     // CEO name badge
     const cbg = new Graphics();
-    cbg.roundRect(-16, CEO_SIZE / 2 + 1, 32, 11, 3).fill({ color: 0xd4a017, alpha: 0.85 });
+    cbg.roundRect(-16, CEO_SIZE / 2 + 1, 32, 11, 3).fill({ color: 0xf0d888, alpha: 0.9 });
     ceoChar.addChild(cbg);
     const cName = new Text({
       text: "CEO",
-      style: new TextStyle({ fontSize: 7, fill: 0x000000, fontWeight: "bold", fontFamily: "monospace" }),
+      style: new TextStyle({ fontSize: 7, fill: 0x5a4020, fontWeight: "bold", fontFamily: "monospace" }),
     });
     cName.anchor.set(0.5, 0.5);
     cName.position.set(0, CEO_SIZE / 2 + 6.5);
@@ -1796,11 +2534,43 @@ export default function OfficeView({
         const hl = highlightRef.current;
         if (hl) {
           hl.clear();
+          const activeThemeTargetId = themeHighlightTargetIdRef.current;
+          if (activeThemeTargetId) {
+            const pulse = 0.55 + Math.sin(tick * 0.08) * 0.2;
+            let targetRect: { x: number; y: number; w: number; h: number } | null = null;
+            let targetAccent = DEPT_THEME.dev.accent;
+            if (activeThemeTargetId === "ceoOffice") {
+              targetRect = ceoOfficeRectRef.current;
+              targetAccent = dataRef.current.customDeptThemes?.ceoOffice?.accent ?? DEFAULT_CEO_THEME.accent;
+            } else if (activeThemeTargetId === "breakRoom") {
+              targetRect = breakRoomRectRef.current;
+              targetAccent = dataRef.current.customDeptThemes?.breakRoom?.accent ?? DEFAULT_BREAK_THEME.accent;
+            } else {
+              const targetRoom = roomRectsRef.current.find((r) => r.dept.id === activeThemeTargetId);
+              if (targetRoom) {
+                targetRect = { x: targetRoom.x, y: targetRoom.y, w: targetRoom.w, h: targetRoom.h };
+                const targetTheme = dataRef.current.customDeptThemes?.[activeThemeTargetId]
+                  || DEPT_THEME[activeThemeTargetId]
+                  || DEPT_THEME.dev;
+                targetAccent = targetTheme.accent;
+              }
+            }
+            if (targetRect) {
+              hl.roundRect(targetRect.x - 4, targetRect.y - 4, targetRect.w + 8, targetRect.h + 8, 7)
+                .stroke({ width: 3.5, color: targetAccent, alpha: pulse });
+              hl.roundRect(targetRect.x - 6, targetRect.y - 6, targetRect.w + 12, targetRect.h + 12, 9)
+                .stroke({
+                  width: 1.2,
+                  color: blendColor(targetAccent, 0xffffff, 0.22),
+                  alpha: 0.35 + Math.sin(tick * 0.06) * 0.08,
+                });
+            }
+          }
           const cx = ceoPosRef.current.x, cy = ceoPosRef.current.y;
           let highlighted = false;
           for (const r of roomRectsRef.current) {
             if (cx >= r.x && cx <= r.x + r.w && cy >= r.y - 10 && cy <= r.y + r.h) {
-              const theme = DEPT_THEME[r.dept.id] || DEPT_THEME.dev;
+              const theme = dataRef.current.customDeptThemes?.[r.dept.id] || DEPT_THEME[r.dept.id] || DEPT_THEME.dev;
               hl.roundRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 5)
                 .stroke({ width: 3, color: theme.accent, alpha: 0.5 + Math.sin(tick * 0.08) * 0.2 });
               highlighted = true;
@@ -1811,8 +2581,9 @@ export default function OfficeView({
           if (!highlighted) {
             const br = breakRoomRectRef.current;
             if (br && cx >= br.x && cx <= br.x + br.w && cy >= br.y - 10 && cy <= br.y + br.h) {
+              const breakThemeHighlight = dataRef.current.customDeptThemes?.breakRoom ?? DEFAULT_BREAK_THEME;
               hl.roundRect(br.x - 2, br.y - 2, br.w + 4, br.h + 4, 5)
-                .stroke({ width: 3, color: BREAK_THEME.accent, alpha: 0.5 + Math.sin(tick * 0.08) * 0.2 });
+                .stroke({ width: 3, color: breakThemeHighlight.accent, alpha: 0.5 + Math.sin(tick * 0.08) * 0.2 });
             }
           }
         }
@@ -2166,7 +2937,7 @@ export default function OfficeView({
     if (initDoneRef.current && appRef.current) {
       buildScene();
     }
-  }, [departments, agents, tasks, subAgents, unreadAgentIds, language, activeMeetingTaskId, buildScene]);
+  }, [departments, agents, tasks, subAgents, unreadAgentIds, language, activeMeetingTaskId, customDeptThemes, buildScene]);
 
   /* ── MEETING PRESENCE SYNC (restore seats on refresh/view switch) ── */
   useEffect(() => {
