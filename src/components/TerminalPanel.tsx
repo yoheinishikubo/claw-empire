@@ -126,16 +126,21 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
   }, [taskId]);
 
   useEffect(() => {
-    if (activeTab === 'terminal') {
-      fetchTerminal();
-    } else {
-      fetchMeetingMinutes();
+    const fn = activeTab === 'terminal' ? fetchTerminal : fetchMeetingMinutes;
+    const ms = activeTab === 'terminal' ? 1500 : 2500;
+    fn();
+    let timer: ReturnType<typeof setInterval>;
+    function start() { timer = setInterval(fn, ms); }
+    function handleVisibility() {
+      clearInterval(timer);
+      if (!document.hidden) { fn(); start(); }
     }
-    const timer = setInterval(
-      activeTab === 'terminal' ? fetchTerminal : fetchMeetingMinutes,
-      activeTab === 'terminal' ? 1500 : 2500,
-    );
-    return () => clearInterval(timer);
+    start();
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [activeTab, fetchTerminal, fetchMeetingMinutes]);
 
   // Close on Escape key

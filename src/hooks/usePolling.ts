@@ -25,7 +25,20 @@ export function usePolling<T>(
   useEffect(() => {
     refresh();
     timerRef.current = setInterval(refresh, intervalMs);
-    return () => clearInterval(timerRef.current);
+
+    function handleVisibility() {
+      clearInterval(timerRef.current);
+      if (!document.hidden) {
+        refresh();
+        timerRef.current = setInterval(refresh, intervalMs);
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      clearInterval(timerRef.current);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [refresh, intervalMs]);
 
   return { data, loading, error, refresh };

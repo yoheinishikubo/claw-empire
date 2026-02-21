@@ -391,26 +391,24 @@ export function ChatPanel({
 
   const isAnnouncementMode = mode === 'announcement';
 
-  // Filter messages relevant to current view
-  const visibleMessages = messages.filter((msg) => {
-    if (!selectedAgent) {
-      // Show only announcements / all broadcasts when no agent selected
+  // Filter messages relevant to current view (memoized to avoid re-filtering on every render)
+  const selectedAgentId = selectedAgent?.id;
+  const visibleMessages = useMemo(() => messages.filter((msg) => {
+    if (!selectedAgentId) {
       return msg.receiver_type === 'all' || msg.message_type === 'announcement' || msg.message_type === 'directive';
     }
-    // Always include messages tied to the selected agent's active task.
     if (selectedTaskId && msg.task_id === selectedTaskId) return true;
-    // Show messages between CEO and selected agent
     return (
       (msg.sender_type === 'ceo' &&
         msg.receiver_type === 'agent' &&
-        msg.receiver_id === selectedAgent.id) ||
+        msg.receiver_id === selectedAgentId) ||
       (msg.sender_type === 'agent' &&
-        msg.sender_id === selectedAgent.id) ||
+        msg.sender_id === selectedAgentId) ||
       msg.message_type === 'announcement' ||
       msg.message_type === 'directive' ||
       msg.receiver_type === 'all'
     );
-  });
+  }), [messages, selectedAgentId, selectedTaskId]);
 
   return (
     <div className="fixed inset-0 z-50 flex h-full w-full flex-col bg-gray-900 shadow-2xl lg:relative lg:inset-auto lg:z-auto lg:w-96 lg:border-l lg:border-gray-700">

@@ -117,8 +117,9 @@ function readStoredRoomThemes(): { themes: RoomThemeMap; hasStored: boolean } {
 }
 
 function appendCapped<T>(prev: T[], item: T, max: number): T[] {
-  if (prev.length < max) return [...prev, item];
-  return [...prev.slice(prev.length - max + 1), item];
+  const next = prev.length >= max ? prev.slice(prev.length - max + 1) : prev.slice();
+  next.push(item);
+  return next;
 }
 
 function mergeSettingsWithDefaults(
@@ -659,12 +660,23 @@ export default function App() {
     return () => unsubs.forEach((fn) => fn());
   }, [on, scheduleLiveSync]);
 
-  // Polling for fresh data every 5 seconds
+  // Polling for fresh data every 5 seconds (paused when tab is hidden)
   useEffect(() => {
-    const timer = setInterval(() => {
-      scheduleLiveSync(0);
-    }, 5000);
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setInterval>;
+    function start() { timer = setInterval(() => scheduleLiveSync(0), 5000); }
+    function handleVisibility() {
+      clearInterval(timer);
+      if (!document.hidden) {
+        scheduleLiveSync(0);
+        start();
+      }
+    }
+    start();
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [scheduleLiveSync]);
 
   const activeMeetingTaskId = useMemo(() => {

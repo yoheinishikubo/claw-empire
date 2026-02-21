@@ -104,6 +104,13 @@ function detachNode(node: Container): void {
   node.parent?.removeChild(node);
 }
 
+/** Remove from parent AND destroy to free GPU/texture memory. */
+function destroyNode(node: Container): void {
+  if (node.destroyed) return;
+  node.parent?.removeChild(node);
+  node.destroy({ children: true });
+}
+
 function trackProcessedId(set: Set<string>, id: string, max = 4000): void {
   set.add(id);
   if (set.size <= max) return;
@@ -2965,7 +2972,7 @@ export default function OfficeView({
             d.sprite.position.set(d.toX, d.toY);
             d.sprite.alpha = 1;
             if (d.holdUntil && now >= d.holdUntil) {
-              detachNode(d.sprite);
+              destroyNode(d.sprite);
               deliveries.splice(i, 1);
             }
             continue;
@@ -2980,7 +2987,7 @@ export default function OfficeView({
               d.sprite.alpha = 1;
               continue;
             }
-            detachNode(d.sprite);
+            destroyNode(d.sprite);
             deliveries.splice(i, 1);
           } else if (d.type === "walk") {
             // Walking character animation — smooth linear walk with bounce
@@ -3165,7 +3172,7 @@ export default function OfficeView({
       const d = deliveriesRef.current[i];
       if (!d.holdAtSeat || !d.agentId || !d.arrived) continue;
       if (activeByAgent.has(d.agentId)) continue;
-      detachNode(d.sprite);
+      destroyNode(d.sprite);
       deliveriesRef.current.splice(i, 1);
     }
   }, [meetingPresence, language, sceneRevision]);
@@ -3301,7 +3308,7 @@ export default function OfficeView({
       dlLayer.addChild(bubble);
 
       setTimeout(() => {
-        detachNode(bubble);
+        destroyNode(bubble);
       }, 2800);
     };
 
@@ -3313,7 +3320,7 @@ export default function OfficeView({
         for (let i = deliveriesRef.current.length - 1; i >= 0; i--) {
           const d = deliveriesRef.current[i];
           if (d.agentId === call.fromAgentId && d.holdAtSeat) {
-            detachNode(d.sprite);
+            destroyNode(d.sprite);
             deliveriesRef.current.splice(i, 1);
           }
         }
@@ -3390,7 +3397,7 @@ export default function OfficeView({
       for (let i = deliveriesRef.current.length - 1; i >= 0; i--) {
         const d = deliveriesRef.current[i];
         if (d.agentId !== call.fromAgentId) continue;
-        detachNode(d.sprite);
+        destroyNode(d.sprite);
         deliveriesRef.current.splice(i, 1);
       }
 

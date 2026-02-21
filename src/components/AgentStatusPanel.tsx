@@ -65,15 +65,23 @@ export default function AgentStatusPanel({ agents, uiLanguage, onClose }: AgentS
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval>;
+    function start() { interval = setInterval(refresh, 5000); }
+    function onVis() { clearInterval(interval); if (!document.hidden) { refresh(); start(); } }
+    start();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVis); };
   }, [refresh]);
 
   useEffect(() => {
     if (!inspectorMode) return;
     refreshCli();
-    const interval = setInterval(refreshCli, 5000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval>;
+    function start() { interval = setInterval(refreshCli, 5000); }
+    function onVis() { clearInterval(interval); if (!document.hidden) { refreshCli(); start(); } }
+    start();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVis); };
   }, [inspectorMode, refreshCli]);
 
   const handleKill = async (taskId: string) => {
