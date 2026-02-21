@@ -552,7 +552,7 @@ Copy `.env.example` to `.env`. All secrets stay local — never commit `.env`.
 | `AUTO_UPDATE_TOTAL_TIMEOUT_MS` | No | Global timeout cap for one apply run (default `900000`) |
 | `AUTO_UPDATE_RESTART_MODE` | No | Restart policy after auto-apply: `notify` (default), `exit`, `command` |
 | `AUTO_UPDATE_EXIT_DELAY_MS` | No | Delay before process exit in `exit` mode (default `10000`, min `1200`) |
-| `AUTO_UPDATE_RESTART_COMMAND` | No | Executable + args used when restart mode is `command` (shell metacharacters rejected; runs with server permissions) |
+| `AUTO_UPDATE_RESTART_COMMAND` | No | Executable + args used when restart mode is `command` (shell metacharacters + direct shell launchers rejected; runs with server permissions) |
 
 When `API_AUTH_TOKEN` is enabled, remote browser clients enter it at runtime. The token is stored only in `sessionStorage` and is not embedded in Vite build artifacts.
 For `OPENCLAW_CONFIG`, absolute path is recommended. In `v1.0.5`, quoted values and leading `~` are normalized automatically.
@@ -628,7 +628,8 @@ If an apply result returns `error: "git_pull_failed"` (or `git_fetch_failed`) wi
 The auto-update loop keeps running on its configured interval and will retry on future cycles after the repository returns to a safe state.
 
 ⚠️ `AUTO_UPDATE_RESTART_COMMAND` runs with server permissions and is a privileged operation.
-The command parser rejects shell metacharacters (`;`, `|`, `&`, `` ` ``, `$`, `<`, `>`); use a plain executable + args format.
+The command parser rejects shell metacharacters (`;`, `|`, `&`, `` ` ``, `$`, `<`, `>`) and blocks direct shell launchers (for example `sh`, `bash`, `zsh`, `cmd`, `powershell`, `pwsh`).
+Use only a plain executable + fixed args format (no shell/interpreter wrappers, no dynamically constructed input).
 
 ---
 

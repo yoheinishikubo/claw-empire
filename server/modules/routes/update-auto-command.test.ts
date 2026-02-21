@@ -11,10 +11,18 @@ describe("parseSafeRestartCommand", () => {
       cmd: "/usr/local/bin/openclaw",
       args: ["gateway", "restart"],
     });
-    expect(parseSafeRestartCommand("cmd \"some\\\"arg\" plain")).toEqual({
-      cmd: "cmd",
+    expect(parseSafeRestartCommand("openclaw \"some\\\"arg\" plain")).toEqual({
+      cmd: "openclaw",
       args: ["some\"arg", "plain"],
     });
+  });
+
+  it("rejects shell and interpreter launchers", () => {
+    expect(parseSafeRestartCommand("sh -c \"echo hi\"")).toBeNull();
+    expect(parseSafeRestartCommand("/bin/bash -c 'echo hi'")).toBeNull();
+    expect(parseSafeRestartCommand("cmd /c dir")).toBeNull();
+    expect(parseSafeRestartCommand("powershell -Command \"Get-Process\"")).toBeNull();
+    expect(parseSafeRestartCommand("pwsh -Command \"Get-Process\"")).toBeNull();
   });
 
   it("rejects shell meta characters", () => {

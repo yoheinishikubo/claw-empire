@@ -1,6 +1,33 @@
 export type ParsedRestartCommand = { cmd: string; args: string[] };
 
 const SHELL_META = /[;&|`$<>]/;
+const BLOCKED_SHELL_BASENAMES = new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "ash",
+  "fish",
+  "csh",
+  "tcsh",
+  "cmd",
+  "cmd.exe",
+  "powershell",
+  "powershell.exe",
+  "pwsh",
+  "pwsh.exe",
+]);
+
+function commandBasename(cmd: string): string {
+  const normalized = String(cmd ?? "").replace(/\\/g, "/").trim();
+  const parts = normalized.split("/").filter(Boolean);
+  return (parts[parts.length - 1] ?? normalized).toLowerCase();
+}
+
+function isBlockedShellCommand(cmd: string): boolean {
+  return BLOCKED_SHELL_BASENAMES.has(commandBasename(cmd));
+}
 
 function unquote(token: string): string {
   const first = token[0];
@@ -31,6 +58,7 @@ export function parseSafeRestartCommand(raw: string): ParsedRestartCommand | nul
 
   const [cmd, ...args] = parts;
   if (!cmd || SHELL_META.test(cmd)) return null;
+  if (isBlockedShellCommand(cmd)) return null;
   if (args.some((a) => SHELL_META.test(a))) return null;
 
   return { cmd, args };
