@@ -15,6 +15,7 @@ describe("update auto policy", () => {
     expect(shouldSkipUpdateByGuards(["dirty_worktree"], true)).toBe(true);
     expect(shouldSkipUpdateByGuards(["dirty_worktree"], false)).toBe(true);
     expect(shouldSkipUpdateByGuards(["git_remote_origin_missing"], true)).toBe(true);
+    expect(shouldSkipUpdateByGuards(["git_status_failed"], true)).toBe(true);
     expect(shouldSkipUpdateByGuards(["channel_blocked:minor"], true)).toBe(true);
   });
 

@@ -18,6 +18,7 @@ export function shouldSkipUpdateByGuards(reasons: string[], force: boolean): boo
   // Branch mismatch / busy-state reasons remain overridable when force=true.
   const hasNonOverridableGuard = reasons.includes("dirty_worktree")
     || reasons.includes("git_remote_origin_missing")
+    || reasons.includes("git_status_failed")
     || reasons.some((reason) => reason.startsWith("channel_blocked:"));
   return hasNonOverridableGuard || (reasons.length > 0 && !force);
 }
