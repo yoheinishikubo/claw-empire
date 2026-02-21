@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.2-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.3-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.1.2.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.1.3.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,16 +53,17 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ---
 
-## 最新リリース (v1.1.2)
+## 最新リリース (v1.1.3)
 
-- **ダーク/ライトテーマ切替** — アプリ全体のテーマトグルとモード永続化を追加しました。
-- **デザイントークン統合** — `--th-*` トークンで背景/境界線/文字/モーダル/パネル配色を統一しました。
-- **Officeビューのテーマ適応** — 部署・廊下・CEO Office・Break Room にライト/ダーク専用パレットを適用します。
-- **可読性改善（ライトモード）** — Dashboard/Sidebar/Terminal の文字コントラストを引き上げ、白っぽい見え方を改善しました。
-- **学習モーダル/Unlearn 改善** — 学習ポップアップと Skill Memory の `Unlearn` 領域で文字・ボタンの視認性を強化しました。
-- **言語保持の安定化** — 自動言語割当条件を見直し、再起動時の言語リセットを防ぎやすくしました。
-- **Office画像更新（テキスト記録）** — `Sample_Img/Office.png` は最新デザインに更新済みで、本リリース節ではテキストのみ記録しています。
-- 詳細: [`docs/releases/v1.1.2.md`](docs/releases/v1.1.2.md)
+- **プロジェクト先行分岐を必須化** — チャットでタスク指示/`$` directive送信前に、既存/新規プロジェクト選択を必須化しました。
+- **既存/新規プロジェクトフロー拡張** — 既存は最新10件から番号/名称で選択、新規は名前・パス・目標をその場で登録できます。
+- **プロジェクト管理機能を強化** — `New Task` 隣に Project Manager 導線を追加し、検索/ページング/CRUD/詳細確認を統合しました。
+- **プロジェクト紐づけ履歴の可視化** — タスク履歴をルート/サブタスク単位のカードに集約し、クリックでエージェント/チーム報告/原文書まで確認できます。
+- **OpenClaw旧ルールの遮断強化** — directive受信時、最新AGENTS規則に未対応ならデフォルトで `HTTP 428 agent_upgrade_required` を返します。
+- **インストール案内 payload 拡張** — 428応答にインストーラ絶対パス、AGENTS対象パス、推奨コマンド、同意プロンプトを含めました。
+- **ライトモード視認性修正** — TaskBoard の Project Manager ボタンのコントラストを改善しました。
+- **ブラウザ安定性改善** — Chrome `STATUS_ACCESS_VIOLATION` クラッシュを解決：WebSocket broadcast バッチ処理（cli_output/subtask_update）、タブ非表示時のポーリング停止、Pixi.js GPU メモリ解放（`destroyNode`）、ステート配列 GC 最適化、ChatPanel メッセージフィルターのメモ化。
+- 詳細: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---
 
@@ -300,7 +301,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.2 inbox 検証","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.3 inbox 検証","skipPlannedMeeting":true}'
 ```
 
 期待値:
@@ -554,7 +555,7 @@ pnpm start              # ビルド済みサーバーを起動
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信QAチェック（v1.1.2）
+### 通信QAチェック（v1.1.3）
 
 ```bash
 # 個別チェック

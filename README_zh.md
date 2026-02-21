@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.2-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.3-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.1.2.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.1.3.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,16 +53,17 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ---
 
-## 最新发布 (v1.1.2)
+## 最新发布 (v1.1.3)
 
-- **深色/浅色主题切换** — 新增全局主题切换，并持久保存当前模式。
-- **设计令牌统一** — 使用 `--th-*` 令牌统一背景、边框、文字、弹层和面板风格。
-- **Office 视图主题适配** — 部门、走廊、CEO Office、Break Room 均支持深浅两套独立配色。
-- **可读性提升（浅色模式）** — 优化 Dashboard/Sidebar/Terminal 的文字对比度，减少“发灰发糊”的观感。
-- **学习弹窗与 Unlearn 提升** — 强化学习弹窗和 Skill Memory `Unlearn` 区域的按钮/字体可读性。
-- **语言持久化稳定** — 收紧自动语言分配条件，降低重启后语言被重置的概率。
-- **Office 图片更新（文字记录）** — `Sample_Img/Office.png` 已更新为新设计，本次发布仅以文字记录，不嵌入对比图。
-- 详细说明：[`docs/releases/v1.1.2.md`](docs/releases/v1.1.2.md)
+- **项目优先分支强制** — 在聊天中发送任务指令/`$` directive 前，必须先选择“已有项目”或“新项目”。
+- **已有/新项目流程增强** — 已有项目支持最近 10 条按编号/名称选择；新项目支持当场填写名称、路径、核心目标并创建。
+- **项目管理能力升级** — 在 `New Task` 旁新增 Project Manager 入口，整合搜索、分页、CRUD 和详情查看。
+- **项目映射历史可视化** — 任务历史按根任务/子任务卡片聚合，点击后可在详情弹窗查看代理、团队报告和文档原文。
+- **OpenClaw 旧规则拦截加强** — directive 入站默认强制最新 AGENTS 规则，未满足时返回 `HTTP 428 agent_upgrade_required`。
+- **安装指引 payload 扩展** — 428 响应增加安装脚本绝对路径、目标 AGENTS 路径、推荐命令和用户确认提示。
+- **浅色模式可见性修复** — 提升 TaskBoard 中 Project Manager 按钮在浅色主题下的对比度。
+- **浏览器稳定性优化** — 修复 Chrome `STATUS_ACCESS_VIOLATION` 崩溃：WebSocket broadcast 批量处理（cli_output/subtask_update）、标签页隐藏时暂停轮询、Pixi.js GPU 内存释放（`destroyNode`）、状态数组 GC 优化、ChatPanel 消息过滤 memoize。
+- 详细说明：[`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---
 
@@ -300,7 +301,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.2 inbox 校验","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.3 inbox 校验","skipPlannedMeeting":true}'
 ```
 
 期望结果：
@@ -554,7 +555,7 @@ pnpm start              # 运行构建后的服务器
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### 通信 QA 检查（v1.1.2）
+### 通信 QA 检查（v1.1.3）
 
 ```bash
 # 单项检查

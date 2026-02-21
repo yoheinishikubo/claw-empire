@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.2-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.3-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.1.2.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.1.3.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,16 +53,17 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ---
 
-## Latest Release (v1.1.2)
+## Latest Release (v1.1.3)
 
-- **Dark/Light Theme Toggle** — Added app-level theme switching with persistent mode storage.
-- **Tokenized UI Surfaces** — Unified backgrounds, borders, text, modal overlays, and panel styling with semantic `--th-*` tokens.
-- **Office Theme Adaptation** — Office scene now applies dedicated dark/light palettes across shell, hallway, departments, CEO office, and break room.
-- **Readability Pass (Light Mode)** — Improved contrast in Dashboard, Sidebar, Terminal panel, and status labels to reduce washed-out text.
-- **Skills Learn/Unlearn Clarity** — Strengthened text/button contrast in the learning popup modal and Skill Memory `Unlearn` sections.
-- **Language Persistence Guard** — Prevented unintended language reset by tightening automatic language assignment rules.
-- **Office Screenshot Update (Text Note)** — `Sample_Img/Office.png` was refreshed to the new design; this release section keeps it documented as text-only.
-- Full notes: [`docs/releases/v1.1.2.md`](docs/releases/v1.1.2.md)
+- **Project-First Task/Directive Flow** — Before task instruction or `$` directive send, Chat now requires project branch selection (existing/new).
+- **Existing/New Project Branch UI** — Existing project picks from latest 10 (number or name), and new project supports in-flow creation (`name + path + goal`).
+- **Project Manager Expansion** — Added Project Manager action near `New Task` with project CRUD, search, pagination, and mapped project detail.
+- **Project-Mapped History** — Task history cards are grouped by root/subtask and open a detail modal with agent/profile, team reports, and source docs.
+- **Strict OpenClaw Upgrade Gate** — Directive ingress now enforces latest AGENTS rules by default; outdated client flow gets `HTTP 428 agent_upgrade_required`.
+- **Install Guidance Payload** — 428 response now includes installer paths, target AGENTS path, recommended command, and consent prompt payload.
+- **Light-Mode Contrast Fix** — Improved visibility of the Project Manager button in TaskBoard light theme.
+- **Browser Stability Fix** — Resolved Chrome `STATUS_ACCESS_VIOLATION` crashes via WebSocket broadcast batching (cli_output/subtask_update), tab-hidden polling pause, Pixi.js GPU memory cleanup (`destroyNode`), state array GC optimization, and ChatPanel message filter memoization.
+- Full notes: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---
 
@@ -300,7 +301,7 @@ If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
 curl -X POST http://127.0.0.1:8790/api/inbox \
   -H "content-type: application/json" \
   -H "x-inbox-secret: $INBOX_WEBHOOK_SECRET" \
-  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.2 inbox smoke test","skipPlannedMeeting":true}'
+  -d '{"source":"telegram","author":"ceo","text":"$README v1.1.3 inbox smoke test","skipPlannedMeeting":true}'
 ```
 
 Expected:
@@ -554,7 +555,7 @@ pnpm start              # run the built server
 curl -fsS http://127.0.0.1:8790/healthz
 ```
 
-### Communication QA Checks (v1.1.2)
+### Communication QA Checks (v1.1.3)
 
 ```bash
 # Individual checks
