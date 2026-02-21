@@ -448,6 +448,21 @@ function extractPathLikeToken(text: string): string | null {
   return m ? m[0] : null;
 }
 
+function normalizeShellCommand(command: string): string {
+  const trimmed = command.trim();
+  if (!trimmed) return "";
+  const wrapped = trimmed.match(/^(?:\S*\/)?(?:bash|zsh|sh)\s+-lc\s+([\s\S]+)$/);
+  if (!wrapped) return trimmed;
+  let inner = wrapped[1].trim();
+  if (
+    (inner.startsWith("'") && inner.endsWith("'"))
+    || (inner.startsWith("\"") && inner.endsWith("\""))
+  ) {
+    inner = inner.slice(1, -1);
+  }
+  return inner.trim() || trimmed;
+}
+
 function extractToolUseFilePath(toolName: string, input: any): string | null {
   if (!input || typeof input !== "object") return null;
   if (typeof input.file_path === "string" && input.file_path.trim()) {
@@ -461,7 +476,8 @@ function extractToolUseFilePath(toolName: string, input: any): string | null {
     if (typeof first === "string") return first.trim();
   }
   if (toolName === "Bash" && typeof input.command === "string") {
-    return extractPathLikeToken(input.command) || null;
+    const normalizedCommand = normalizeShellCommand(input.command);
+    return extractPathLikeToken(normalizedCommand) || extractPathLikeToken(input.command) || null;
   }
   return null;
 }
@@ -478,7 +494,8 @@ function summarizeToolUse(toolName: string, input: any): string {
     return clipHint(input.path, 180);
   }
   if (typeof input.command === "string" && input.command.trim()) {
-    return clipHint(input.command, 180);
+    const normalizedCommand = normalizeShellCommand(input.command);
+    return clipHint(normalizedCommand || input.command, 180);
   }
   if (typeof input.prompt === "string" && input.prompt.trim()) {
     return clipHint(input.prompt, 180);
@@ -500,6 +517,15 @@ function summarizeToolResult(content: unknown): string {
         if (typeof text === "string" && text.trim()) {
           return clipHint(pickFirstNonEmptyLine(text), 180);
         }
+      }
+    }
+  }
+  if (content && typeof content === "object") {
+    const obj = content as Record<string, unknown>;
+    for (const key of ["message", "error", "output", "stdout", "stderr", "text"]) {
+      const value = obj[key];
+      if (typeof value === "string" && value.trim()) {
+        return clipHint(pickFirstNonEmptyLine(value), 180);
       }
     }
   }
@@ -621,6 +647,135 @@ function buildTerminalProgressHints(raw: string, maxHints = 14): {
             file_path: meta?.file_path || null,
           });
         }
+        continue;
+      }
+
+      // Codex: item.started/item.completed (command execution + collab tool call)
+      if (j.type === "item.started" && j.item && typeof j.item === "object") {
+        const item = j.item as any;
+        if (item.type === "command_execution" || item.type === "collab_tool_call") {
+          const toolUseIdRaw = String(item.id || "");
+          const toolUseId = toolUseIdRaw ? `codex:${toolUseIdRaw}` : "";
+          const tool = item.type === "command_execution"
+            ? "Bash"
+            : String(item.tool || "Tool");
+          const input = item.type === "command_execution"
+            ? { command: String(item.command || "") }
+            : (item.arguments && typeof item.arguments === "object"
+              ? item.arguments
+              : (item.input && typeof item.input === "object" ? item.input : {}));
+          const summary = summarizeToolUse(tool, input);
+          const filePath = extractToolUseFilePath(tool, input);
+          if (toolUseId && emittedToolUseIds.has(toolUseId)) {
+            continue;
+          }
+          if (toolUseId) {
+            emittedToolUseIds.add(toolUseId);
+            toolUseMeta.set(toolUseId, { tool, summary, file_path: filePath });
+          }
+          hints.push({
+            phase: "use",
+            tool,
+            summary,
+            file_path: filePath,
+          });
+          continue;
+        }
+      }
+
+      if (j.type === "item.completed" && j.item && typeof j.item === "object") {
+        const item = j.item as any;
+        if (item.type === "command_execution" || item.type === "collab_tool_call") {
+          const toolUseIdRaw = String(item.id || "");
+          const toolUseId = toolUseIdRaw ? `codex:${toolUseIdRaw}` : "";
+          const meta = toolUseId ? toolUseMeta.get(toolUseId) : undefined;
+          const tool = meta?.tool
+            || (item.type === "command_execution" ? "Bash" : String(item.tool || "Tool"));
+          const fallbackInput = item.type === "command_execution"
+            ? { command: String(item.command || "") }
+            : (item.arguments && typeof item.arguments === "object"
+              ? item.arguments
+              : (item.input && typeof item.input === "object" ? item.input : {}));
+          const isError = item.status === "failed"
+            || item.status === "error"
+            || (typeof item.exit_code === "number" && item.exit_code !== 0);
+          const phase: TerminalProgressHintPhase = isError ? "error" : "ok";
+          const summary = summarizeToolResult(item.aggregated_output)
+            || summarizeToolResult(item.output)
+            || summarizeToolResult(item.error)
+            || meta?.summary
+            || summarizeToolUse(tool, fallbackInput)
+            || "tool result";
+          const filePath = meta?.file_path || extractToolUseFilePath(tool, fallbackInput);
+          hints.push({
+            phase,
+            tool,
+            summary,
+            file_path: filePath || null,
+          });
+          continue;
+        }
+        if (item.type === "file_change" && Array.isArray(item.changes)) {
+          const changedPaths = item.changes
+            .map((row: any) => (typeof row?.path === "string" ? row.path.trim() : ""))
+            .filter(Boolean);
+          if (changedPaths.length > 0) {
+            const phase: TerminalProgressHintPhase =
+              item.status === "failed" || item.status === "error" ? "error" : "ok";
+            hints.push({
+              phase,
+              tool: "Edit",
+              summary: clipHint(changedPaths.slice(0, 2).join(", "), 180),
+              file_path: changedPaths[0] || null,
+            });
+          }
+          continue;
+        }
+      }
+
+      // Gemini: tool_use/tool_result (stream-json mode)
+      if (j.type === "tool_use" && typeof j.tool_name === "string") {
+        const rawToolId = typeof j.tool_id === "string" ? j.tool_id.trim() : "";
+        const toolUseId = rawToolId ? `gemini:${rawToolId}` : "";
+        const tool = String(j.tool_name || "Tool");
+        const input = j.parameters && typeof j.parameters === "object" ? j.parameters : {};
+        const summary = summarizeToolUse(tool, input);
+        const filePath = extractToolUseFilePath(tool, input);
+        if (toolUseId && emittedToolUseIds.has(toolUseId)) {
+          continue;
+        }
+        if (toolUseId) {
+          emittedToolUseIds.add(toolUseId);
+          toolUseMeta.set(toolUseId, { tool, summary, file_path: filePath });
+        }
+        hints.push({
+          phase: "use",
+          tool,
+          summary,
+          file_path: filePath,
+        });
+        continue;
+      }
+
+      if (j.type === "tool_result") {
+        const rawToolId = typeof j.tool_id === "string" ? j.tool_id.trim() : "";
+        const toolUseId = rawToolId ? `gemini:${rawToolId}` : "";
+        const meta = toolUseId ? toolUseMeta.get(toolUseId) : undefined;
+        const status = typeof j.status === "string" ? j.status.toLowerCase() : "";
+        const phase: TerminalProgressHintPhase =
+          status === "error" || status === "failed" || j.is_error === true ? "error" : "ok";
+        const summary = summarizeToolResult(j.output)
+          || summarizeToolResult(j.error)
+          || meta?.summary
+          || rawToolId
+          || "tool result";
+        hints.push({
+          phase,
+          tool: meta?.tool || "Tool",
+          summary,
+          file_path: meta?.file_path || null,
+        });
+        continue;
       }
     } catch {
       // ignore malformed stream-json lines
