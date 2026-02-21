@@ -217,7 +217,7 @@ export function ChatPanel({
   return (
     <div className="fixed inset-0 z-50 flex h-full w-full flex-col bg-gray-900 shadow-2xl lg:relative lg:inset-auto lg:z-auto lg:w-96 lg:border-l lg:border-gray-700">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-800 border-b border-gray-700 flex-shrink-0">
+      <div className="chat-header flex items-center gap-3 px-4 py-3 bg-gray-800 flex-shrink-0">
         {selectedAgent ? (
           <>
             {/* Agent avatar */}

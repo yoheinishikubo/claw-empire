@@ -1414,7 +1414,7 @@ export function TaskBoard({
   }, [tasks, hiddenTaskIds]);
 
   return (
-    <div className="flex h-full flex-col gap-4 bg-slate-950 p-3 sm:p-4">
+    <div className="taskboard-shell flex h-full flex-col gap-4 bg-slate-950 p-3 sm:p-4">
       {/* Top bar */}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold text-white">{t({ ko: '업무 보드', en: 'Task Board', ja: 'タスクボード', zh: '任务看板' })}</h1>
@@ -1519,7 +1519,7 @@ export function TaskBoard({
           return (
             <div
               key={col.status}
-              className={`flex w-full flex-col rounded-xl border sm:w-72 sm:flex-shrink-0 ${col.borderColor} bg-slate-900`}
+              className={`taskboard-column flex w-full flex-col rounded-xl border sm:w-72 sm:flex-shrink-0 ${col.borderColor} bg-slate-900`}
             >
               {/* Column header */}
               <div

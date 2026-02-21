@@ -13,6 +13,8 @@ interface ReportHistoryProps {
   onClose: () => void;
 }
 
+const ITEMS_PER_PAGE = 3;
+
 function fmtDate(ts: number | null | undefined): string {
   if (!ts) return '-';
   const d = new Date(ts);
@@ -34,6 +36,7 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
   const [reports, setReports] = useState<TaskReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<TaskReportDetail | null>(null);
+  const [groupPages, setGroupPages] = useState<Record<string, number>>({});
 
   const groupedReports = useMemo(() => {
     const groups = new Map<string, TaskReportSummary[]>();
@@ -44,6 +47,10 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
       groups.set(key, bucket);
     }
     return [...groups.entries()];
+  }, [reports]);
+
+  useEffect(() => {
+    setGroupPages({});
   }, [reports]);
 
   useEffect(() => {
@@ -60,6 +67,11 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
     } catch (e) {
       console.error('Failed to load report detail:', e);
     }
+  };
+
+  const handlePageChange = (groupKey: string, nextPage: number, totalPages: number) => {
+    const boundedPage = Math.min(Math.max(nextPage, 0), Math.max(totalPages - 1, 0));
+    setGroupPages((prev) => ({ ...prev, [groupKey]: boundedPage }));
   };
 
   // 상세 보기가 열려 있으면 TaskReportPopup 표시
@@ -113,42 +125,83 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
             </div>
           ) : (
             <div className="space-y-4 px-4 py-3">
-              {groupedReports.map(([projectName, rows]) => (
-                <div key={projectName} className="overflow-hidden rounded-xl border border-slate-700/50">
-                  <div className="flex items-center justify-between bg-slate-800/70 px-4 py-2">
-                    <p className="truncate text-xs font-semibold uppercase tracking-wider text-emerald-300">
-                      {projectName}
-                    </p>
-                    <span className="text-[11px] text-slate-500">{rows.length}</span>
-                  </div>
-                  <div className="divide-y divide-slate-700/30">
-                    {rows.map((r) => {
-                      const agent = agents.find((a) => a.id === r.assigned_agent_id);
-                      const agentName = uiLanguage === 'ko' ? (r.agent_name_ko || r.agent_name) : r.agent_name;
-                      const deptName = uiLanguage === 'ko' ? (r.dept_name_ko || r.dept_name) : r.dept_name;
-                      return (
-                        <button
-                          key={r.id}
-                          onClick={() => handleOpenDetail(r.id)}
-                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-800/50"
-                        >
-                          <AgentAvatar agent={agent} agents={agents} size={34} rounded="xl" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-white">{r.title}</p>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-                              <span className="rounded bg-slate-700/80 px-1.5 py-0.5">{deptName}</span>
-                              <span>{agentName}</span>
-                              <span className="text-slate-600">&middot;</span>
-                              <span>{fmtDate(r.completed_at)}</span>
+              {groupedReports.map(([projectName, rows]) => {
+                const totalPages = Math.max(1, Math.ceil(rows.length / ITEMS_PER_PAGE));
+                const currentPage = Math.min(Math.max(groupPages[projectName] ?? 0, 0), totalPages - 1);
+                const startIndex = currentPage * ITEMS_PER_PAGE;
+                const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, rows.length);
+                const visibleRows = rows.slice(startIndex, endIndex);
+
+                return (
+                  <div key={projectName} className="overflow-hidden rounded-xl border border-slate-700/50">
+                    <div className="flex items-center justify-between bg-slate-800/70 px-4 py-2">
+                      <p className="truncate text-xs font-semibold uppercase tracking-wider text-emerald-300">
+                        {projectName}
+                      </p>
+                      <span className="text-[11px] text-slate-500">{rows.length}</span>
+                    </div>
+                    <div className="divide-y divide-slate-700/30">
+                      {visibleRows.map((r) => {
+                        const agent = agents.find((a) => a.id === r.assigned_agent_id);
+                        const agentName = uiLanguage === 'ko' ? (r.agent_name_ko || r.agent_name) : r.agent_name;
+                        const deptName = uiLanguage === 'ko' ? (r.dept_name_ko || r.dept_name) : r.dept_name;
+                        return (
+                          <button
+                            key={r.id}
+                            onClick={() => handleOpenDetail(r.id)}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-800/50"
+                          >
+                            <AgentAvatar agent={agent} agents={agents} size={34} rounded="xl" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-white">{r.title}</p>
+                              <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
+                                <span className="rounded bg-slate-700/80 px-1.5 py-0.5">{deptName}</span>
+                                <span>{agentName}</span>
+                                <span className="text-slate-600">&middot;</span>
+                                <span>{fmtDate(r.completed_at)}</span>
+                              </div>
                             </div>
-                          </div>
-                          <span className="flex-shrink-0 text-xs text-emerald-400">&#x2713;</span>
-                        </button>
-                      );
-                    })}
+                            <span className="flex-shrink-0 text-xs text-emerald-400">&#x2713;</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {totalPages > 1 ? (
+                      <div className="flex items-center justify-between border-t border-slate-700/40 bg-slate-900/40 px-3 py-2">
+                        <span className="text-[11px] text-slate-500">
+                          {t({
+                            ko: `${startIndex + 1}-${endIndex} / ${rows.length}`,
+                            en: `${startIndex + 1}-${endIndex} / ${rows.length}`,
+                            ja: `${startIndex + 1}-${endIndex} / ${rows.length}`,
+                            zh: `${startIndex + 1}-${endIndex} / ${rows.length}`,
+                          })}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handlePageChange(projectName, currentPage - 1, totalPages)}
+                            disabled={currentPage <= 0}
+                            className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {t({ ko: '이전', en: 'Prev', ja: '前へ', zh: '上一页' })}
+                          </button>
+                          <span className="text-[11px] text-slate-400">
+                            {currentPage + 1} / {totalPages}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handlePageChange(projectName, currentPage + 1, totalPages)}
+                            disabled={currentPage >= totalPages - 1}
+                            className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {t({ ko: '다음', en: 'Next', ja: '次へ', zh: '下一页' })}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

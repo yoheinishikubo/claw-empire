@@ -64,6 +64,28 @@ export type MessageIngressAuditInput = {
   detail?: string | null;
 };
 
+export type TaskCreationAuditInput = {
+  taskId: string;
+  taskTitle: string;
+  taskStatus?: string | null;
+  departmentId?: string | null;
+  assignedAgentId?: string | null;
+  sourceTaskId?: string | null;
+  taskType?: string | null;
+  projectPath?: string | null;
+  trigger: string;
+  triggerDetail?: string | null;
+  actorType?: string | null;
+  actorId?: string | null;
+  actorName?: string | null;
+  req?: {
+    get(name: string): string | undefined;
+    ip?: string;
+    socket?: { remoteAddress?: string };
+  } | null;
+  body?: Record<string, unknown> | null;
+};
+
 // ---------------------------------------------------------------------------
 // BaseRuntimeContext — properties from the runtimeContext literal
 // (server/server-main.ts)
@@ -128,6 +150,8 @@ export interface BaseRuntimeContext {
     input: Omit<MessageIngressAuditInput, "messageId">,
     messageId: string,
   ): Promise<boolean>;
+  recordTaskCreationAudit(input: TaskCreationAuditInput): void;
+  setTaskCreationAuditCompletion(taskId: string, completed: boolean): void;
 
   // Re-exported library constructors
   WebSocket: typeof import("ws").WebSocket;

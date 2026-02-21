@@ -81,6 +81,7 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
   const randomDelay = __ctx.randomDelay;
   const recordAcceptedIngressAuditOrRollback = __ctx.recordAcceptedIngressAuditOrRollback;
   const recordMessageIngressAuditOr503 = __ctx.recordMessageIngressAuditOr503;
+  const recordTaskCreationAudit = __ctx.recordTaskCreationAudit;
   const refreshGoogleToken = __ctx.refreshGoogleToken;
   const removeActiveOAuthAccount = __ctx.removeActiveOAuthAccount;
   const resolveMessageIdempotencyKey = __ctx.resolveMessageIdempotencyKey;
@@ -474,6 +475,26 @@ function startCrossDeptCooperation(
       INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, source_task_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?)
     `).run(crossTaskId, crossTaskTitle, `[Cross-dept from ${leaderDeptName}] ${ceoMessage}`, crossDeptId, crossDetectedPath, taskId, ct, ct);
+    recordTaskCreationAudit({
+      taskId: crossTaskId,
+      taskTitle: crossTaskTitle,
+      taskStatus: "planned",
+      departmentId: crossDeptId,
+      sourceTaskId: taskId,
+      taskType: "general",
+      projectPath: crossDetectedPath ?? null,
+      trigger: "workflow.cross_dept_cooperation",
+      triggerDetail: `from_dept=${leaderDeptId}; to_dept=${crossDeptId}`,
+      actorType: "agent",
+      actorId: crossLeader.id,
+      actorName: crossLeader.name,
+      body: {
+        parent_task_id: taskId,
+        ceo_message: ceoMessage,
+        from_department_id: leaderDeptId,
+        to_department_id: crossDeptId,
+      },
+    });
     appendTaskLog(crossTaskId, "system", `Cross-dept request from ${leaderName} (${leaderDeptName})`);
     broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(crossTaskId));
     const linkedSubtaskId = linkCrossDeptTaskToParentSubtask(taskId, crossDeptId, crossTaskId);
@@ -972,6 +993,27 @@ function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean
     t,
     t,
   );
+  recordTaskCreationAudit({
+    taskId,
+    taskTitle,
+    taskStatus: "planned",
+    departmentId: assigneeDeptId,
+    assignedAgentId: reportAssignee.id,
+    taskType,
+    projectPath: detectedPath ?? null,
+    trigger: "workflow.report_request",
+    triggerDetail: `format=${outputFormat}; assignee=${reportAssignee.name}`,
+    actorType: "agent",
+    actorId: reportAssignee.id,
+    actorName: reportAssignee.name,
+    body: {
+      clean_request: cleanRequest,
+      output_format: outputFormat,
+      output_path: outputPath,
+      research_notes_path: researchNotesPath,
+      fallback_md_path: fallbackMdPath,
+    },
+  });
 
   db.prepare("UPDATE agents SET current_task_id = ? WHERE id = ?").run(taskId, reportAssignee.id);
   appendTaskLog(taskId, "system", `Report request received via chat: ${cleanRequest}`);

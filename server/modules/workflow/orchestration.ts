@@ -72,6 +72,8 @@ export function initializeWorkflowPartC(ctx: RuntimeContext): WorkflowOrchestrat
   const mergeWorktree = __ctx.mergeWorktree;
   const normalizeOAuthProvider = __ctx.normalizeOAuthProvider;
   const randomDelay = __ctx.randomDelay;
+  const recordTaskCreationAudit = __ctx.recordTaskCreationAudit;
+  const setTaskCreationAuditCompletion = __ctx.setTaskCreationAuditCompletion;
   const refreshGoogleToken = __ctx.refreshGoogleToken;
   const rollbackTaskWorktree = __ctx.rollbackTaskWorktree;
   const runAgentOneShot = __ctx.runAgentOneShot;
@@ -477,6 +479,7 @@ function completeTaskWithoutReview(
   db.prepare(
     "UPDATE tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?"
   ).run(t, t, task.id);
+  setTaskCreationAuditCompletion(task.id, true);
   reviewRoundState.delete(task.id);
   reviewInFlight.delete(task.id);
   endTaskExecutionSession(task.id, "task_done_no_review");
@@ -596,6 +599,26 @@ function startReportDesignCheckpoint(
     t,
     t,
   );
+  recordTaskCreationAudit({
+    taskId: childTaskId,
+    taskTitle: `[디자인 컨펌] ${task.title.length > 48 ? `${task.title.slice(0, 45).trimEnd()}...` : task.title}`,
+    taskStatus: "planned",
+    departmentId: "design",
+    assignedAgentId: designAgent.id,
+    sourceTaskId: task.id,
+    taskType: "design",
+    projectPath: task.project_path ?? null,
+    trigger: "workflow.report_design_checkpoint",
+    triggerDetail: `parent_task=${task.id}`,
+    actorType: "agent",
+    actorId: designAgent.id,
+    actorName: designAgent.name,
+    body: {
+      parent_task_id: task.id,
+      html_workspace_hint: htmlWorkspaceHint,
+      design_handoff_path: designHandoffPath,
+    },
+  });
 
   const parentDescription = upsertReportFlowValue(
     upsertReportFlowValue(
@@ -1882,6 +1905,7 @@ function finishReview(taskId: string, taskTitle: string): void {
     db.prepare(
       "UPDATE tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?"
     ).run(t, t, taskId);
+    setTaskCreationAuditCompletion(taskId, true);
 
     appendTaskLog(taskId, "system", "Status → done (all leaders approved)");
     endTaskExecutionSession(taskId, "task_done");

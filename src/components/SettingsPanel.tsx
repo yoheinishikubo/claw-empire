@@ -670,7 +670,7 @@ export default function SettingsPanel({
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 sm:space-y-6">
-      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+      <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--th-text-heading)' }}>
         ⚙️ {t({ ko: "설정", en: "Settings", ja: "設定", zh: "设置" })}
       </h2>
 
@@ -721,13 +721,13 @@ export default function SettingsPanel({
       {/* General Settings Tab */}
       {tab === "general" && (
       <>
-      <section className="space-y-4 rounded-xl border border-slate-700/50 bg-slate-800/60 p-4 sm:p-5">
-        <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+      <section className="rounded-xl p-5 sm:p-6 space-y-5" style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}>
+        <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--th-text-primary)' }}>
           {t({ ko: "회사 정보", en: "Company", ja: "会社情報", zh: "公司信息" })}
         </h3>
 
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label className="block text-xs mb-1" style={{ color: 'var(--th-text-secondary)' }}>
             {t({ ko: "회사명", en: "Company Name", ja: "会社名", zh: "公司名称" })}
           </label>
           <input
@@ -736,12 +736,13 @@ export default function SettingsPanel({
             onChange={(e) =>
               setForm({ ...form, companyName: e.target.value })
             }
-            className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-colors"
+            style={{ background: 'var(--th-input-bg)', borderColor: 'var(--th-input-border)', color: 'var(--th-text-primary)' }}
           />
         </div>
 
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label className="block text-xs mb-1" style={{ color: 'var(--th-text-secondary)' }}>
             {t({ ko: "CEO 이름", en: "CEO Name", ja: "CEO 名", zh: "CEO 名称" })}
           </label>
           <input
@@ -750,39 +751,40 @@ export default function SettingsPanel({
             onChange={(e) =>
               setForm({ ...form, ceoName: e.target.value })
             }
-            className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-colors"
+            style={{ background: 'var(--th-input-bg)', borderColor: 'var(--th-input-border)', color: 'var(--th-text-primary)' }}
           />
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="text-sm text-slate-300">
+          <label className="text-sm" style={{ color: 'var(--th-text-secondary)' }}>
             {t({ ko: "자동 배정", en: "Auto Assign", ja: "自動割り当て", zh: "自动分配" })}
           </label>
           <button
             onClick={() =>
               setForm({ ...form, autoAssign: !form.autoAssign })
             }
-            className={`w-10 h-5 rounded-full transition-colors relative ${
+            className={`w-11 h-6 rounded-full transition-colors relative ${
               form.autoAssign ? "bg-blue-500" : "bg-slate-600"
             }`}
           >
             <div
-              className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${
-                form.autoAssign ? "left-5.5" : "left-0.5"
+              className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${
+                form.autoAssign ? "left-[22px]" : "left-0.5"
               }`}
             />
           </button>
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="text-sm text-slate-300">
+          <label className="text-sm" style={{ color: 'var(--th-text-secondary)' }}>
             {t({ ko: "OAuth 자동 스왑", en: "OAuth Auto Swap", ja: "OAuth 自動スワップ", zh: "OAuth 自动切换" })}
           </label>
           <button
             onClick={() =>
               setForm({ ...form, oauthAutoSwap: !(form.oauthAutoSwap !== false) })
             }
-            className={`w-10 h-5 rounded-full transition-colors relative ${
+            className={`w-11 h-6 rounded-full transition-colors relative ${
               form.oauthAutoSwap !== false ? "bg-blue-500" : "bg-slate-600"
             }`}
             title={t({
@@ -793,15 +795,15 @@ export default function SettingsPanel({
             })}
           >
             <div
-              className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${
-                form.oauthAutoSwap !== false ? "left-5.5" : "left-0.5"
+              className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${
+                form.oauthAutoSwap !== false ? "left-[22px]" : "left-0.5"
               }`}
             />
           </button>
         </div>
 
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label className="block text-xs mb-1" style={{ color: 'var(--th-text-secondary)' }}>
             {t({ ko: "기본 CLI 프로바이더", en: "Default CLI Provider", ja: "デフォルト CLI プロバイダ", zh: "默认 CLI 提供方" })}
           </label>
           <select
@@ -812,7 +814,8 @@ export default function SettingsPanel({
                 defaultProvider: e.target.value as CliProvider,
               })
             }
-            className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-colors"
+            style={{ background: 'var(--th-input-bg)', borderColor: 'var(--th-input-border)', color: 'var(--th-text-primary)' }}
           >
             <option value="claude">Claude Code</option>
             <option value="codex">Codex CLI</option>
@@ -822,7 +825,7 @@ export default function SettingsPanel({
         </div>
 
         <div>
-          <label className="block text-xs text-slate-400 mb-1">
+          <label className="block text-xs mb-1" style={{ color: 'var(--th-text-secondary)' }}>
             {t({ ko: "언어", en: "Language", ja: "言語", zh: "语言" })}
           </label>
           <select
@@ -833,7 +836,8 @@ export default function SettingsPanel({
                 language: e.target.value as Locale,
               })
             }
-            className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-colors"
+            style={{ background: 'var(--th-input-bg)', borderColor: 'var(--th-input-border)', color: 'var(--th-text-primary)' }}
           >
             <option value="ko">{t({ ko: "한국어", en: "Korean", ja: "韓国語", zh: "韩语" })}</option>
             <option value="en">{t({ ko: "영어", en: "English", ja: "英語", zh: "英语" })}</option>
@@ -852,7 +856,7 @@ export default function SettingsPanel({
         )}
         <button
           onClick={handleSave}
-          className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+          className="px-8 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-500/30"
         >
           {t({ ko: "저장", en: "Save", ja: "保存", zh: "保存" })}
         </button>
@@ -862,9 +866,9 @@ export default function SettingsPanel({
 
       {/* CLI Status Tab */}
       {tab === "cli" && (
-      <section className="space-y-4 rounded-xl border border-slate-700/50 bg-slate-800/60 p-4 sm:p-5">
+      <section className="rounded-xl p-5 sm:p-6 space-y-5" style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+          <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--th-text-primary)' }}>
             {t({ ko: "CLI 도구 상태", en: "CLI Tool Status", ja: "CLI ツール状態", zh: "CLI 工具状态" })}
           </h3>
           <button

@@ -234,9 +234,9 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
       : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex w-full max-w-full flex-col shadow-2xl lg:inset-y-0 lg:right-0 lg:left-auto lg:w-[560px] lg:border-l" style={{ background: 'var(--th-bg-primary)', borderColor: 'var(--th-border)' }}>
+    <div className="terminal-panel-shell fixed inset-0 z-50 flex w-full max-w-full flex-col shadow-2xl lg:inset-y-0 lg:right-0 lg:left-auto lg:w-[560px] lg:border-l">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ background: 'var(--th-bg-surface)', borderColor: 'var(--th-border)' }}>
+      <div className="terminal-panel-header flex items-center gap-3 border-b px-4 py-3">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {agent && (
             <AgentAvatar agent={agent} agents={agents} size={28} />
@@ -324,7 +324,7 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
 
       {/* Task log markers (system events) */}
       {activeTab === 'terminal' && taskLogs.length > 0 && (
-        <div className="px-4 py-2 border-b space-y-0.5 max-h-24 overflow-y-auto" style={{ borderColor: 'var(--th-border)', background: 'var(--th-bg-surface)' }}>
+        <div className="terminal-panel-strip max-h-24 space-y-0.5 overflow-y-auto border-b px-4 py-2">
           {taskLogs.map(log => {
             const kindColor = log.kind === 'error' ? 'text-red-400' :
               log.kind === 'system' ? 'text-cyan-400' : 'text-slate-500';
@@ -421,7 +421,7 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
       )}
 
       {activeTab === 'terminal' && shouldShowProgressHints && progressHints && (
-        <div className="border-t backdrop-blur-sm px-4 py-2" style={{ borderColor: 'var(--th-border)', background: 'var(--th-bg-surface)' }}>
+        <div className="terminal-panel-strip border-t px-4 py-2 backdrop-blur-sm">
           <div className="text-[10px] italic" style={{ color: 'var(--th-text-secondary)' }}>
             {activeToolHint
               ? tr(
@@ -468,7 +468,7 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
       )}
 
       {/* Bottom status bar */}
-      <div className="flex items-center justify-between px-4 py-1.5 border-t text-[10px]" style={{ borderColor: 'var(--th-border)', background: 'var(--th-bg-surface)', color: 'var(--th-text-muted)' }}>
+      <div className="terminal-panel-footer flex items-center justify-between border-t px-4 py-1.5 text-[10px]" style={{ color: 'var(--th-text-muted)' }}>
         <span>
           {agent ? `${agentName}` : tr('담당 에이전트 없음', 'No agent', '担当エージェントなし', '无负责人')}
           {agent?.cli_provider ? ` (${agent.cli_provider})` : ''}

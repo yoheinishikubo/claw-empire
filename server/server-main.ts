@@ -94,19 +94,39 @@ type MessageIngressAuditOutcome =
   | "storage_busy"
   | "validation_error";
 
+type AuditRequestLike = {
+  get(name: string): string | undefined;
+  ip?: string;
+  socket?: { remoteAddress?: string };
+};
+
 type MessageIngressAuditInput = {
   endpoint: "/api/messages" | "/api/announcements" | "/api/directives" | "/api/inbox";
-  req: {
-    get(name: string): string | undefined;
-    ip?: string;
-    socket?: { remoteAddress?: string };
-  };
+  req: AuditRequestLike;
   body: Record<string, unknown>;
   idempotencyKey: string | null;
   outcome: MessageIngressAuditOutcome;
   statusCode: number;
   messageId?: string | null;
   detail?: string | null;
+};
+
+export type TaskCreationAuditInput = {
+  taskId: string;
+  taskTitle: string;
+  taskStatus?: string | null;
+  departmentId?: string | null;
+  assignedAgentId?: string | null;
+  sourceTaskId?: string | null;
+  taskType?: string | null;
+  projectPath?: string | null;
+  trigger: string;
+  triggerDetail?: string | null;
+  actorType?: string | null;
+  actorId?: string | null;
+  actorName?: string | null;
+  req?: AuditRequestLike | null;
+  body?: Record<string, unknown> | null;
 };
 
 type MessageIngressAuditEntry = {
@@ -188,11 +208,7 @@ function resolveAuditRequestId(
   return null;
 }
 
-function resolveAuditRequestIp(req: {
-  get(name: string): string | undefined;
-  ip?: string;
-  socket?: { remoteAddress?: string };
-}): string | null {
+function resolveAuditRequestIp(req: AuditRequestLike): string | null {
   const forwarded = req.get("x-forwarded-for");
   if (typeof forwarded === "string" && forwarded.trim()) {
     const first = forwarded.split(",")[0]?.trim();
@@ -341,6 +357,73 @@ async function recordAcceptedIngressAuditOrRollback(
     );
   }
   return false;
+}
+
+function recordTaskCreationAudit(input: TaskCreationAuditInput): void {
+  try {
+    const body = (input.body && typeof input.body === "object")
+      ? input.body
+      : null;
+    const payloadForHash: Record<string, unknown> = {
+      trigger: input.trigger,
+      trigger_detail: input.triggerDetail ?? null,
+      actor_type: input.actorType ?? null,
+      actor_id: input.actorId ?? null,
+      actor_name: input.actorName ?? null,
+      body,
+    };
+    const payloadJson = stableAuditJson(payloadForHash);
+    const payloadHash = createHash("sha256")
+      .update(payloadJson, "utf8")
+      .digest("hex");
+
+    const requestId = input.req ? resolveAuditRequestId(input.req, body ?? {}) : null;
+    const requestIp = input.req ? resolveAuditRequestIp(input.req) : null;
+    const userAgent = input.req ? normalizeAuditText(input.req.get("user-agent"), 200) : null;
+
+    db.prepare(`
+      INSERT INTO task_creation_audits (
+        id, task_id, task_title, task_status, department_id, assigned_agent_id, source_task_id,
+        task_type, project_path, trigger, trigger_detail, actor_type, actor_id, actor_name,
+        request_id, request_ip, user_agent, payload_hash, payload_preview, completed, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      input.taskId,
+      normalizeAuditText(input.taskTitle, 500),
+      normalizeAuditText(input.taskStatus ?? null, 64),
+      normalizeAuditText(input.departmentId ?? null, 100),
+      normalizeAuditText(input.assignedAgentId ?? null, 100),
+      normalizeAuditText(input.sourceTaskId ?? null, 100),
+      normalizeAuditText(input.taskType ?? null, 100),
+      normalizeAuditText(input.projectPath ?? null, 500),
+      normalizeAuditText(input.trigger, 120),
+      normalizeAuditText(input.triggerDetail ?? null, 500),
+      normalizeAuditText(input.actorType ?? null, 64),
+      normalizeAuditText(input.actorId ?? null, 100),
+      normalizeAuditText(input.actorName ?? null, 200),
+      requestId,
+      requestIp,
+      userAgent,
+      payloadHash,
+      normalizeAuditText(payloadJson, 4000),
+      0,
+      nowMs(),
+    );
+  } catch (err) {
+    console.warn(`[Claw-Empire] task creation audit failed: ${String(err)}`);
+  }
+}
+
+function setTaskCreationAuditCompletion(taskId: string, completed: boolean): void {
+  try {
+    db.prepare(
+      "UPDATE task_creation_audits SET completed = ? WHERE task_id = ?"
+    ).run(completed ? 1 : 0, taskId);
+  } catch (err) {
+    console.warn(`[Claw-Empire] task creation audit completion update failed: ${String(err)}`);
+  }
 }
 
 const IDEMPOTENCY_KEY_MAX_LENGTH = 200;
@@ -613,6 +696,30 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at INTEGER DEFAULT (unixepoch()*1000)
 );
 
+CREATE TABLE IF NOT EXISTS task_creation_audits (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  task_title TEXT,
+  task_status TEXT,
+  department_id TEXT,
+  assigned_agent_id TEXT,
+  source_task_id TEXT,
+  task_type TEXT,
+  project_path TEXT,
+  trigger TEXT NOT NULL,
+  trigger_detail TEXT,
+  actor_type TEXT,
+  actor_id TEXT,
+  actor_name TEXT,
+  request_id TEXT,
+  request_ip TEXT,
+  user_agent TEXT,
+  payload_hash TEXT,
+  payload_preview TEXT,
+  completed INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER DEFAULT (unixepoch()*1000)
+);
+
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   sender_type TEXT NOT NULL CHECK(sender_type IN ('ceo','agent','system')),
@@ -773,6 +880,8 @@ CREATE INDEX IF NOT EXISTS idx_task_report_archives_root ON task_report_archives
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(assigned_agent_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_dept ON tasks(department_id);
+CREATE INDEX IF NOT EXISTS idx_task_creation_audits_task ON task_creation_audits(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_creation_audits_trigger ON task_creation_audits(trigger, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(task_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_type, receiver_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_meeting_minutes_task ON meeting_minutes(task_id, started_at DESC);
@@ -1056,6 +1165,11 @@ try { db.exec("ALTER TABLE subtasks ADD COLUMN delegated_task_id TEXT"); } catch
 
 // Cross-department collaboration: link collaboration task back to original task
 try { db.exec("ALTER TABLE tasks ADD COLUMN source_task_id TEXT"); } catch { /* already exists */ }
+// Task creation audit completion flag
+try { db.exec("ALTER TABLE task_creation_audits ADD COLUMN completed INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+try {
+  db.exec("CREATE INDEX IF NOT EXISTS idx_task_creation_audits_completed ON task_creation_audits(completed, created_at DESC)");
+} catch { /* table missing or migration in progress */ }
 
 // Migrate messages CHECK constraint to include 'directive'
 function migrateMessagesDirectiveType(): void {
@@ -1578,6 +1692,8 @@ const runtimeContext: Record<string, any> & BaseRuntimeContext = {
   withSqliteBusyRetry,
   recordMessageIngressAuditOr503,
   recordAcceptedIngressAuditOrRollback,
+  recordTaskCreationAudit,
+  setTaskCreationAuditCompletion,
 
   WebSocket,
   WebSocketServer,

@@ -1034,7 +1034,7 @@ export default function App() {
 
   return (
     <I18nProvider language={uiLanguage}>
-      <div className="flex h-[100dvh] min-h-[100dvh] overflow-hidden" style={{ background: 'var(--th-bg-primary)' }}>
+      <div className="app-shell flex h-[100dvh] min-h-[100dvh] overflow-hidden">
         {/* Desktop Sidebar */}
         <div className="hidden lg:flex lg:flex-shrink-0">
           <Sidebar
@@ -1091,14 +1091,14 @@ export default function App() {
             <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={() => setShowAgentStatus(true)}
-                className="rounded-lg border border-blue-500/30 bg-blue-600/20 px-2.5 py-1.5 text-xs text-blue-400 transition-colors hover:bg-blue-600/30 sm:px-3 sm:text-sm"
+                className="header-action-btn border-blue-500/30 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30"
               >
                 <span className="sm:hidden">&#x1F6E0;</span>
                 <span className="hidden sm:inline">&#x1F6E0; {agentStatusLabel}</span>
               </button>
               <button
                 onClick={() => setShowReportHistory(true)}
-                className="rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-2.5 py-1.5 text-xs text-emerald-400 transition-colors hover:bg-emerald-600/30 sm:px-3 sm:text-sm"
+                className="header-action-btn border-emerald-500/30 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
               >
                 <span className="sm:hidden">📋</span>
                 <span className="hidden sm:inline">{reportLabel}</span>
@@ -1112,14 +1112,14 @@ export default function App() {
                     .then(setMessages)
                     .catch(console.error);
                 }}
-                className="announcement-topbar-btn rounded-lg border border-amber-500/30 bg-amber-600/20 px-2.5 py-1.5 text-xs text-amber-400 transition-colors hover:bg-amber-600/30 sm:px-3 sm:text-sm"
+                className="announcement-topbar-btn header-action-btn border-amber-500/30 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30"
               >
                 <span className="sm:hidden">📢</span>
                 <span className="hidden sm:inline">{announcementLabel}</span>
               </button>
               <button
                 onClick={() => setShowRoomManager(true)}
-                className="rounded-lg border border-violet-500/30 bg-violet-600/20 px-2.5 py-1.5 text-xs text-violet-400 transition-colors hover:bg-violet-600/30 sm:px-3 sm:text-sm"
+                className="header-action-btn border-violet-500/30 bg-violet-600/20 text-violet-400 hover:bg-violet-600/30"
               >
                 <span className="sm:hidden">🏢</span>
                 <span className="hidden sm:inline">{roomManagerLabel}</span>

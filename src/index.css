@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@600;700;800&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -19,6 +20,9 @@
 /* ─── Dark Theme: 심야작업 오피스 (late-night coding session) ─── */
 :root,
 [data-theme="dark"] {
+  --th-font-display: "Sora", "IBM Plex Sans KR", "Segoe UI", sans-serif;
+  --th-font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+  --th-font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   --th-bg-primary: #0a0a18;
   --th-bg-secondary: #10102a;
   --th-bg-surface: rgba(22, 22, 48, 0.75);
@@ -47,6 +51,8 @@
   --th-input-bg: rgba(16, 16, 42, 0.85);
   --th-input-border: rgba(50, 50, 95, 0.5);
   --th-accent-glow: rgba(255, 180, 60, 0.06);
+  --th-focus-ring: #38bdf8;
+  --th-focus-ring-shadow: rgba(56, 189, 248, 0.25);
 }
 
 /* ─── Light Theme: 낮 업무 오피스 (warm daytime office) ─── */
@@ -79,6 +85,8 @@
   --th-input-bg: rgba(255, 252, 246, 0.92);
   --th-input-border: rgba(210, 200, 180, 0.45);
   --th-accent-glow: rgba(135, 206, 235, 0.08);
+  --th-focus-ring: #2563eb;
+  --th-focus-ring-shadow: rgba(37, 99, 235, 0.22);
 }
 
 html, body, #root {
@@ -88,10 +96,73 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: var(--th-bg-primary);
+  font-family: var(--th-font-body);
+  background:
+    radial-gradient(circle at 12% -6%, rgba(59, 130, 246, 0.16), transparent 32%),
+    radial-gradient(circle at 86% 0%, var(--th-accent-glow), transparent 34%),
+    linear-gradient(150deg, var(--th-bg-primary), var(--th-bg-secondary));
   color: var(--th-text-primary);
   transition: background 0.3s ease, color 0.3s ease;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+[data-theme="light"] body {
+  background:
+    radial-gradient(circle at 8% -12%, rgba(37, 99, 235, 0.12), transparent 38%),
+    radial-gradient(circle at 92% 4%, rgba(217, 119, 6, 0.08), transparent 30%),
+    linear-gradient(160deg, var(--th-bg-primary), var(--th-bg-secondary));
+}
+
+h1, h2, h3, .dashboard-title-gradient, .dashboard-ranking-gradient {
+  font-family: var(--th-font-display);
+}
+
+code, pre, .font-mono {
+  font-family: var(--th-font-mono) !important;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 8% -20%, rgba(59, 130, 246, 0.15), transparent 40%),
+    radial-gradient(circle at 96% -12%, var(--th-accent-glow), transparent 45%),
+    linear-gradient(152deg, var(--th-bg-primary), var(--th-bg-secondary));
+}
+
+[data-theme="light"] .app-shell {
+  background:
+    radial-gradient(circle at 10% -16%, rgba(37, 99, 235, 0.1), transparent 42%),
+    radial-gradient(circle at 92% -8%, rgba(245, 158, 11, 0.09), transparent 36%),
+    linear-gradient(160deg, var(--th-bg-primary), var(--th-bg-secondary));
+}
+
+.taskboard-shell {
+  border: 1px solid var(--th-border);
+  border-radius: 1rem;
+  background: linear-gradient(165deg, var(--th-bg-primary), var(--th-bg-secondary));
+}
+
+.taskboard-column {
+  background: var(--th-panel-bg);
+  border-color: var(--th-panel-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="light"] .taskboard-column {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.terminal-panel-shell {
+  background: var(--th-bg-primary);
+  border-color: var(--th-border);
+}
+
+.terminal-panel-header,
+.terminal-panel-strip,
+.terminal-panel-footer {
+  background: var(--th-bg-surface);
+  border-color: var(--th-border);
 }
 
 /* ─── Light Mode: Global Tailwind Color Overrides ─── */
@@ -559,7 +630,6 @@ body {
 /* ── Terminal output text ── */
 .terminal-output-text {
   color: #16a34a;
-  selection-background-color: rgba(16, 185, 129, 0.15);
 }
 .terminal-output-text ::selection {
   background-color: rgba(16, 185, 129, 0.15);
@@ -743,10 +813,13 @@ body {
   border-radius: 1rem;
   padding: 1.25rem;
   transition: all 0.2s ease;
+  will-change: transform;
 }
 .dash-card:hover {
   background: var(--th-card-bg-hover);
   border-color: var(--th-border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--th-glass-shadow);
 }
 .dash-panel {
   background: var(--th-panel-bg);
@@ -782,9 +855,9 @@ body {
     inset 0 1px 0 var(--th-glass-highlight);
 }
 [data-theme="light"] .game-panel {
-  background: rgba(255, 252, 246, 0.65);
-  border-color: rgba(210, 200, 180, 0.4);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: rgba(255, 252, 246, 0.72);
+  border-color: rgba(210, 200, 180, 0.35);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 /* ── Dashboard title gradient ── */
@@ -1123,4 +1196,195 @@ body {
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
   pointer-events: none;
   animation: unlearn-hit-text 0.85s ease-out both;
+}
+
+/* ─── Design Improvements ─── */
+
+/* 1. Focus-visible accessibility outlines for all interactive elements */
+:where(
+  button:not(:disabled),
+  a,
+  input:not(:disabled),
+  select:not(:disabled),
+  textarea:not(:disabled)
+):focus-visible {
+  outline: 2px solid var(--th-focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--th-focus-ring-shadow);
+}
+
+:where(
+  button:not(:disabled),
+  a,
+  input:not(:disabled),
+  select:not(:disabled),
+  textarea:not(:disabled)
+):focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+/* 2. Header action buttons — unified pill style with smoother hover */
+.header-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 0.625rem;
+  border: 1px solid var(--th-border);
+  background: var(--th-bg-surface);
+  color: var(--th-text-secondary);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.header-action-btn:hover {
+  background: var(--th-bg-surface-hover);
+  border-color: var(--th-border-strong);
+  color: var(--th-text-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .header-action-btn:hover {
+  box-shadow: 0 8px 16px rgba(41, 33, 18, 0.12);
+}
+.header-action-btn:active {
+  transform: translateY(0);
+}
+@media (min-width: 640px) {
+  .header-action-btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* 3. Sidebar nav item — stronger active indicator with left accent bar */
+.sidebar-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  color: var(--th-text-secondary);
+}
+.sidebar-nav-item:hover {
+  background: var(--th-bg-surface-hover);
+  color: var(--th-text-primary);
+}
+.sidebar-nav-item.active {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.25);
+}
+.sidebar-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 25%;
+  height: 50%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #3b82f6;
+}
+[data-theme="light"] .sidebar-nav-item.active {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.2);
+}
+[data-theme="light"] .sidebar-nav-item.active::before {
+  background: #2563eb;
+}
+[data-theme="light"] .sidebar-nav-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* 4. Game panel subtle hover lift */
+.game-panel {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.game-panel:hover {
+  transform: translateY(-1px);
+}
+
+/* 5. Chat panel refined header with subtle gradient bottom border */
+.chat-header {
+  position: relative;
+  border-bottom: 1px solid var(--th-border);
+  background: var(--th-bg-header);
+}
+.chat-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
+}
+[data-theme="light"] .chat-header::after {
+  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.2), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─── Sidebar nav item active indicator ─── */
+.sidebar-nav-active {
+  position: relative;
+}
+.sidebar-nav-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #3b82f6;
+}
+[data-theme="light"] .sidebar-nav-active::before {
+  background: #2563eb;
+}
+
+/* ─── Settings toggle switch improvements ─── */
+.toggle-switch {
+  transition: background-color 0.2s ease;
+}
+.toggle-switch-knob {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Sidebar: smoother transitions ─── */
+.sidebar-dept-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  transition: background-color 0.15s ease;
+  color: var(--th-text-secondary);
+}
+.sidebar-dept-row:hover {
+  background: var(--th-bg-surface-hover);
+}
+
+/* ─── Task card hover enhancement ─── */
+[data-theme="light"] .task-card-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }

@@ -85,6 +85,7 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
   const randomDelay = __ctx.randomDelay;
   const recordAcceptedIngressAuditOrRollback = __ctx.recordAcceptedIngressAuditOrRollback;
   const recordMessageIngressAuditOr503 = __ctx.recordMessageIngressAuditOr503;
+  const recordTaskCreationAudit = __ctx.recordTaskCreationAudit;
   const refreshGoogleToken = __ctx.refreshGoogleToken;
   const removeActiveOAuthAccount = __ctx.removeActiveOAuthAccount;
   const resolveMessageIdempotencyKey = __ctx.resolveMessageIdempotencyKey;
@@ -1422,6 +1423,25 @@ function delegateSubtaskBatch(
       INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, source_task_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?)
     `).run(delegatedTaskId, delegatedTitle, delegatedDescription, targetDeptId, parentTask.project_path, parentTask.id, ct, ct);
+    recordTaskCreationAudit({
+      taskId: delegatedTaskId,
+      taskTitle: delegatedTitle,
+      taskStatus: "planned",
+      departmentId: targetDeptId,
+      sourceTaskId: parentTask.id,
+      taskType: "general",
+      projectPath: parentTask.project_path ?? null,
+      trigger: "workflow.subtask_batch_delegation",
+      triggerDetail: `parent_task=${parentTask.id}; subtasks=${subtasks.length}; target_dept=${targetDeptId}`,
+      actorType: "agent",
+      actorId: crossLeader.id,
+      actorName: crossLeader.name,
+      body: {
+        parent_task_id: parentTask.id,
+        subtask_ids: subtaskIds,
+        target_department_id: targetDeptId,
+      },
+    });
     appendTaskLog(delegatedTaskId, "system", `Subtask delegation from '${parentTask.title}' → ${targetDeptName}`);
     broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(delegatedTaskId));
 
@@ -1579,6 +1599,27 @@ function handleTaskDelegation(
       INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?)
     `).run(taskId, taskTitle, `[CEO] ${ceoMessage}`, leaderDeptId, detectedPath, t, t);
+    recordTaskCreationAudit({
+      taskId,
+      taskTitle,
+      taskStatus: "planned",
+      departmentId: leaderDeptId,
+      taskType: "general",
+      projectPath: detectedPath ?? null,
+      trigger: "workflow.delegation.ceo_message",
+      triggerDetail: `skip_planned_meeting=${skipPlannedMeeting}; skip_plan_subtasks=${skipPlanSubtasks}`,
+      actorType: "agent",
+      actorId: teamLeader.id,
+      actorName: teamLeader.name,
+      body: {
+        ceo_message: ceoMessage,
+        options: {
+          skip_planned_meeting: skipPlannedMeeting,
+          skip_plan_subtasks: skipPlanSubtasks,
+          project_context: projectContextHint,
+        },
+      },
+    });
     appendTaskLog(taskId, "system", `CEO → ${leaderName}: ${ceoMessage}`);
     if (detectedPath) {
       appendTaskLog(taskId, "system", `Project path resolved (${projectPathSource}): ${detectedPath}`);
@@ -1877,6 +1918,24 @@ function createDirectAgentTaskAndRun(agent: AgentRow, ceoMessage: string): void 
     t,
     t,
   );
+  recordTaskCreationAudit({
+    taskId,
+    taskTitle,
+    taskStatus: "planned",
+    departmentId: deptId,
+    assignedAgentId: agent.id,
+    taskType: "general",
+    projectPath: detectedPath ?? null,
+    trigger: "workflow.direct_agent_task",
+    triggerDetail: "direct chat escalated to task",
+    actorType: "agent",
+    actorId: agent.id,
+    actorName: agent.name,
+    body: {
+      ceo_message: ceoMessage,
+      message_type: "task_assign",
+    },
+  });
 
   db.prepare("UPDATE agents SET current_task_id = ? WHERE id = ?").run(taskId, agent.id);
   appendTaskLog(taskId, "system", `Direct CEO assignment to ${agent.name}: ${ceoMessage}`);
