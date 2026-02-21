@@ -62,9 +62,19 @@ describe("update auto utils", () => {
   });
 
   it("applies channel filtering", () => {
+    expect(isDeltaAllowedByChannel("none", "patch")).toBe(false);
+    expect(isDeltaAllowedByChannel("none", "minor")).toBe(false);
+    expect(isDeltaAllowedByChannel("none", "all")).toBe(false);
+
     expect(isDeltaAllowedByChannel("patch", "patch")).toBe(true);
+    expect(isDeltaAllowedByChannel("patch", "minor")).toBe(true);
+    expect(isDeltaAllowedByChannel("patch", "all")).toBe(true);
+
     expect(isDeltaAllowedByChannel("minor", "patch")).toBe(false);
     expect(isDeltaAllowedByChannel("minor", "minor")).toBe(true);
+    expect(isDeltaAllowedByChannel("minor", "all")).toBe(true);
+
+    expect(isDeltaAllowedByChannel("major", "patch")).toBe(false);
     expect(isDeltaAllowedByChannel("major", "minor")).toBe(false);
     expect(isDeltaAllowedByChannel("major", "all")).toBe(true);
   });

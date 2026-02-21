@@ -699,15 +699,15 @@ async function applyUpdateNow(options: {
             detached: true,
             stdio: "ignore",
           });
+          // `restart.scheduled` reflects spawn-time acceptance only.
+          // Post-spawn failures are logged asynchronously below.
           child.once("error", (err) => {
-            restart.scheduled = false;
             logAutoUpdate(
               `restart mode=command process error for ${parsed.cmd}: ${err instanceof Error ? err.message : String(err)}`,
             );
           });
           child.once("exit", (code, signal) => {
             if (code !== 0) {
-              restart.scheduled = false;
               logAutoUpdate(
                 `restart mode=command process for ${parsed.cmd} exited with code=${code}${signal ? ` signal=${signal}` : ""}`,
               );
