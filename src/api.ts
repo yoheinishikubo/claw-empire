@@ -300,6 +300,7 @@ export async function createTask(input: {
   priority?: number;
   project_id?: string;
   project_path?: string;
+  assigned_agent_id?: string;
 }): Promise<string> {
   const j = await post('/api/tasks', input) as { id: string };
   return j.id;

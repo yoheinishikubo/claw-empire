@@ -286,17 +286,6 @@ code, pre, .font-mono {
 [data-theme="light"] [class*="text-cyan-300"] { color: #0891b2 !important; }
 [data-theme="light"] [class*="text-cyan-400"] { color: #0891b2 !important; }
 
-[data-theme="light"] .announcement-topbar-btn {
-  color: #7c2d12 !important;
-  border-color: rgba(180, 83, 9, 0.38) !important;
-  background-color: rgba(245, 158, 11, 0.18) !important;
-}
-
-[data-theme="light"] .announcement-topbar-btn:hover {
-  color: #7c2d12 !important;
-  background-color: rgba(245, 158, 11, 0.28) !important;
-}
-
 [data-theme="light"] .announcement-message-bubble {
   background-color: rgba(180, 83, 9, 0.14) !important;
   border-color: rgba(146, 64, 14, 0.38) !important;
@@ -731,6 +720,14 @@ code, pre, .font-mono {
   0%, 100% { transform: rotate(0deg); }
   25% { transform: rotate(-3deg); }
   75% { transform: rotate(3deg); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(5px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-2px); }
 }
 @keyframes alba-spawn {
   0% { transform: scale(0) rotate(-180deg); opacity: 0; }
@@ -1249,7 +1246,7 @@ code, pre, .font-mono {
   box-shadow: none;
 }
 
-/* 2. Header action buttons — unified pill style with smoother hover */
+/* 2. Header action buttons — unified secondary + emphasized primary CTA */
 .header-action-btn {
   display: inline-flex;
   align-items: center;
@@ -1258,23 +1255,49 @@ code, pre, .font-mono {
   font-size: 0.8125rem;
   font-weight: 600;
   border-radius: 0.625rem;
-  border: 1px solid var(--th-border);
-  background: var(--th-bg-surface);
-  color: var(--th-text-secondary);
   transition: all 0.2s ease;
   cursor: pointer;
   white-space: nowrap;
 }
-.header-action-btn:hover {
+
+.header-action-btn-secondary {
+  border: 1px solid var(--th-border);
+  background: var(--th-bg-surface);
+  color: var(--th-text-secondary);
+}
+.header-action-btn-secondary:hover {
   background: var(--th-bg-surface-hover);
   border-color: var(--th-border-strong);
   color: var(--th-text-primary);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
-[data-theme="light"] .header-action-btn:hover {
+[data-theme="light"] .header-action-btn-secondary:hover {
   box-shadow: 0 8px 16px rgba(41, 33, 18, 0.12);
 }
+
+.header-action-btn-primary {
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(59, 130, 246, 0.9));
+  color: #f8fafc;
+  box-shadow: 0 6px 14px rgba(29, 78, 216, 0.25);
+}
+.header-action-btn-primary:hover {
+  border-color: rgba(96, 165, 250, 0.75);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95));
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.32);
+}
+[data-theme="light"] .header-action-btn-primary {
+  border-color: rgba(37, 99, 235, 0.4);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.2);
+}
+[data-theme="light"] .header-action-btn-primary:hover {
+  border-color: rgba(59, 130, 246, 0.58);
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.26);
+}
+
 .header-action-btn:active {
   transform: translateY(0);
 }

@@ -7,6 +7,7 @@ interface DashboardProps {
   agents: Agent[];
   tasks: Task[];
   companyName: string;
+  onPrimaryCtaClick: () => void;
 }
 
 type Locale = 'ko' | 'en' | 'ja' | 'zh';
@@ -210,7 +211,7 @@ function RankBadge({ xp, size = 'md' }: { xp: number; size?: 'sm' | 'md' | 'lg' 
   );
 }
 
-export default function Dashboard({ stats, agents, tasks, companyName }: DashboardProps) {
+export default function Dashboard({ stats, agents, tasks, companyName, onPrimaryCtaClick }: DashboardProps) {
   const { t, locale, localeTag } = useI18n();
   const { date, time, briefing } = useNow(localeTag, t);
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
@@ -229,6 +230,24 @@ export default function Dashboard({ stats, agents, tasks, companyName }: Dashboa
   const completionRate = stats?.tasks?.completion_rate ?? (totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0);
   const activeRate = totalAgents > 0 ? Math.round((activeAgents / totalAgents) * 100) : 0;
   const reviewQueue = reviewTasks + pendingTasks;
+  const primaryCtaLabel = t({
+    ko: '미션 시작',
+    en: 'Start Mission',
+    ja: 'ミッション開始',
+    zh: '开始任务',
+  });
+  const primaryCtaEyebrow = t({
+    ko: '빠른 실행',
+    en: 'Quick Start',
+    ja: 'クイック開始',
+    zh: '快速开始',
+  });
+  const primaryCtaDescription = t({
+    ko: '핵심 업무를 바로 생성하고 실행으로 전환하세요',
+    en: 'Create a priority task and move execution immediately.',
+    ja: '最優先タスクをすぐ作成して実行へ移行します。',
+    zh: '立即创建优先任务并进入执行。',
+  });
 
   // ─── Department data (same logic) ───
   const deptData = useMemo(() => {
@@ -438,6 +457,30 @@ export default function Dashboard({ stats, agents, tasks, companyName }: Dashboa
                 {t({ ko: '건', en: '', ja: '件', zh: '项' })}
               </span>
             )}
+          </div>
+        </div>
+
+        <div className="relative mt-4 rounded-xl border border-cyan-400/40 bg-gradient-to-r from-cyan-500/20 via-blue-500/15 to-emerald-500/20 p-4 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/85">
+                {primaryCtaEyebrow}
+              </p>
+              <p className="mt-1 text-xs sm:text-sm" style={{ color: 'var(--th-text-primary)' }}>
+                {primaryCtaDescription}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onPrimaryCtaClick}
+              className="animate-cta-glow group inline-flex w-full items-center justify-center gap-2 rounded-xl border-0 bg-gradient-to-r from-cyan-500 to-blue-500 px-6 py-3 text-sm font-black tracking-tight text-white shadow-[0_4px_20px_rgba(34,211,238,0.35)] transition-all duration-200 hover:-translate-y-0.5 hover:from-cyan-400 hover:to-blue-400 hover:shadow-[0_8px_30px_rgba(34,211,238,0.5)] active:translate-y-0 sm:w-auto sm:min-w-[200px]"
+            >
+              <span aria-hidden="true">🚀</span>
+              <span>{primaryCtaLabel}</span>
+              <span className="text-xs text-white/80 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true">
+                →
+              </span>
+            </button>
           </div>
         </div>
       </div>

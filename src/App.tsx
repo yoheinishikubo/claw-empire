@@ -764,6 +764,7 @@ export default function App() {
     department_id?: string;
     task_type?: string;
     priority?: number;
+    assigned_agent_id?: string;
   }) {
     try {
       await api.createTask(input as Parameters<typeof api.createTask>[0]);
@@ -977,6 +978,12 @@ export default function App() {
     ja: "レポート",
     zh: "报告",
   })}`;
+  const tasksPrimaryLabel = pickLang(uiLanguage, {
+    ko: "업무",
+    en: "Tasks",
+    ja: "タスク",
+    zh: "任务",
+  });
   const agentStatusLabel = pickLang(uiLanguage, {
     ko: "에이전트",
     en: "Agents",
@@ -1121,15 +1128,23 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <button
+                onClick={() => setView("tasks")}
+                className="header-action-btn header-action-btn-primary"
+                aria-label={tasksPrimaryLabel}
+              >
+                <span className="sm:hidden">📋</span>
+                <span className="hidden sm:inline">📋 {tasksPrimaryLabel}</span>
+              </button>
+              <button
                 onClick={() => setShowAgentStatus(true)}
-                className="header-action-btn border-blue-500/30 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30"
+                className="header-action-btn header-action-btn-secondary"
               >
                 <span className="sm:hidden">&#x1F6E0;</span>
                 <span className="hidden sm:inline">&#x1F6E0; {agentStatusLabel}</span>
               </button>
               <button
                 onClick={() => setShowReportHistory(true)}
-                className="header-action-btn border-emerald-500/30 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
+                className="header-action-btn header-action-btn-secondary"
               >
                 <span className="sm:hidden">📋</span>
                 <span className="hidden sm:inline">{reportLabel}</span>
@@ -1143,14 +1158,14 @@ export default function App() {
                     .then(setMessages)
                     .catch(console.error);
                 }}
-                className="announcement-topbar-btn header-action-btn border-amber-500/30 bg-amber-600/20 text-amber-400 hover:bg-amber-600/30"
+                className="header-action-btn header-action-btn-secondary"
               >
                 <span className="sm:hidden">📢</span>
                 <span className="hidden sm:inline">{announcementLabel}</span>
               </button>
               <button
                 onClick={() => setShowRoomManager(true)}
-                className="header-action-btn border-violet-500/30 bg-violet-600/20 text-violet-400 hover:bg-violet-600/30"
+                className="header-action-btn header-action-btn-secondary"
               >
                 <span className="sm:hidden">🏢</span>
                 <span className="hidden sm:inline">{roomManagerLabel}</span>
@@ -1272,6 +1287,7 @@ export default function App() {
                 agents={agents}
                 tasks={tasks}
                 companyName={settings.companyName}
+                onPrimaryCtaClick={() => setView("tasks")}
               />
             )}
 
