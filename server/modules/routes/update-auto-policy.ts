@@ -17,7 +17,6 @@ export function parseAutoUpdateChannel(rawEnv: unknown): { channel: AutoUpdateCh
 export function shouldSkipUpdateByGuards(reasons: string[], force: boolean): boolean {
   const hasNonOverridableGuard = reasons.includes("dirty_worktree")
     || reasons.includes("git_remote_origin_missing")
-    || reasons.includes("no_update_available")
     || reasons.some((reason) => reason.startsWith("channel_blocked:"));
   return hasNonOverridableGuard || (reasons.length > 0 && !force);
 }

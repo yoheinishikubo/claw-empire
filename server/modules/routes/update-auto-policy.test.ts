@@ -15,8 +15,12 @@ describe("update auto policy", () => {
     expect(shouldSkipUpdateByGuards(["dirty_worktree"], true)).toBe(true);
     expect(shouldSkipUpdateByGuards(["dirty_worktree"], false)).toBe(true);
     expect(shouldSkipUpdateByGuards(["git_remote_origin_missing"], true)).toBe(true);
-    expect(shouldSkipUpdateByGuards(["no_update_available"], true)).toBe(true);
     expect(shouldSkipUpdateByGuards(["channel_blocked:minor"], true)).toBe(true);
+  });
+
+  it("allows force when only no-update guard is present", () => {
+    expect(shouldSkipUpdateByGuards(["no_update_available"], true)).toBe(false);
+    expect(shouldSkipUpdateByGuards(["no_update_available"], false)).toBe(true);
   });
 
   it("allows force to bypass overridable guards only", () => {
