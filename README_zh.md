@@ -65,8 +65,9 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 ### v1.1.0 技能学习/删除预览
 
 <p align="center">
-  <img src="Sample_Img/Skills.png" alt="Skills Learn and Remove" width="49%" />
-  <img src="Sample_Img/CLI.png" alt="CLI Provider Mapping for Learned Skills" width="49%" />
+  <img src="Sample_Img/Skills_Learning_Memory.png" alt="Skills Learning Memory" width="32%" />
+  <img src="Sample_Img/Skill_Learn.png" alt="Skill Learn" width="32%" />
+  <img src="Sample_Img/Skill_Remove.png" alt="Skill Remove" width="32%" />
 </p>
 
 ---

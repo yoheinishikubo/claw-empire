@@ -65,8 +65,9 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 ### v1.1.0 스킬 학습/삭제 미리보기
 
 <p align="center">
-  <img src="Sample_Img/Skills.png" alt="Skills Learn and Remove" width="49%" />
-  <img src="Sample_Img/CLI.png" alt="CLI Provider Mapping for Learned Skills" width="49%" />
+  <img src="Sample_Img/Skills_Learning_Memory.png" alt="Skills Learning Memory" width="32%" />
+  <img src="Sample_Img/Skill_Learn.png" alt="Skill Learn" width="32%" />
+  <img src="Sample_Img/Skill_Remove.png" alt="Skill Remove" width="32%" />
 </p>
 
 ---
