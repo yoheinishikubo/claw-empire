@@ -69,7 +69,12 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 - **会議プロンプト圧縮の既定値調整** — 会議 transcript プロンプト圧縮の既定値を `MEETING_TRANSCRIPT_MAX_TURNS=20` に引き上げ、行ごと/全体の文字数予算を併用します。
 - **初回実行時 `.env` 自動補完** — `git pull` 後の最初の `pnpm dev*` / `pnpm start*` 実行で、`.env` に不足している会議プロンプトキー（`MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS`, `MEETING_TRANSCRIPT_MAX_TURNS`, `MEETING_TRANSCRIPT_LINE_MAX_CHARS`, `MEETING_TRANSCRIPT_TOTAL_MAX_CHARS`）を自動で補完します（既存値は維持）。
 - **出典** — この会議プロンプト圧縮のフォローアップは、`SJY0917032` による PR #23 の提案/議論をベースにしています。
-- **Active Agents プロセス確認メニュー追加** — Active Agents に `Script` / `Idle CLI` タブを追加し、異常終了や残留しているスクリプト/バックグラウンド CLI プロセスを確認できるようにしました。関連サンプル画像: `Sample_Img/Script_view.png`, `Sample_Img/Idle_CLI_view.png`。
+- **Active Agents プロセス確認メニュー追加** — Active Agents に `Script` / `Idle CLI` タブを追加し、異常終了や残留しているスクリプト/バックグラウンド CLI プロセスを確認できるようにしました。
+
+  <p align="center">
+    <img src="Sample_Img/Script_view.png" alt="Active Agents Script View" width="49%" />
+    <img src="Sample_Img/Idle_CLI_view.png" alt="Active Agents Idle CLI View" width="49%" />
+  </p>
 - 詳細: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---
