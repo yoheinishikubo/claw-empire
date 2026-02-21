@@ -61,6 +61,8 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 - **Tone-first Presets** — Presets now adjust tone only (main color remains stable) and auto-regenerate by the active main color.
 - **Report Document Pagination** — Added page-based navigation (`Prev/Next`) in the report popup for large document bundles.
 - **DB-backed Theme Defaults** — Room themes are now synced to backend settings and can be shipped as deployment defaults.
+- **Hotfix: False Inbox Recovery Guard** — Prevented watchdog fallback from moving active `in_progress` tasks to `inbox` while recent terminal/log activity still exists.
+- **Hotfix: Task Sync Throttling** — Coalesced WS-triggered live task refresh calls to reduce `/api/tasks` burst traffic and prevent browser `ERR_INSUFFICIENT_RESOURCES`.
 - Full notes: [`docs/releases/v1.1.1.md`](docs/releases/v1.1.1.md)
 
 ### v1.1.1 Office Preview

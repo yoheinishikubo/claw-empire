@@ -61,6 +61,8 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 - **预设改为色调优先** — 点击预设只改变色调，不会改动主色。
 - **报告文档分页** — 报告弹窗支持 `Prev/Next` 文档分页浏览。
 - **部署默认主题同步** — 房间主题同步到 `settings.roomThemes`，可作为新部署默认值。
+- **热修复：误判回退 inbox 防护** — 对仍有近期终端/日志活动的 `in_progress` 任务，watchdog 不再误回退到 `inbox`。
+- **热修复：任务同步节流** — 合并 WS 触发的 `/api/tasks` 刷新请求，缓解 `ERR_INSUFFICIENT_RESOURCES` 请求风暴。
 - 详细说明：[`docs/releases/v1.1.1.md`](docs/releases/v1.1.1.md)
 
 ### v1.1.1 办公室预览
