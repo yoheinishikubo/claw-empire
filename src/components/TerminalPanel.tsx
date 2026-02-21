@@ -222,7 +222,6 @@ export default function TerminalPanel({ taskId, task, agent, agents, initialTab 
 
   const shouldShowProgressHints =
     activeTab === 'terminal'
-    && task?.status === 'in_progress'
     && Boolean(progressHints && progressHints.hints.length > 0);
 
   const latestHint =
