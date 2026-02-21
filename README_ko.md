@@ -66,6 +66,9 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 - **업무 생성 시 담당자 저장 수정** — "새 업무" 모달에서 선택한 에이전트가 이제 정상적으로 저장됩니다(`assigned_agent_id`). 이전에는 할당 정보가 누락되었습니다.
 - **실행 가드 UX 개선** — 담당자 미배정 상태에서 실행 버튼 클릭 시 콘솔 에러 대신, 에이전트 셀렉터에 빨간 테두리 + 흔들림 애니메이션 + "담당자를 배정해주세요!" 인라인 경고를 표시합니다.
 - **헤더 버튼 리디자인** — 대시보드 헤더 액션을 primary(파란 그라데이션 CTA, 업무 탭)와 secondary(중립 스타일, 에이전트/보고서/공지/회의실)로 분리했습니다.
+- **회의 프롬프트 압축 기본값 조정** — 회의 transcript 프롬프트 압축 기본값을 `MEETING_TRANSCRIPT_MAX_TURNS=20`으로 상향하고, 라인/전체 길이 예산을 함께 적용합니다.
+- **첫 실행 `.env` 자동 보강** — `git pull` 이후 첫 `pnpm dev*` / `pnpm start*` 실행 시, `.env`에 누락된 회의 프롬프트 키(`MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS`, `MEETING_TRANSCRIPT_MAX_TURNS`, `MEETING_TRANSCRIPT_LINE_MAX_CHARS`, `MEETING_TRANSCRIPT_TOTAL_MAX_CHARS`)를 자동으로 채웁니다(기존 값은 유지).
+- **출처** — 해당 회의 프롬프트 압축 후속 반영은 `SJY0917032`의 PR #23 제안/논의를 기반으로 했습니다.
 - 상세 문서: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---

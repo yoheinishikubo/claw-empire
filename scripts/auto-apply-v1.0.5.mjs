@@ -16,6 +16,12 @@ const MIGRATION_DONE_KEY = "CLAW_MIGRATION_V1_0_5_DONE";
 const START_MARKER = "<!-- BEGIN claw-empire orchestration rules -->";
 const END_MARKER = "<!-- END claw-empire orchestration rules -->";
 const REQUIRED_AGENTS_SECRET_TOKEN = "INBOX_SECRET_DISCOVERY_V2";
+const MEETING_PROMPT_ENV_DEFAULTS = [
+  ["MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS", "1200"],
+  ["MEETING_TRANSCRIPT_MAX_TURNS", "20"],
+  ["MEETING_TRANSCRIPT_LINE_MAX_CHARS", "180"],
+  ["MEETING_TRANSCRIPT_TOTAL_MAX_CHARS", "2400"],
+];
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -83,6 +89,20 @@ function resolvePort(content) {
   return "8790";
 }
 
+function ensureMeetingPromptEnvDefaults(content, changes) {
+  let patched = false;
+
+  for (const [key, defaultValue] of MEETING_PROMPT_ENV_DEFAULTS) {
+    const current = stripOuterQuotes(readEnvValue(content, key));
+    if (current) continue;
+    content = upsertEnv(content, key, defaultValue);
+    changes.push(`set ${key}=${defaultValue}`);
+    patched = true;
+  }
+
+  return { content, patched };
+}
+
 function maybeAutoPatchEnv() {
   ensureEnvFile();
 
@@ -110,8 +130,16 @@ function maybeAutoPatchEnv() {
     changes.push("normalized OPENCLAW_CONFIG path");
   }
 
+  const meetingEnvPatch = ensureMeetingPromptEnvDefaults(content, changes);
+  content = meetingEnvPatch.content;
+  const needsMeetingPromptEnvPatch = meetingEnvPatch.patched;
+
   const needsAgentsRefresh = shouldRefreshAgentsRules();
-  const needsMigration = needsInboxSecret || needsOpenClawPatch || needsAgentsRefresh;
+  const needsMigration =
+    needsInboxSecret ||
+    needsOpenClawPatch ||
+    needsMeetingPromptEnvPatch ||
+    needsAgentsRefresh;
 
   if (migrationDone && !needsMigration) {
     return {

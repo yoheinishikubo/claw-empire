@@ -66,6 +66,9 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 - **任务创建代理分配修复** — "新建任务" 弹窗中选择的代理现在会正确保存（`assigned_agent_id`）；之前分配信息会被静默丢弃。
 - **执行守卫 UX 优化** — 在未分配代理状态下点击运行按钮时，不再仅显示控制台错误，而是在代理选择器上显示红色边框 + 抖动动画 + "请分配负责人！" 内联警告。
 - **标题栏按钮重设计** — 仪表板标题操作按钮拆分为 primary（蓝色渐变 CTA，任务标签）和 secondary（中性风格，用于代理/报告/公告/会议室）。
+- **会议提示词压缩默认值调整** — 会议 transcript 提示词压缩默认值提升为 `MEETING_TRANSCRIPT_MAX_TURNS=20`，并配合单行/总字符预算限制。
+- **首次运行 `.env` 自动补全** — `git pull` 后首次执行 `pnpm dev*` / `pnpm start*` 时，会自动补齐 `.env` 中缺失的会议提示词键（`MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS`, `MEETING_TRANSCRIPT_MAX_TURNS`, `MEETING_TRANSCRIPT_LINE_MAX_CHARS`, `MEETING_TRANSCRIPT_TOTAL_MAX_CHARS`），且不覆盖已有值。
+- **来源说明** — 本次会议提示词压缩后续改进基于 `SJY0917032` 在 PR #23 中的提案/讨论。
 - 详细说明：[`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---

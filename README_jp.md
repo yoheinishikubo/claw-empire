@@ -66,6 +66,9 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 - **タスク作成時の担当者保存修正** — 「新規タスク」モーダルで選択したエージェントが正しく保存されるようになりました（`assigned_agent_id`）。以前は割り当て情報が破棄されていました。
 - **実行ガードUX改善** — 担当者未割り当て状態で実行ボタンをクリックすると、コンソールエラーの代わりに、エージェントセレクターに赤枠＋シェイクアニメーション＋「担当者を割り当ててください！」のインライン警告を表示します。
 - **ヘッダーボタンリデザイン** — ダッシュボードヘッダーアクションをprimary（青グラデーションCTA、タスクタブ）とsecondary（ニュートラルスタイル、エージェント/レポート/お知らせ/会議室）に分離しました。
+- **会議プロンプト圧縮の既定値調整** — 会議 transcript プロンプト圧縮の既定値を `MEETING_TRANSCRIPT_MAX_TURNS=20` に引き上げ、行ごと/全体の文字数予算を併用します。
+- **初回実行時 `.env` 自動補完** — `git pull` 後の最初の `pnpm dev*` / `pnpm start*` 実行で、`.env` に不足している会議プロンプトキー（`MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS`, `MEETING_TRANSCRIPT_MAX_TURNS`, `MEETING_TRANSCRIPT_LINE_MAX_CHARS`, `MEETING_TRANSCRIPT_TOTAL_MAX_CHARS`）を自動で補完します（既存値は維持）。
+- **出典** — この会議プロンプト圧縮のフォローアップは、`SJY0917032` による PR #23 の提案/議論をベースにしています。
 - 詳細: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---
