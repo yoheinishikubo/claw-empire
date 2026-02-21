@@ -64,6 +64,7 @@ export interface CeoOfficeCall {
 
 type View = "office" | "dashboard" | "tasks" | "skills" | "settings";
 type TaskPanelTab = "terminal" | "minutes";
+type RuntimeOs = "windows" | "mac" | "linux" | "unknown";
 
 export interface OAuthCallbackResult {
   provider: string | null;
@@ -99,6 +100,16 @@ function mergeSettingsWithDefaults(
 function isUserLanguagePinned(): boolean {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem(LANGUAGE_USER_SET_STORAGE_KEY) === "1";
+}
+
+function detectRuntimeOs(): RuntimeOs {
+  if (typeof window === "undefined") return "unknown";
+  const ua = (window.navigator.userAgent || "").toLowerCase();
+  const platform = (window.navigator.platform || "").toLowerCase();
+  if (platform.includes("win") || ua.includes("windows")) return "windows";
+  if (platform.includes("mac") || ua.includes("mac os")) return "mac";
+  if (platform.includes("linux") || ua.includes("linux")) return "linux";
+  return "unknown";
 }
 
 function syncClientLanguage(language: string): void {
@@ -137,6 +148,7 @@ export default function App() {
   const [showReportHistory, setShowReportHistory] = useState(false);
   const [showAgentStatus, setShowAgentStatus] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [runtimeOs] = useState<RuntimeOs>(() => detectRuntimeOs());
   const [updateStatus, setUpdateStatus] = useState<api.UpdateStatus | null>(null);
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -799,12 +811,19 @@ export default function App() {
         zh: `发现新版本 v${updateStatus?.latest_version}（当前 v${updateStatus?.current_version}）。`,
       })
     : "";
-  const updateHint = pickLang(uiLanguage, {
-    ko: "`git pull && pnpm install` 후 서버를 재시작하세요.",
-    en: "Run `git pull && pnpm install`, then restart the server.",
-    ja: "`git pull && pnpm install` を実行してサーバーを再起動してください。",
-    zh: "请执行 `git pull && pnpm install`，然后重启服务。",
-  });
+  const updateHint = runtimeOs === "windows"
+    ? pickLang(uiLanguage, {
+        ko: "Windows PowerShell에서 `git pull; pnpm install` 실행 후 서버를 재시작하세요.",
+        en: "In Windows PowerShell, run `git pull; pnpm install`, then restart the server.",
+        ja: "Windows PowerShell で `git pull; pnpm install` を実行し、サーバーを再起動してください。",
+        zh: "在 Windows PowerShell 中执行 `git pull; pnpm install`，然后重启服务。",
+      })
+    : pickLang(uiLanguage, {
+        ko: "macOS/Linux에서 `git pull && pnpm install` 실행 후 서버를 재시작하세요.",
+        en: "On macOS/Linux, run `git pull && pnpm install`, then restart the server.",
+        ja: "macOS/Linux で `git pull && pnpm install` を実行し、サーバーを再起動してください。",
+        zh: "在 macOS/Linux 上执行 `git pull && pnpm install`，然后重启服务。",
+      });
   const updateReleaseLabel = pickLang(uiLanguage, {
     ko: "릴리즈 노트",
     en: "Release Notes",
