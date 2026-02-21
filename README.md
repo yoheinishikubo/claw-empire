@@ -63,6 +63,9 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 - **Install Guidance Payload** — 428 response now includes installer paths, target AGENTS path, recommended command, and consent prompt payload.
 - **Light-Mode Contrast Fix** — Improved visibility of the Project Manager button in TaskBoard light theme.
 - **Browser Stability Fix** — Resolved Chrome `STATUS_ACCESS_VIOLATION` crashes via WebSocket broadcast batching (cli_output/subtask_update), tab-hidden polling pause, Pixi.js GPU memory cleanup (`destroyNode`), state array GC optimization, and ChatPanel message filter memoization.
+- **Task Creation Agent Fix** — Selected agent in "New Task" modal is now correctly saved (`assigned_agent_id`); previously the assignment was silently discarded.
+- **Run Guard UX** — Running a task without an assigned agent now shows a shake animation + red border on the agent selector with an inline warning, instead of a console-only error.
+- **Header Button Redesign** — Dashboard header actions split into primary (blue gradient CTA for Tasks) and secondary (neutral for Agents/Reports/Announcements/Rooms).
 - Full notes: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---

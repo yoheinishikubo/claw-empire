@@ -63,6 +63,9 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 - **安装指引 payload 扩展** — 428 响应增加安装脚本绝对路径、目标 AGENTS 路径、推荐命令和用户确认提示。
 - **浅色模式可见性修复** — 提升 TaskBoard 中 Project Manager 按钮在浅色主题下的对比度。
 - **浏览器稳定性优化** — 修复 Chrome `STATUS_ACCESS_VIOLATION` 崩溃：WebSocket broadcast 批量处理（cli_output/subtask_update）、标签页隐藏时暂停轮询、Pixi.js GPU 内存释放（`destroyNode`）、状态数组 GC 优化、ChatPanel 消息过滤 memoize。
+- **任务创建代理分配修复** — "新建任务" 弹窗中选择的代理现在会正确保存（`assigned_agent_id`）；之前分配信息会被静默丢弃。
+- **执行守卫 UX 优化** — 在未分配代理状态下点击运行按钮时，不再仅显示控制台错误，而是在代理选择器上显示红色边框 + 抖动动画 + "请分配负责人！" 内联警告。
+- **标题栏按钮重设计** — 仪表板标题操作按钮拆分为 primary（蓝色渐变 CTA，任务标签）和 secondary（中性风格，用于代理/报告/公告/会议室）。
 - 详细说明：[`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---
