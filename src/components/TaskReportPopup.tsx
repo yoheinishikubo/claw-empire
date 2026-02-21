@@ -13,6 +13,8 @@ interface TaskReportPopupProps {
   onClose: () => void;
 }
 
+const DOCUMENTS_PER_PAGE = 3;
+
 function fmtTime(ts: number | null | undefined): string {
   if (!ts) return '-';
   const d = new Date(ts);
@@ -50,6 +52,7 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
   const [refreshingArchive, setRefreshingArchive] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('planning');
   const [expandedDocs, setExpandedDocs] = useState<Record<string, boolean>>({});
+  const [documentPages, setDocumentPages] = useState<Record<string, number>>({});
 
   useEffect(() => {
     setCurrentReport(report);
@@ -78,6 +81,7 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
   useEffect(() => {
     setActiveTab('planning');
     setExpandedDocs({});
+    setDocumentPages({});
   }, [currentReport.task.id, currentReport.requested_task_id, teamReports.length]);
 
   const taskAgent = agents.find((a) => a.id === currentReport.task.assigned_agent_id);
@@ -102,7 +106,7 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
     });
   };
 
-  const renderDocuments = (documents: TaskReportDocument[]) => {
+  const renderDocuments = (documents: TaskReportDocument[], scopeKey: string) => {
     if (!documents.length) {
       return (
         <p className="text-xs text-slate-500">
@@ -110,9 +114,16 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
         </p>
       );
     }
+
+    const totalPages = Math.max(1, Math.ceil(documents.length / DOCUMENTS_PER_PAGE));
+    const rawPage = documentPages[scopeKey] ?? 1;
+    const currentPage = Math.min(Math.max(rawPage, 1), totalPages);
+    const start = (currentPage - 1) * DOCUMENTS_PER_PAGE;
+    const visibleDocs = documents.slice(start, start + DOCUMENTS_PER_PAGE);
+
     return (
       <div className="space-y-2">
-        {documents.map((doc) => {
+        {visibleDocs.map((doc) => {
           const isExpanded = expandedDocs[doc.id] !== false;
           return (
             <div key={doc.id} className="rounded-lg border border-slate-700/60 bg-slate-800/50 p-3">
@@ -139,6 +150,37 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
             </div>
           );
         })}
+        {totalPages > 1 && (
+          <div className="mt-1 flex items-center justify-between rounded-lg border border-slate-700/60 bg-slate-900/60 px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setDocumentPages((prev) => ({ ...prev, [scopeKey]: Math.max(1, currentPage - 1) }))}
+              disabled={currentPage <= 1}
+              className={`rounded-md px-2 py-1 text-[11px] ${
+                currentPage <= 1
+                  ? 'cursor-not-allowed bg-slate-800 text-slate-600'
+                  : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+              }`}
+            >
+              {t({ ko: '이전', en: 'Prev', ja: '前へ', zh: '上一页' })}
+            </button>
+            <span className="text-[11px] text-slate-400">
+              {t({ ko: `페이지 ${currentPage}/${totalPages}`, en: `Page ${currentPage}/${totalPages}`, ja: `ページ ${currentPage}/${totalPages}`, zh: `第 ${currentPage}/${totalPages} 页` })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setDocumentPages((prev) => ({ ...prev, [scopeKey]: Math.min(totalPages, currentPage + 1) }))}
+              disabled={currentPage >= totalPages}
+              className={`rounded-md px-2 py-1 text-[11px] ${
+                currentPage >= totalPages
+                  ? 'cursor-not-allowed bg-slate-800 text-slate-600'
+                  : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+              }`}
+            >
+              {t({ ko: '다음', en: 'Next', ja: '次へ', zh: '下一页' })}
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -175,7 +217,7 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
         <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
           {t({ ko: '문서 원문', en: 'Source Documents', ja: '原本文書', zh: '原始文档' })}
         </p>
-        {renderDocuments(planningDocs)}
+        {renderDocuments(planningDocs, 'planning')}
       </div>
     </div>
   );
@@ -228,7 +270,7 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
           <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
             {t({ ko: '팀 문서', en: 'Team Documents', ja: 'チーム文書', zh: '团队文档' })}
           </p>
-          {renderDocuments(team.documents ?? [])}
+          {renderDocuments(team.documents ?? [], `team:${team.id}`)}
         </div>
 
         {keyLogs.length > 0 && (
