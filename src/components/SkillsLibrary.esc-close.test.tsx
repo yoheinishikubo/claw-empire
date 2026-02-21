@@ -21,6 +21,44 @@ vi.mock("../api", () => ({
 
 const startSkillLearningMock = vi.mocked(startSkillLearning);
 const LANGUAGE_STORAGE_KEY = "climpire.language";
+type TestLocale = "ko" | "en" | "ja" | "zh";
+
+const UI_TEXT: Record<TestLocale, {
+  learn: string;
+  modalHeading: string;
+  startLearning: string;
+  running: string;
+}> = {
+  ko: {
+    learn: "학습",
+    modalHeading: "스킬 학습 스쿼드",
+    startLearning: "학습 시작",
+    running: "학습중",
+  },
+  en: {
+    learn: "Learn",
+    modalHeading: "Skill Learning Squad",
+    startLearning: "Start Learning",
+    running: "Running",
+  },
+  ja: {
+    learn: "学習",
+    modalHeading: "スキル学習スクワッド",
+    startLearning: "学習開始",
+    running: "実行中",
+  },
+  zh: {
+    learn: "学习",
+    modalHeading: "技能学习小队",
+    startLearning: "开始学习",
+    running: "进行中",
+  },
+};
+
+function exactText(text: string): RegExp {
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped}$`);
+}
 
 function createStorageMock(initial: Record<string, string> = {}): Storage {
   const store = new Map<string, string>(Object.entries(initial));
@@ -65,9 +103,11 @@ const TEST_AGENT: Agent = {
 };
 
 describe("SkillsLibrary learning modal ESC close", () => {
+  let currentLocale: TestLocale = "en";
+
   beforeEach(() => {
     Object.defineProperty(window, "localStorage", {
-      value: createStorageMock({ [LANGUAGE_STORAGE_KEY]: "en" }),
+      value: createStorageMock({ [LANGUAGE_STORAGE_KEY]: currentLocale }),
       configurable: true,
     });
   });
@@ -80,57 +120,74 @@ describe("SkillsLibrary learning modal ESC close", () => {
     vi.clearAllMocks();
   });
 
-  it("closes the learning modal when Escape is pressed", async () => {
-    render(<SkillsLibrary agents={[TEST_AGENT]} />);
+  for (const locale of ["ko", "en", "ja", "zh"] as const) {
+    it(`closes the learning modal when Escape is pressed (${locale})`, async () => {
+      currentLocale = locale;
+      Object.defineProperty(window, "localStorage", {
+        value: createStorageMock({ [LANGUAGE_STORAGE_KEY]: currentLocale }),
+        configurable: true,
+      });
+      const text = UI_TEXT[locale];
+      render(<SkillsLibrary agents={[TEST_AGENT]} />);
 
-    await screen.findByRole("button", { name: /^Learn$/ });
+      await screen.findByRole("button", { name: exactText(text.learn) });
 
-    fireEvent.click(screen.getByRole("button", { name: /^Learn$/ }));
+      fireEvent.click(screen.getByRole("button", { name: exactText(text.learn) }));
 
-    expect(
-      screen.getByRole("heading", { name: /skill learning squad/i })
-    ).toBeInTheDocument();
-
-    fireEvent.keyDown(window, { key: "Escape" });
-
-    await waitFor(() => {
       expect(
-        screen.queryByRole("heading", { name: /skill learning squad/i })
-      ).not.toBeInTheDocument();
+        screen.getByRole("heading", { name: exactText(text.modalHeading) })
+      ).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("heading", { name: exactText(text.modalHeading) })
+        ).not.toBeInTheDocument();
+      });
     });
-  });
+  }
 
-  it("keeps the learning modal open on Escape while learning is running", async () => {
-    startSkillLearningMock.mockResolvedValueOnce({
-      id: "job-1",
-      repo: "superpowers/using-superpowers",
-      skillId: "superpowers:using-superpowers",
-      providers: ["claude"],
-      agents: ["a1"],
-      status: "running",
-      command: "npx skills add superpowers/using-superpowers",
-      createdAt: Date.now(),
-      startedAt: Date.now(),
-      completedAt: null,
-      updatedAt: Date.now(),
-      exitCode: null,
-      logTail: [],
-      error: null,
+  for (const locale of ["ko", "en", "ja", "zh"] as const) {
+    it(`keeps the learning modal open on Escape while learning is running (${locale})`, async () => {
+      currentLocale = locale;
+      Object.defineProperty(window, "localStorage", {
+        value: createStorageMock({ [LANGUAGE_STORAGE_KEY]: currentLocale }),
+        configurable: true,
+      });
+      const text = UI_TEXT[locale];
+
+      startSkillLearningMock.mockResolvedValueOnce({
+        id: "job-1",
+        repo: "superpowers/using-superpowers",
+        skillId: "superpowers:using-superpowers",
+        providers: ["claude"],
+        agents: ["a1"],
+        status: "running",
+        command: "npx skills add superpowers/using-superpowers",
+        createdAt: Date.now(),
+        startedAt: Date.now(),
+        completedAt: null,
+        updatedAt: Date.now(),
+        exitCode: null,
+        logTail: [],
+        error: null,
+      });
+
+      render(<SkillsLibrary agents={[TEST_AGENT]} />);
+
+      await screen.findByRole("button", { name: exactText(text.learn) });
+
+      fireEvent.click(screen.getByRole("button", { name: exactText(text.learn) }));
+      fireEvent.click(screen.getByRole("button", { name: exactText(text.startLearning) }));
+
+      await screen.findByRole("button", { name: exactText(text.running) });
+
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      expect(
+        screen.getByRole("heading", { name: exactText(text.modalHeading) })
+      ).toBeInTheDocument();
     });
-
-    render(<SkillsLibrary agents={[TEST_AGENT]} />);
-
-    await screen.findByRole("button", { name: /^Learn$/ });
-
-    fireEvent.click(screen.getByRole("button", { name: /^Learn$/ }));
-    fireEvent.click(screen.getByRole("button", { name: /start learning/i }));
-
-    await screen.findByRole("button", { name: /running/i });
-
-    fireEvent.keyDown(window, { key: "Escape" });
-
-    expect(
-      screen.getByRole("heading", { name: /skill learning squad/i })
-    ).toBeInTheDocument();
-  });
+  }
 });
