@@ -1,5 +1,6 @@
 // @ts-nocheck
 import type { RuntimeContext } from "../types/runtime-context.ts";
+import fs from "node:fs";
 import path from "path";
 import { HOST, PKG_VERSION, PORT } from "../config/runtime.ts";
 import { notifyTaskStatus } from "../gateway/client.ts";
@@ -42,6 +43,7 @@ export function startLifecycle(ctx: RuntimeContext): void {
     stopProgressTimer,
     stopRequestedTasks,
     wsClients,
+    logsDir,
   } = ctx as any;
 
 
@@ -147,6 +149,7 @@ function pruneDuplicateReviewMeetings(): void {
 }
 
 type InProgressRecoveryReason = "startup" | "interval";
+const ORPHAN_RECENT_ACTIVITY_WINDOW_MS = Math.max(120_000, IN_PROGRESS_ORPHAN_GRACE_MS);
 
 function recoverOrphanInProgressTasks(reason: InProgressRecoveryReason): void {
   const inProgressTasks = db.prepare(`
@@ -178,19 +181,29 @@ function recoverOrphanInProgressTasks(reason: InProgressRecoveryReason): void {
 
     const lastTouchedAt = Math.max(task.updated_at ?? 0, task.started_at ?? 0, task.created_at ?? 0);
     const ageMs = lastTouchedAt > 0 ? Math.max(0, now - lastTouchedAt) : IN_PROGRESS_ORPHAN_GRACE_MS + 1;
-    if (reason === "interval" && ageMs < IN_PROGRESS_ORPHAN_GRACE_MS) continue;
+    if (ageMs < IN_PROGRESS_ORPHAN_GRACE_MS) continue;
 
-    // 추가 안전장치: 최근 2분 이내 로그가 있으면 아직 활성 상태로 간주
-    if (reason === "interval") {
-      const recentLog = db.prepare(`
-        SELECT created_at FROM task_logs
-        WHERE task_id = ? AND created_at > ?
-        ORDER BY created_at DESC LIMIT 1
-      `).get(task.id, now - 120_000) as { created_at: number } | undefined;
-      if (recentLog) {
-        // 로그 활동이 있으면 orphan이 아님 — 스킵
+    // 추가 안전장치 1: task_logs 활동이 최근 윈도우 내에 있으면 아직 활성 상태로 간주
+    const recentLog = db.prepare(`
+      SELECT created_at FROM task_logs
+      WHERE task_id = ? AND created_at > ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(task.id, now - ORPHAN_RECENT_ACTIVITY_WINDOW_MS) as { created_at: number } | undefined;
+    if (recentLog) {
+      continue;
+    }
+
+    // 추가 안전장치 2: 터미널 로그 파일이 최근까지 갱신됐다면 여전히 출력이 진행 중인 것으로 간주
+    // (예: 서버 리로드/재시작으로 in-memory process handle만 유실된 경우)
+    try {
+      const logPath = path.join(logsDir, `${task.id}.log`);
+      const stat = fs.statSync(logPath);
+      const logIdleMs = Math.max(0, now - Math.floor(stat.mtimeMs || 0));
+      if (logIdleMs <= ORPHAN_RECENT_ACTIVITY_WINDOW_MS) {
         continue;
       }
+    } catch {
+      // 로그 파일이 없거나 접근 불가하면 기존 복구 로직 진행
     }
 
     const latestRunLog = db.prepare(`

@@ -221,6 +221,9 @@ export default function App() {
   // Ref to track currently open chat (avoids stale closures in WebSocket handlers)
   const activeChatRef = useRef<{ showChat: boolean; agentId: string | null }>({ showChat: false, agentId: null });
   activeChatRef.current = { showChat, agentId: chatAgent?.id ?? null };
+  const liveSyncInFlightRef = useRef(false);
+  const liveSyncQueuedRef = useRef(false);
+  const liveSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // OAuth callback detection
   useEffect(() => {
@@ -311,9 +314,46 @@ export default function App() {
     }
   }, []);
 
+  const runLiveSync = useCallback(() => {
+    if (liveSyncInFlightRef.current) {
+      liveSyncQueuedRef.current = true;
+      return;
+    }
+    liveSyncInFlightRef.current = true;
+    Promise.all([api.getTasks(), api.getAgents(), api.getStats()])
+      .then(([nextTasks, nextAgents, nextStats]) => {
+        setTasks(nextTasks);
+        setAgents(nextAgents);
+        setStats(nextStats);
+      })
+      .catch(console.error)
+      .finally(() => {
+        liveSyncInFlightRef.current = false;
+        if (!liveSyncQueuedRef.current) return;
+        liveSyncQueuedRef.current = false;
+        setTimeout(() => runLiveSync(), 120);
+      });
+  }, []);
+
+  const scheduleLiveSync = useCallback((delayMs = 120) => {
+    if (liveSyncTimerRef.current) return;
+    liveSyncTimerRef.current = setTimeout(() => {
+      liveSyncTimerRef.current = null;
+      runLiveSync();
+    }, Math.max(0, delayMs));
+  }, [runLiveSync]);
+
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    return () => {
+      if (!liveSyncTimerRef.current) return;
+      clearTimeout(liveSyncTimerRef.current);
+      liveSyncTimerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -363,9 +403,7 @@ export default function App() {
   useEffect(() => {
     const unsubs = [
       on("task_update", () => {
-        api.getTasks().then(setTasks).catch(console.error);
-        api.getAgents().then(setAgents).catch(console.error);
-        api.getStats().then(setStats).catch(console.error);
+        scheduleLiveSync(80);
       }),
       on("agent_status", (payload: unknown) => {
         const p = payload as Agent & { subAgents?: SubAgent[] };
@@ -512,8 +550,8 @@ export default function App() {
           }
           return appendCapped(prev, st, MAX_LIVE_SUBTASKS);
         });
-        // Also refresh tasks to update subtask_total/subtask_done counts
-        api.getTasks().then(setTasks).catch(console.error);
+        // Coalesce expensive sync calls when subtask events burst.
+        scheduleLiveSync(160);
       }),
       on("cli_output", (payload: unknown) => {
         const p = payload as { task_id: string; stream: string; data: string };
@@ -606,16 +644,15 @@ export default function App() {
       }),
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, [on]);
+  }, [on, scheduleLiveSync]);
 
   // Polling for fresh data every 5 seconds
   useEffect(() => {
     const timer = setInterval(() => {
-      api.getAgents().then(setAgents).catch(console.error);
-      api.getTasks().then(setTasks).catch(console.error);
+      scheduleLiveSync(0);
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [scheduleLiveSync]);
 
   const activeMeetingTaskId = useMemo(() => {
     const now = Date.now();
