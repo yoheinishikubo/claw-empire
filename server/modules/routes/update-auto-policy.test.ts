@@ -26,6 +26,8 @@ describe("update auto policy", () => {
   it("allows force to bypass overridable guards only", () => {
     expect(shouldSkipUpdateByGuards(["busy_tasks:1"], true)).toBe(false);
     expect(shouldSkipUpdateByGuards(["busy_tasks:1"], false)).toBe(true);
+    expect(shouldSkipUpdateByGuards(["branch_not_main:develop"], true)).toBe(false);
+    expect(shouldSkipUpdateByGuards(["branch_not_main:develop"], false)).toBe(true);
     expect(shouldSkipUpdateByGuards([], false)).toBe(false);
   });
 
@@ -33,5 +35,6 @@ describe("update auto policy", () => {
     expect(needsForceConfirmation(true, false)).toBe(true);
     expect(needsForceConfirmation(true, true)).toBe(false);
     expect(needsForceConfirmation(false, false)).toBe(false);
+    expect(needsForceConfirmation(false, true)).toBe(false);
   });
 });

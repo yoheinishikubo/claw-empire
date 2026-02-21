@@ -15,6 +15,7 @@ export function parseAutoUpdateChannel(rawEnv: unknown): { channel: AutoUpdateCh
 }
 
 export function shouldSkipUpdateByGuards(reasons: string[], force: boolean): boolean {
+  // Branch mismatch / busy-state reasons remain overridable when force=true.
   const hasNonOverridableGuard = reasons.includes("dirty_worktree")
     || reasons.includes("git_remote_origin_missing")
     || reasons.some((reason) => reason.startsWith("channel_blocked:"));

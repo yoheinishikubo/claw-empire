@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, execFile, execFileSync } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { INBOX_WEBHOOK_SECRET, PKG_VERSION } from "../../config/runtime.ts";
 import { notifyTaskStatus, gatewayHttpInvoke } from "../../gateway/client.ts";
 import { BUILTIN_GITHUB_CLIENT_ID, BUILTIN_GOOGLE_CLIENT_ID, BUILTIN_GOOGLE_CLIENT_SECRET, OAUTH_BASE_URL, OAUTH_ENCRYPTION_SECRET, OAUTH_STATE_TTL_MS, appendOAuthQuery, b64url, pkceVerifier, sanitizeOAuthRedirect, encryptSecret, decryptSecret } from "../../oauth/helpers.ts";
@@ -260,6 +261,7 @@ const AUTO_UPDATE_IDLE_ONLY = String(process.env.AUTO_UPDATE_IDLE_ONLY ?? "1").t
 const AUTO_UPDATE_CHECK_INTERVAL_MS = Math.max(60_000, Number(process.env.AUTO_UPDATE_CHECK_INTERVAL_MS ?? UPDATE_CHECK_TTL_MS) || UPDATE_CHECK_TTL_MS);
 // Delay before first automatic update check after startup (AUTO_UPDATE_INITIAL_DELAY_MS, default/minimum 60s).
 const AUTO_UPDATE_INITIAL_DELAY_MS = Math.max(60_000, Number(process.env.AUTO_UPDATE_INITIAL_DELAY_MS ?? 60_000) || 60_000);
+const AUTO_UPDATE_TARGET_BRANCH = String(process.env.AUTO_UPDATE_TARGET_BRANCH ?? "main").trim() || "main";
 const AUTO_UPDATE_RESTART_MODE = (() => {
   const raw = String(process.env.AUTO_UPDATE_RESTART_MODE ?? "notify").trim().toLowerCase();
   if (raw === "exit" || raw === "command") return raw as AutoUpdateRestartMode;
@@ -407,6 +409,7 @@ async function runCommandCapture(cmd: string, args: string[], timeoutMs: number)
     }
 
     const timer = setTimeout(() => {
+      clearTimeout(timer);
       const pid = Number(child.pid ?? 0);
       if (pid > 0) {
         killPidTree(pid);
@@ -468,6 +471,29 @@ function logAutoUpdate(message: string): void {
   }
 }
 
+function parseUpdateBooleanFlag(body: any, key: string): boolean {
+  const raw = body?.[key];
+  if (raw === true || raw === false) return raw;
+
+  const value = String(raw ?? "").trim();
+  if (!value || value === "0") return false;
+  if (value === "1") return true;
+
+  logAutoUpdate(`warning: invalid boolean value for "${key}" in /api/update-apply: ${JSON.stringify(raw)}; treating as false`);
+  return false;
+}
+
+function isLikelyManagedRuntime(): boolean {
+  return Boolean(
+    process.env.pm_id
+      || process.env.PM2_HOME
+      || process.env.INVOCATION_ID
+      || process.env.KUBERNETES_SERVICE_HOST
+      || process.env.CONTAINER
+      || process.env.DOCKER_CONTAINER,
+  );
+}
+
 // note: service health verification for newly updated code should happen after restart, not pre-restart.
 
 async function applyUpdateNow(options: {
@@ -490,12 +516,13 @@ async function applyUpdateNow(options: {
       reasons.push("manual_recovery_may_be_required");
     }
   };
-  const deadlineMs = startedAt + AUTO_UPDATE_TOTAL_TIMEOUT_MS;
+  const startedTickMs = performance.now();
+  const elapsedMs = (): number => Math.max(0, performance.now() - startedTickMs);
   const remainingTimeout = (fallbackMs: number): number => {
-    const remain = deadlineMs - Date.now();
+    const remain = AUTO_UPDATE_TOTAL_TIMEOUT_MS - elapsedMs();
     return Math.max(1_000, Math.min(fallbackMs, remain));
   };
-  const hasExceededTotalTimeout = (): boolean => Date.now() >= deadlineMs;
+  const hasExceededTotalTimeout = (): boolean => elapsedMs() >= AUTO_UPDATE_TOTAL_TIMEOUT_MS;
 
   if (needsForceConfirmation(force, forceConfirmed)) {
     const finishedAt = Date.now();
@@ -531,8 +558,8 @@ async function applyUpdateNow(options: {
   const branchName = branchRes.stdout.trim();
   if (!branchRes.ok || !branchName) {
     reasons.push("git_branch_unknown");
-  } else if (branchName !== "main") {
-    reasons.push(`branch_not_main:${branchName}`);
+  } else if (branchName !== AUTO_UPDATE_TARGET_BRANCH) {
+    reasons.push(`branch_not_${AUTO_UPDATE_TARGET_BRANCH}:${branchName}`);
   }
 
   const remoteRes = await runCommandCapture("git", ["remote", "get-url", "origin"], 10_000);
@@ -584,8 +611,8 @@ async function applyUpdateNow(options: {
   }
 
   if (!error) {
-    const fetchRes = await runCommandCapture("git", ["fetch", "--tags", "--prune", "origin", "main"], remainingTimeout(updateCommandTimeoutMs.gitFetch));
-    commands.push({ cmd: "git fetch --tags --prune origin main", ok: fetchRes.ok, code: fetchRes.code, stdout_tail: tailText(fetchRes.stdout), stderr_tail: tailText(fetchRes.stderr) });
+    const fetchRes = await runCommandCapture("git", ["fetch", "--tags", "--prune", "origin", AUTO_UPDATE_TARGET_BRANCH], remainingTimeout(updateCommandTimeoutMs.gitFetch));
+    commands.push({ cmd: `git fetch --tags --prune origin ${AUTO_UPDATE_TARGET_BRANCH}`, ok: fetchRes.ok, code: fetchRes.code, stdout_tail: tailText(fetchRes.stdout), stderr_tail: tailText(fetchRes.stderr) });
     if (!fetchRes.ok) {
       logAutoUpdate("git fetch failed; repository state should be verified before retrying update");
       addManualRecoveryReason();
@@ -598,8 +625,8 @@ async function applyUpdateNow(options: {
       error = "update_total_timeout_exceeded";
       reasons.push("update_total_timeout_exceeded");
     } else {
-      const pullRes = await runCommandCapture("git", ["pull", "--ff-only", "origin", "main"], remainingTimeout(updateCommandTimeoutMs.gitPull));
-      commands.push({ cmd: "git pull --ff-only origin main", ok: pullRes.ok, code: pullRes.code, stdout_tail: tailText(pullRes.stdout), stderr_tail: tailText(pullRes.stderr) });
+      const pullRes = await runCommandCapture("git", ["pull", "--ff-only", "origin", AUTO_UPDATE_TARGET_BRANCH], remainingTimeout(updateCommandTimeoutMs.gitPull));
+      commands.push({ cmd: `git pull --ff-only origin ${AUTO_UPDATE_TARGET_BRANCH}`, ok: pullRes.ok, code: pullRes.code, stdout_tail: tailText(pullRes.stdout), stderr_tail: tailText(pullRes.stderr) });
       if (!pullRes.ok) {
         // fetch succeeded but pull failed: local repo may need manual recovery.
         logAutoUpdate("git pull failed after successful fetch; manual recovery may be required");
@@ -644,25 +671,18 @@ async function applyUpdateNow(options: {
       if (autoUpdateExitTimer) clearTimeout(autoUpdateExitTimer);
       restart.scheduled_exit_at = Date.now() + AUTO_UPDATE_EXIT_DELAY_MS;
       autoUpdateExitTimer = setTimeout(() => {
-        logAutoUpdate("auto-update initiating graceful shutdown (mode=exit)");
+        logAutoUpdate("auto-update initiating graceful shutdown (mode=exit); shutdown handlers should listen to SIGTERM");
         process.exitCode = 0;
-        let signaled = false;
+        let gracefulDelayMs = 0;
         if (process.listenerCount("SIGTERM") > 0) {
           try {
             process.kill(process.pid, "SIGTERM");
-            signaled = true;
+            gracefulDelayMs = 1500;
           } catch {
             // ignore and fallback to hard exit below
           }
         }
-        if (process.listenerCount("beforeExit") > 0) {
-          try {
-            process.emit("beforeExit", process.exitCode ?? 0);
-          } catch {
-            // ignore and fallback to hard exit below
-          }
-        }
-        setTimeout(() => process.exit(0), signaled ? 1500 : 0);
+        setTimeout(() => process.exit(0), gracefulDelayMs);
       }, AUTO_UPDATE_EXIT_DELAY_MS);
       maybeUnrefTimer(autoUpdateExitTimer);
     } else if (AUTO_UPDATE_RESTART_MODE === "command" && AUTO_UPDATE_RESTART_COMMAND) {
@@ -678,6 +698,20 @@ async function applyUpdateNow(options: {
             shell: false,
             detached: true,
             stdio: "ignore",
+          });
+          child.once("error", (err) => {
+            restart.scheduled = false;
+            logAutoUpdate(
+              `restart mode=command process error for ${parsed.cmd}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+          child.once("exit", (code, signal) => {
+            if (code !== 0) {
+              restart.scheduled = false;
+              logAutoUpdate(
+                `restart mode=command process for ${parsed.cmd} exited with code=${code}${signal ? ` signal=${signal}` : ""}`,
+              );
+            }
           });
           child.unref();
           restart.scheduled = true;
@@ -752,14 +786,19 @@ if (AUTO_UPDATE_ENABLED) {
     autoUpdateActive = true;
     autoUpdateState.next_check_at = Date.now() + AUTO_UPDATE_INITIAL_DELAY_MS;
     logAutoUpdate(`enabled (first_check_in_ms=${AUTO_UPDATE_INITIAL_DELAY_MS}, interval_ms=${AUTO_UPDATE_CHECK_INTERVAL_MS})`);
+    if (AUTO_UPDATE_RESTART_MODE === "exit" && !isLikelyManagedRuntime()) {
+      logAutoUpdate("warning: restart_mode=exit is enabled but no process manager was detected; process may stop after update");
+    }
 
     autoUpdateBootTimer = setTimeout(() => {
       void runAutoUpdateCycle();
     }, AUTO_UPDATE_INITIAL_DELAY_MS);
+    maybeUnrefTimer(autoUpdateBootTimer);
 
     autoUpdateInterval = setInterval(() => {
       void runAutoUpdateCycle();
     }, AUTO_UPDATE_CHECK_INTERVAL_MS);
+    maybeUnrefTimer(autoUpdateInterval);
 
     process.once("SIGTERM", stopAutoUpdateTimers);
     process.once("SIGINT", stopAutoUpdateTimers);
@@ -889,41 +928,50 @@ app.post("/api/update-apply", async (req, res) => {
   }
 
   const body = req.body ?? {};
-  const dryRun = body?.dry_run === true || String(body?.dry_run ?? "").trim() === "1";
-  const force = body?.force === true || String(body?.force ?? "").trim() === "1";
-  const forceConfirm = body?.force_confirm === true || String(body?.force_confirm ?? "").trim() === "1";
+  const dryRun = parseUpdateBooleanFlag(body, "dry_run");
+  const force = parseUpdateBooleanFlag(body, "force");
+  const forceConfirm = parseUpdateBooleanFlag(body, "force_confirm");
 
   if (!tryAcquireAutoUpdateLock()) {
     return res.status(409).json({ ok: false, error: "update_already_running" });
   }
 
-  autoUpdateInFlight = (async () => {
-    autoUpdateState.running = true;
-    autoUpdateState.last_checked_at = Date.now();
-    autoUpdateState.last_runtime_error = null;
-    logAutoUpdate(`manual apply requested (dry_run=${dryRun ? "1" : "0"}, force=${force ? "1" : "0"})`);
+  let inFlight: Promise<UpdateApplyResult>;
+  try {
+    autoUpdateInFlight = (async () => {
+      autoUpdateState.running = true;
+      autoUpdateState.last_checked_at = Date.now();
+      autoUpdateState.last_runtime_error = null;
+      logAutoUpdate(`manual apply requested (dry_run=${dryRun ? "1" : "0"}, force=${force ? "1" : "0"})`);
 
-    const result = await applyUpdateNow({ trigger: "manual", dryRun, force, forceConfirmed: forceConfirm });
-    autoUpdateState.last_result = result;
-    autoUpdateState.last_error = result.error;
-    return result;
-  })()
-    .catch((err) => {
-      autoUpdateState.last_runtime_error = err instanceof Error ? err.message : String(err);
-      throw err;
-    })
-    .finally(() => {
-      autoUpdateState.running = false;
-      autoUpdateInFlight = null;
-      if (!updateStatusInFlight) {
+      const result = await applyUpdateNow({ trigger: "manual", dryRun, force, forceConfirmed: forceConfirm });
+      autoUpdateState.last_result = result;
+      autoUpdateState.last_error = result.error;
+      return result;
+    })()
+      .catch((err) => {
+        autoUpdateState.last_runtime_error = err instanceof Error ? err.message : String(err);
+        throw err;
+      })
+      .finally(() => {
+        autoUpdateState.running = false;
+        autoUpdateInFlight = null;
         updateStatusCachedAt = 0;
         updateStatusCache = null;
-      }
-      releaseAutoUpdateLock();
-    });
+        releaseAutoUpdateLock();
+      });
+    inFlight = autoUpdateInFlight;
+  } catch (err: any) {
+    autoUpdateState.running = false;
+    autoUpdateInFlight = null;
+    updateStatusCachedAt = 0;
+    updateStatusCache = null;
+    releaseAutoUpdateLock();
+    return res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
 
   try {
-    const result = await autoUpdateInFlight;
+    const result = await inFlight;
     if (result.reasons.includes("force_confirmation_required")) {
       return res.status(400).json({
         ok: false,

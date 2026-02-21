@@ -544,6 +544,7 @@ Copy `.env.example` to `.env`. All secrets stay local — never commit `.env`.
 | `AUTO_UPDATE_IDLE_ONLY` | No | Apply only when no `in_progress` tasks/active CLI processes (`1` default) |
 | `AUTO_UPDATE_CHECK_INTERVAL_MS` | No | Auto-update check interval in milliseconds (default follows `UPDATE_CHECK_TTL_MS`) |
 | `AUTO_UPDATE_INITIAL_DELAY_MS` | No | Delay before first auto-update check after startup (default `60000`, min `60000`) |
+| `AUTO_UPDATE_TARGET_BRANCH` | No | Branch name used for branch guard and `git fetch/pull` target (default `main`) |
 | `AUTO_UPDATE_GIT_FETCH_TIMEOUT_MS` | No | Timeout for `git fetch` during update apply (default `120000`) |
 | `AUTO_UPDATE_GIT_PULL_TIMEOUT_MS` | No | Timeout for `git pull --ff-only` during update apply (default `180000`) |
 | `AUTO_UPDATE_INSTALL_TIMEOUT_MS` | No | Timeout for `pnpm install --frozen-lockfile` during update apply (default `300000`) |

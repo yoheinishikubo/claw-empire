@@ -543,6 +543,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `AUTO_UPDATE_IDLE_ONLY` | 선택 | `in_progress` 태스크/활성 CLI 프로세스가 없을 때만 적용 (`1` 기본값) |
 | `AUTO_UPDATE_CHECK_INTERVAL_MS` | 선택 | 자동 업데이트 확인 주기(밀리초) (기본값: `UPDATE_CHECK_TTL_MS` 따름) |
 | `AUTO_UPDATE_INITIAL_DELAY_MS` | 선택 | 서버 시작 후 첫 자동 업데이트 확인까지 대기 시간(밀리초) (기본값 `60000`, 최소 `60000`) |
+| `AUTO_UPDATE_TARGET_BRANCH` | 선택 | 브랜치 가드 및 `git fetch/pull` 대상으로 사용할 브랜치명 (기본값 `main`) |
 | `AUTO_UPDATE_GIT_FETCH_TIMEOUT_MS` | 선택 | 업데이트 적용 중 `git fetch` 타임아웃(밀리초) (기본값 `120000`) |
 | `AUTO_UPDATE_GIT_PULL_TIMEOUT_MS` | 선택 | 업데이트 적용 중 `git pull --ff-only` 타임아웃(밀리초) (기본값 `180000`) |
 | `AUTO_UPDATE_INSTALL_TIMEOUT_MS` | 선택 | 업데이트 적용 중 `pnpm install --frozen-lockfile` 타임아웃(밀리초) (기본값 `300000`) |
