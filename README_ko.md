@@ -69,6 +69,7 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 - **회의 프롬프트 압축 기본값 조정** — 회의 transcript 프롬프트 압축 기본값을 `MEETING_TRANSCRIPT_MAX_TURNS=20`으로 상향하고, 라인/전체 길이 예산을 함께 적용합니다.
 - **첫 실행 `.env` 자동 보강** — `git pull` 이후 첫 `pnpm dev*` / `pnpm start*` 실행 시, `.env`에 누락된 회의 프롬프트 키(`MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS`, `MEETING_TRANSCRIPT_MAX_TURNS`, `MEETING_TRANSCRIPT_LINE_MAX_CHARS`, `MEETING_TRANSCRIPT_TOTAL_MAX_CHARS`)를 자동으로 채웁니다(기존 값은 유지).
 - **출처** — 해당 회의 프롬프트 압축 후속 반영은 `SJY0917032`의 PR #23 제안/논의를 기반으로 했습니다.
+- **Active Agents 프로세스 확인 메뉴 추가** — Active Agents에 `Script` / `Idle CLI` 탭을 추가해 비정상 종료되었거나 남아 있는 스크립트/백그라운드 CLI 프로세스를 확인할 수 있습니다. 관련 샘플 이미지: `Sample_Img/Script_view.png`, `Sample_Img/Idle_CLI_view.png`.
 - 상세 문서: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---

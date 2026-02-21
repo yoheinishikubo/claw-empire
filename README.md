@@ -69,6 +69,7 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 - **Meeting Prompt Compaction Defaults** — Meeting transcript prompt compaction now defaults to `MEETING_TRANSCRIPT_MAX_TURNS=20` with per-line/total character budgets.
 - **First-Run `.env` Auto-Seeding** — After `git pull`, first `pnpm dev*` / `pnpm start*` run now auto-populates missing meeting prompt keys in `.env` (`MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS`, `MEETING_TRANSCRIPT_MAX_TURNS`, `MEETING_TRANSCRIPT_LINE_MAX_CHARS`, `MEETING_TRANSCRIPT_TOTAL_MAX_CHARS`) without overriding existing values.
 - **Attribution** — This meeting prompt compaction follow-up is based on proposal/discussion in PR #23 by `SJY0917032`.
+- **Active Agents Process Check Menu** — Added `Script` and `Idle CLI` tabs in Active Agents to inspect potentially abnormal/stale script and background CLI processes. Related sample images: `Sample_Img/Script_view.png`, `Sample_Img/Idle_CLI_view.png`.
 - Full notes: [`docs/releases/v1.1.3.md`](docs/releases/v1.1.3.md)
 
 ---
