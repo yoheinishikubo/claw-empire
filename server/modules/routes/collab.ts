@@ -2062,6 +2062,7 @@ function shouldTreatDirectChatAsTask(ceoMessage: string, messageType: string): b
   if (messageType === "report") return false;
   const text = ceoMessage.trim();
   if (!text) return false;
+  if (/^\[(의사결정\s*회신|decision\s*reply|意思決定返信|决策回复)\]/i.test(text)) return false;
 
   if (/^\s*(task|todo|업무|지시|작업|할일)\s*[:\-]/i.test(text)) return true;
 

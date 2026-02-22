@@ -216,6 +216,7 @@ const meetingPhaseByAgent = new Map<string, "kickoff" | "review">();
 const meetingTaskIdByAgent = new Map<string, string>();
 type MeetingReviewDecision = "reviewing" | "approved" | "hold";
 const meetingReviewDecisionByAgent = new Map<string, MeetingReviewDecision>();
+const projectReviewGateNotifiedAt = new Map<string, number>();
 
 interface TaskExecutionSessionState {
   sessionId: string;
@@ -322,6 +323,31 @@ function scheduleNextReviewRound(taskId: string, taskTitle: string, currentRound
     if (!current || current.status !== "review") return;
     finishReview(taskId, taskTitle);
   }, randomDelay(1200, 1900));
+}
+
+function getProjectReviewGateSnapshot(projectId: string): {
+  activeTotal: number;
+  activeReview: number;
+  rootReviewTotal: number;
+  ready: boolean;
+} {
+  const row = db.prepare(`
+    SELECT
+      SUM(CASE WHEN status NOT IN ('done', 'cancelled') THEN 1 ELSE 0 END) AS active_total,
+      SUM(CASE WHEN status NOT IN ('done', 'cancelled') AND status = 'review' THEN 1 ELSE 0 END) AS active_review,
+      SUM(CASE WHEN status = 'review' AND source_task_id IS NULL THEN 1 ELSE 0 END) AS root_review_total
+    FROM tasks
+    WHERE project_id = ?
+  `).get(projectId) as {
+    active_total: number | null;
+    active_review: number | null;
+    root_review_total: number | null;
+  } | undefined;
+  const activeTotal = row?.active_total ?? 0;
+  const activeReview = row?.active_review ?? 0;
+  const rootReviewTotal = row?.root_review_total ?? 0;
+  const ready = activeTotal > 0 && activeTotal === activeReview && rootReviewTotal > 0;
+  return { activeTotal, activeReview, rootReviewTotal, ready };
 }
 
 const REPORT_FLOW_PREFIX = "[REPORT FLOW]";
@@ -1804,14 +1830,50 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
 }
 
 // Move a reviewed task to 'done'
-function finishReview(taskId: string, taskTitle: string): void {
+function finishReview(
+  taskId: string,
+  taskTitle: string,
+  options?: { bypassProjectDecisionGate?: boolean; trigger?: string },
+): void {
   const lang = resolveLang(taskTitle);
-  const currentTask = db.prepare("SELECT status, department_id, source_task_id FROM tasks WHERE id = ?").get(taskId) as {
+  const currentTask = db.prepare("SELECT status, department_id, source_task_id, project_id FROM tasks WHERE id = ?").get(taskId) as {
     status: string;
     department_id: string | null;
     source_task_id: string | null;
+    project_id: string | null;
   } | undefined;
   if (!currentTask || currentTask.status !== "review") return; // Already moved or cancelled
+
+  if (!options?.bypassProjectDecisionGate && !currentTask.source_task_id && currentTask.project_id) {
+    const gateSnapshot = getProjectReviewGateSnapshot(currentTask.project_id);
+    appendTaskLog(
+      taskId,
+      "system",
+      `Review gate: waiting for project-level decision (${gateSnapshot.activeReview}/${gateSnapshot.activeTotal} active tasks in review)`,
+    );
+    if (gateSnapshot.ready) {
+      const now = nowMs();
+      const lastNotified = projectReviewGateNotifiedAt.get(currentTask.project_id) ?? 0;
+      if (now - lastNotified > 30_000) {
+        projectReviewGateNotifiedAt.set(currentTask.project_id, now);
+        const project = db.prepare("SELECT name FROM projects WHERE id = ?").get(currentTask.project_id) as { name: string | null } | undefined;
+        const projectName = (project?.name || currentTask.project_id).trim();
+        notifyCeo(pickL(l(
+          [`[CEO OFFICE] 프로젝트 '${projectName}'의 활성 항목 ${gateSnapshot.activeTotal}건이 모두 Review 상태입니다. 의사결정 인박스에서 승인하면 팀장 회의를 시작합니다.`],
+          [`[CEO OFFICE] Project '${projectName}' now has all ${gateSnapshot.activeTotal} active tasks in Review. Approve from Decision Inbox to start team-lead review meetings.`],
+          [`[CEO OFFICE] プロジェクト'${projectName}'のアクティブタスク${gateSnapshot.activeTotal}件がすべてReviewに到達しました。Decision Inboxで承認するとチームリーダー会議を開始します。`],
+          [`[CEO OFFICE] 项目'${projectName}'的 ${gateSnapshot.activeTotal} 个活跃任务已全部进入 Review。请在 Decision Inbox 批准后启动组长评审会议。`],
+        ), lang), taskId);
+      }
+    } else {
+      projectReviewGateNotifiedAt.delete(currentTask.project_id);
+    }
+    return;
+  }
+  if (options?.bypassProjectDecisionGate && currentTask.project_id) {
+    projectReviewGateNotifiedAt.delete(currentTask.project_id);
+    appendTaskLog(taskId, "system", `Review gate bypassed (trigger=${options.trigger ?? "manual"})`);
+  }
 
   const remainingSubtasks = db.prepare(
     "SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status != 'done'"

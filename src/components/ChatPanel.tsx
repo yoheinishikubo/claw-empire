@@ -5,6 +5,8 @@ import AgentAvatar, { buildSpriteMap } from './AgentAvatar';
 import { useI18n } from '../i18n';
 import type { LangText } from '../i18n';
 import { createProject, getProjects } from '../api';
+import { parseDecisionRequest } from './chat/decision-request';
+import type { DecisionOption } from './chat/decision-request';
 
 export interface StreamingMessage {
   message_id: string;
@@ -29,7 +31,7 @@ interface ChatPanelProps {
       project_path?: string;
       project_context?: string;
     },
-  ) => void;
+  ) => void | Promise<void>;
   onSendAnnouncement: (content: string) => void;
   onSendDirective: (
     content: string,
@@ -105,6 +107,10 @@ function TypingIndicator() {
       </div>
     </div>
   );
+}
+
+function isPromiseLike(value: unknown): value is Promise<void> {
+  return !!value && typeof (value as { then?: unknown }).then === 'function';
 }
 
 export function ChatPanel({
@@ -190,6 +196,7 @@ export function ChatPanel({
   const [newProjectPath, setNewProjectPath] = useState('');
   const [newProjectGoal, setNewProjectGoal] = useState('');
   const [projectSaving, setProjectSaving] = useState(false);
+  const [decisionReplyKey, setDecisionReplyKey] = useState<string | null>(null);
   const isDirectivePending = pendingSend?.kind === 'directive';
 
   const closeProjectFlow = () => {
@@ -362,11 +369,9 @@ export function ChatPanel({
       action = { kind: 'broadcast', content: trimmed };
     }
 
-    const isTaskInstruction = action.kind === 'directive' || action.kind === 'task';
-    // Always ask project branch before task/directive execution.
-    const needsProjectBranch = isTaskInstruction;
+    const requiresProject = action.kind === 'directive' || action.kind === 'task' || action.kind === 'report';
 
-    if (needsProjectBranch) {
+    if (requiresProject) {
       openProjectBranch(action);
       return;
     }
@@ -409,6 +414,48 @@ export function ChatPanel({
       msg.receiver_type === 'all'
     );
   }), [messages, selectedAgentId, selectedTaskId]);
+
+  const decisionRequestByMessage = useMemo(() => {
+    const mapped = new Map<string, { options: DecisionOption[] }>();
+    if (!selectedAgentId) return mapped;
+    for (const msg of visibleMessages) {
+      if (msg.sender_type !== 'agent' || msg.sender_id !== selectedAgentId) continue;
+      const parsed = parseDecisionRequest(msg.content);
+      if (parsed) mapped.set(msg.id, parsed);
+    }
+    return mapped;
+  }, [selectedAgentId, visibleMessages]);
+
+  const handleDecisionOptionReply = useCallback((msg: Message, option: DecisionOption) => {
+    const receiverId = msg.sender_id;
+    if (!receiverId) return;
+
+    const replyContent = tr(
+      `[의사결정 회신] ${option.number}번으로 진행해 주세요. (${option.label})`,
+      `[Decision Reply] Please proceed with option ${option.number}. (${option.label})`,
+      `[意思決定返信] ${option.number}番で進めてください。(${option.label})`,
+      `[决策回复] 请按选项 ${option.number} 推进。（${option.label}）`,
+    );
+    const key = `${msg.id}:${option.number}`;
+    setDecisionReplyKey(key);
+    const sendResult = onSendMessage(replyContent, 'agent', receiverId, 'chat');
+    if (isPromiseLike(sendResult)) {
+      sendResult.finally(() => setDecisionReplyKey((prev) => (prev === key ? null : prev)));
+      return;
+    }
+    setDecisionReplyKey(null);
+  }, [onSendMessage, tr]);
+
+  const handleDecisionManualDraft = useCallback((option: DecisionOption) => {
+    setMode('chat');
+    setInput(tr(
+      `${option.number}번으로 진행해 주세요. 추가 코멘트: `,
+      `Please proceed with option ${option.number}. Additional note: `,
+      `${option.number}番で進めてください。追記事項: `,
+      `请按选项 ${option.number} 推进。补充说明：`,
+    ));
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [tr]);
 
   return (
     <div className="fixed inset-0 z-50 flex h-full w-full flex-col bg-gray-900 shadow-2xl lg:relative lg:inset-auto lg:z-auto lg:w-96 lg:border-l lg:border-gray-700">
@@ -560,6 +607,7 @@ export function ChatPanel({
                 : isSystem
                 ? tr('시스템', 'System', 'システム', '系统')
                 : getAgentName(senderAgent) || tr('알 수 없음', 'Unknown', '不明', '未知');
+              const decisionRequest = decisionRequestByMessage.get(msg.id);
 
               // Agent reply to announcements: show as left-aligned agent bubble
               if (msg.sender_type === 'agent' && msg.receiver_type === 'all') {
@@ -571,6 +619,39 @@ export function ChatPanel({
                       <div className="announcement-reply-bubble bg-gray-700/70 text-gray-100 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-md border border-yellow-500/20">
                         <MessageContent content={msg.content} />
                       </div>
+                      {decisionRequest && (
+                        <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-2 py-2">
+                          <p className="text-[11px] font-medium text-indigo-200">
+                            {tr('의사결정 요청', 'Decision request', '意思決定リクエスト', '决策请求')}
+                          </p>
+                          <div className="mt-1.5 space-y-1">
+                            {decisionRequest.options.map((option) => {
+                              const key = `${msg.id}:${option.number}`;
+                              const isBusy = decisionReplyKey === key;
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  onClick={() => handleDecisionOptionReply(msg, option)}
+                                  disabled={isBusy}
+                                  className="decision-inline-option w-full rounded-md px-2 py-1.5 text-left text-[11px] transition disabled:opacity-60"
+                                >
+                                  {isBusy
+                                    ? tr('전송 중...', 'Sending...', '送信中...', '发送中...')
+                                    : `${option.number}. ${option.label}`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDecisionManualDraft(decisionRequest.options[0])}
+                            className="mt-2 text-[11px] text-indigo-200/90 underline underline-offset-2 hover:text-indigo-100"
+                          >
+                            {tr('직접 답변 작성', 'Write custom reply', 'カスタム返信を作成', '编写自定义回复')}
+                          </button>
+                        </div>
+                      )}
                       <span className="text-xs text-gray-600 px-1">
                         {formatTime(msg.created_at, locale)}
                       </span>
@@ -628,6 +709,39 @@ export function ChatPanel({
                     <div className="bg-gray-700 text-gray-100 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-md">
                       <MessageContent content={msg.content} />
                     </div>
+                    {decisionRequest && (
+                      <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-2 py-2">
+                        <p className="text-[11px] font-medium text-indigo-200">
+                          {tr('의사결정 요청', 'Decision request', '意思決定リクエスト', '决策请求')}
+                        </p>
+                        <div className="mt-1.5 space-y-1">
+                          {decisionRequest.options.map((option) => {
+                            const key = `${msg.id}:${option.number}`;
+                            const isBusy = decisionReplyKey === key;
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => handleDecisionOptionReply(msg, option)}
+                                disabled={isBusy}
+                                className="decision-inline-option w-full rounded-md px-2 py-1.5 text-left text-[11px] transition disabled:opacity-60"
+                              >
+                                {isBusy
+                                  ? tr('전송 중...', 'Sending...', '送信中...', '发送中...')
+                                  : `${option.number}. ${option.label}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDecisionManualDraft(decisionRequest.options[0])}
+                          className="mt-2 text-[11px] text-indigo-200/90 underline underline-offset-2 hover:text-indigo-100"
+                        >
+                          {tr('직접 답변 작성', 'Write custom reply', 'カスタム返信を作成', '编写自定义回复')}
+                        </button>
+                      </div>
+                    )}
                     <span className="text-xs text-gray-600 px-1">
                       {formatTime(msg.created_at, locale)}
                     </span>

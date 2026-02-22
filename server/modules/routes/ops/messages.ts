@@ -221,9 +221,652 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): any {
     };
   };
 
+  type DecisionInboxRouteItem = {
+    id: string;
+    kind: "project_review_ready" | "task_timeout_resume";
+    created_at: number;
+    summary: string;
+    project_id: string | null;
+    project_name: string | null;
+    project_path: string | null;
+    task_id: string | null;
+    task_title: string | null;
+    options: Array<{ number: number; action: string; label: string }>;
+  };
+
+  const PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX = "Decision inbox: project review task option selected";
+
+  function getProjectReviewTaskChoices(projectId: string): Array<{
+    id: string;
+    title: string;
+    updated_at: number;
+    selected: boolean;
+  }> {
+    const selectionPattern = `${PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX}%`;
+    const rows = db.prepare(`
+      SELECT
+        t.id,
+        t.title,
+        t.updated_at,
+        (
+          SELECT MAX(tl.created_at)
+          FROM task_logs tl
+          WHERE tl.task_id = t.id
+            AND tl.kind = 'system'
+            AND tl.message LIKE ?
+        ) AS selected_at
+      FROM tasks t
+      WHERE t.project_id = ?
+        AND t.status = 'review'
+        AND t.source_task_id IS NULL
+      ORDER BY t.updated_at ASC, t.created_at ASC
+    `).all(selectionPattern, projectId) as Array<{
+      id: string;
+      title: string;
+      updated_at: number;
+      selected_at: number | null;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      updated_at: row.updated_at,
+      selected: (row.selected_at ?? 0) >= (row.updated_at ?? 0),
+    }));
+  }
+
+  function buildProjectReviewDecisionItems(): DecisionInboxRouteItem[] {
+    const lang = getPreferredLanguage();
+    const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
+
+    const rows = db.prepare(`
+      SELECT
+        p.id AS project_id,
+        p.name AS project_name,
+        p.project_path AS project_path,
+        MAX(t.updated_at) AS updated_at,
+        SUM(CASE WHEN t.status NOT IN ('done', 'cancelled') THEN 1 ELSE 0 END) AS active_total,
+        SUM(CASE WHEN t.status NOT IN ('done', 'cancelled') AND t.status = 'review' THEN 1 ELSE 0 END) AS active_review,
+        SUM(CASE WHEN t.status = 'review' AND t.source_task_id IS NULL THEN 1 ELSE 0 END) AS root_review_total
+      FROM tasks t
+      JOIN projects p ON p.id = t.project_id
+      WHERE t.project_id IS NOT NULL
+      GROUP BY p.id, p.name, p.project_path
+    `).all() as Array<{
+      project_id: string;
+      project_name: string | null;
+      project_path: string | null;
+      updated_at: number | null;
+      active_total: number | null;
+      active_review: number | null;
+      root_review_total: number | null;
+    }>;
+
+    const out: DecisionInboxRouteItem[] = [];
+    for (const row of rows) {
+      const activeTotal = row.active_total ?? 0;
+      const activeReview = row.active_review ?? 0;
+      const rootReviewTotal = row.root_review_total ?? 0;
+      if (activeTotal <= 0) continue;
+      if (activeTotal !== activeReview) continue;
+      if (rootReviewTotal <= 0) continue;
+
+      const inProgressMeeting = db.prepare(`
+        SELECT COUNT(*) AS cnt
+        FROM meeting_minutes mm
+        JOIN tasks t ON t.id = mm.task_id
+        WHERE t.project_id = ?
+          AND t.status = 'review'
+          AND t.source_task_id IS NULL
+          AND mm.meeting_type = 'review'
+          AND mm.status = 'in_progress'
+      `).get(row.project_id) as { cnt: number } | undefined;
+      if ((inProgressMeeting?.cnt ?? 0) > 0) continue;
+
+      const reviewTaskChoices = getProjectReviewTaskChoices(row.project_id);
+      if (reviewTaskChoices.length <= 0) continue;
+      const requiresRepresentativeSelection = reviewTaskChoices.length > 1;
+      const pendingChoices = requiresRepresentativeSelection
+        ? reviewTaskChoices.filter((task) => !task.selected)
+        : [];
+      const selectedCount = reviewTaskChoices.length - pendingChoices.length;
+      const decisionTargetTotal = reviewTaskChoices.length;
+      const projectName = (row.project_name || row.project_id).trim();
+      const taskProgressLine = t(
+        `항목 선택 진행: ${selectedCount}/${reviewTaskChoices.length}`,
+        `Selection progress: ${selectedCount}/${reviewTaskChoices.length}`,
+        `選択進捗: ${selectedCount}/${reviewTaskChoices.length}`,
+        `选择进度: ${selectedCount}/${reviewTaskChoices.length}`,
+      );
+      const continueExistingLabel = t(
+        "기존 작업 이어서 진행",
+        "Continue Existing Work",
+        "既存作業を継続",
+        "继续现有工作",
+      );
+      const pendingList = pendingChoices.length > 0
+        ? (pendingChoices.length === 1
+          ? `- ${continueExistingLabel}`
+          : pendingChoices.slice(0, 6).map((task) => `- ${task.title}`).join("\n"))
+        : t(
+          "모든 활성 항목 선택이 완료되었습니다.",
+          "All active items are selected.",
+          "すべてのアクティブ項目の選択が完了しました。",
+          "所有活跃项已完成选择。",
+        );
+      const summary = pendingChoices.length > 0
+        ? t(
+          `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n대표 선택 대상 ${decisionTargetTotal}건을 먼저 선택해 주세요.\n${taskProgressLine}\n${pendingList}`,
+          `Project '${projectName}' has all ${activeTotal} active items in Review.\nSelect the ${decisionTargetTotal} target item(s) first.\n${taskProgressLine}\n${pendingList}`,
+          `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表者の選択対象${decisionTargetTotal}件を先に選択してください。\n${taskProgressLine}\n${pendingList}`,
+          `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n请先选择代表决策目标 ${decisionTargetTotal} 项。\n${taskProgressLine}\n${pendingList}`,
+        )
+        : (requiresRepresentativeSelection
+          ? t(
+            `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n대표 선택 대상 ${decisionTargetTotal}건 선택이 완료되었습니다.\n이제 팀장 회의를 진행할 수 있습니다.`,
+            `Project '${projectName}' has all ${activeTotal} active items in Review.\nSelection for ${decisionTargetTotal} target item(s) is complete.\nYou can now run the team-lead review meeting.`,
+            `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表者の選択対象${decisionTargetTotal}件の選択が完了しました。\nチームリーダー会議を進行できます。`,
+            `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n代表决策目标 ${decisionTargetTotal} 项已选择完成。\n现在可以进行组长评审会议。`,
+          )
+          : t(
+            `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n선택 단계가 필요하지 않아 바로 팀장 회의를 진행할 수 있습니다.`,
+            `Project '${projectName}' has all ${activeTotal} active items in Review.\nNo selection step is required, so you can run the team-lead review meeting now.`,
+            `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n選択ステップは不要なため、すぐにチームリーダー会議を進行できます。`,
+            `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n无需选择步骤，现在可直接进行组长评审会议。`,
+          ));
+      const options = pendingChoices.length > 0
+        ? [
+          ...pendingChoices.map((task, index) => ({
+            number: index + 1,
+            action: `approve_task_review:${task.id}`,
+            label: pendingChoices.length === 1
+              ? continueExistingLabel
+              : t(
+                `항목 선택: ${task.title}`,
+                `Select Item: ${task.title}`,
+                `項目選択: ${task.title}`,
+                `选择项: ${task.title}`,
+              ),
+          })),
+          {
+            number: pendingChoices.length + 1,
+            action: "add_followup_request",
+            label: t(
+              "추가요청 입력",
+              "Add Follow-up Request",
+              "追加要請を入力",
+              "输入追加请求",
+            ),
+          },
+        ]
+        : [
+          {
+            number: 1,
+            action: "start_project_review",
+            label: t(
+              "팀장 회의 진행",
+              "Start Team-Lead Meeting",
+              "チームリーダー会議を進行",
+              "启动组长评审会议",
+            ),
+          },
+          {
+            number: 2,
+            action: "add_followup_request",
+            label: t(
+              "추가요청 입력",
+              "Add Follow-up Request",
+              "追加要請を入力",
+              "输入追加请求",
+            ),
+          },
+        ];
+
+      out.push({
+        id: `project-review-ready:${row.project_id}`,
+        kind: "project_review_ready",
+        created_at: row.updated_at ?? nowMs(),
+        summary,
+        project_id: row.project_id,
+        project_name: row.project_name,
+        project_path: row.project_path,
+        task_id: null,
+        task_title: null,
+        options,
+      });
+    }
+
+    return out;
+  }
+
+  function buildTimeoutResumeDecisionItems(): DecisionInboxRouteItem[] {
+    const lang = getPreferredLanguage();
+    const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
+
+    const rows = db.prepare(`
+      SELECT
+        t.id AS task_id,
+        t.title AS task_title,
+        t.project_id AS project_id,
+        p.name AS project_name,
+        t.project_path AS project_path,
+        t.updated_at AS updated_at,
+        (
+          SELECT MAX(tl.created_at)
+          FROM task_logs tl
+          WHERE tl.task_id = t.id
+            AND tl.message LIKE '%RUN TIMEOUT%'
+        ) AS timeout_at
+      FROM tasks t
+      LEFT JOIN projects p ON p.id = t.project_id
+      WHERE t.status = 'inbox'
+        AND EXISTS (
+          SELECT 1
+          FROM task_logs tl
+          WHERE tl.task_id = t.id
+            AND tl.message LIKE '%RUN TIMEOUT%'
+        )
+      ORDER BY COALESCE(timeout_at, t.updated_at) DESC, t.updated_at DESC
+      LIMIT 200
+    `).all() as Array<{
+      task_id: string;
+      task_title: string;
+      project_id: string | null;
+      project_name: string | null;
+      project_path: string | null;
+      updated_at: number | null;
+      timeout_at: number | null;
+    }>;
+
+    return rows.map((row) => ({
+      id: `task-timeout-resume:${row.task_id}`,
+      kind: "task_timeout_resume",
+      created_at: row.timeout_at ?? row.updated_at ?? nowMs(),
+      summary: t(
+        `작업 '${row.task_title}' 이(가) timeout 후 Inbox로 이동했습니다. 이어서 진행할까요?`,
+        `Task '${row.task_title}' moved to Inbox after timeout. Continue from where it left off?`,
+        `タスク'${row.task_title}'はタイムアウト後にInboxへ移動しました。続行しますか？`,
+        `任务'${row.task_title}'超时后已移至 Inbox，是否继续执行？`,
+      ),
+      project_id: row.project_id,
+      project_name: row.project_name,
+      project_path: row.project_path,
+      task_id: row.task_id,
+      task_title: row.task_title,
+      options: [
+        {
+          number: 1,
+          action: "resume_timeout_task",
+          label: t(
+            "이어서 진행 (재개)",
+            "Resume Task",
+            "続行する（再開）",
+            "继续执行（恢复）",
+          ),
+        },
+        {
+          number: 2,
+          action: "keep_inbox",
+          label: t(
+            "Inbox 유지",
+            "Keep in Inbox",
+            "Inboxで保留",
+            "保留在 Inbox",
+          ),
+        },
+      ],
+    }));
+  }
+
+  function getDecisionInboxItems(): DecisionInboxRouteItem[] {
+    const items = [
+      ...buildProjectReviewDecisionItems(),
+      ...buildTimeoutResumeDecisionItems(),
+    ];
+    items.sort((a, b) => b.created_at - a.created_at);
+    return items;
+  }
+
 // ---------------------------------------------------------------------------
 // Messages / Chat
 // ---------------------------------------------------------------------------
+app.get("/api/decision-inbox", (_req, res) => {
+  const items = getDecisionInboxItems();
+  res.json({ items });
+});
+
+app.post("/api/decision-inbox/:id/reply", (req, res) => {
+  const decisionId = String(req.params.id || "");
+  const optionNumber = Number(req.body?.option_number ?? req.body?.optionNumber ?? req.body?.option);
+  if (!Number.isFinite(optionNumber)) {
+    return res.status(400).json({ error: "option_number_required" });
+  }
+
+  const currentItem = getDecisionInboxItems().find((item) => item.id === decisionId);
+  if (!currentItem) {
+    return res.status(404).json({ error: "decision_not_found" });
+  }
+  const selectedOption = currentItem.options.find((option) => option.number === optionNumber);
+  if (!selectedOption) {
+    return res.status(400).json({ error: "option_not_found", option_number: optionNumber });
+  }
+
+  if (currentItem.kind === "project_review_ready") {
+    const projectId = currentItem.project_id;
+    if (!projectId) return res.status(400).json({ error: "project_id_required" });
+    const selectedAction = selectedOption.action;
+
+    if (selectedAction === "keep_waiting") {
+      return res.json({
+        ok: true,
+        resolved: false,
+        kind: "project_review_ready",
+        action: "keep_waiting",
+      });
+    }
+
+    if (selectedAction.startsWith("approve_task_review:")) {
+      const selectedTaskId = selectedAction.slice("approve_task_review:".length).trim();
+      if (!selectedTaskId) return res.status(400).json({ error: "task_id_required" });
+      const targetTask = db.prepare(`
+        SELECT id, title
+        FROM tasks
+        WHERE id = ?
+          AND project_id = ?
+          AND status = 'review'
+          AND source_task_id IS NULL
+      `).get(selectedTaskId, projectId) as { id: string; title: string } | undefined;
+      if (!targetTask) return res.status(404).json({ error: "project_review_task_not_found" });
+
+      appendTaskLog(
+        targetTask.id,
+        "system",
+        `${PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX} (project_id=${projectId}, option=${optionNumber})`,
+      );
+      const remaining = getProjectReviewTaskChoices(projectId).filter((task) => !task.selected).length;
+      return res.json({
+        ok: true,
+        resolved: false,
+        kind: "project_review_ready",
+        action: "approve_task_review",
+        task_id: targetTask.id,
+        pending_task_choices: remaining,
+      });
+    }
+
+    if (selectedAction === "add_followup_request") {
+      const note = normalizeTextField(req.body?.note);
+      if (!note) {
+        return res.status(400).json({ error: "followup_note_required" });
+      }
+      const lang = getPreferredLanguage();
+      const followupTitlePrefix = pickL(
+        l(["[의사결정 추가요청]"], ["[Decision Follow-up]"], ["[意思決定追加要請]"], ["[决策追加请求]"]),
+        lang,
+      );
+      const targetTaskIdInput = normalizeTextField(req.body?.target_task_id);
+      const targetTask = targetTaskIdInput
+        ? db.prepare(`
+            SELECT id, title, status, assigned_agent_id, department_id
+            FROM tasks
+            WHERE id = ?
+              AND project_id = ?
+              AND status = 'review'
+              AND source_task_id IS NULL
+          `).get(targetTaskIdInput, projectId) as {
+            id: string;
+            title: string;
+            status: string;
+            assigned_agent_id: string | null;
+            department_id: string | null;
+          } | undefined
+        : undefined;
+      const fallbackTargetTask = db.prepare(`
+        SELECT id, title, status, assigned_agent_id, department_id
+        FROM tasks
+        WHERE project_id = ?
+          AND status = 'review'
+          AND source_task_id IS NULL
+        ORDER BY updated_at ASC, created_at ASC
+        LIMIT 1
+      `).get(projectId) as {
+        id: string;
+        title: string;
+        status: string;
+        assigned_agent_id: string | null;
+        department_id: string | null;
+      } | undefined;
+      const resolvedTarget = targetTask ?? fallbackTargetTask;
+      if (!resolvedTarget) {
+        return res.status(404).json({ error: "project_review_task_not_found" });
+      }
+
+      const subtaskId = randomUUID();
+      const createdAt = nowMs();
+      const noteCompact = note.replace(/\s+/g, " ").trim();
+      const noteTitle = noteCompact.length > 72 ? `${noteCompact.slice(0, 69).trimEnd()}...` : noteCompact;
+      const title = `${followupTitlePrefix} ${noteTitle}`;
+      db.prepare(`
+        INSERT INTO subtasks (id, task_id, title, description, status, created_at)
+        VALUES (?, ?, ?, ?, 'pending', ?)
+      `).run(subtaskId, resolvedTarget.id, title, note, createdAt);
+
+      appendTaskLog(
+        resolvedTarget.id,
+        "system",
+        `Decision inbox follow-up request added: ${note}`,
+      );
+      const insertedSubtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subtaskId);
+      broadcast("subtask_update", insertedSubtask);
+
+      // Branch into supplement round: review -> pending -> in_progress (if executable).
+      const branchTs = nowMs();
+      db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?")
+        .run(branchTs, resolvedTarget.id);
+      const pendingTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(resolvedTarget.id);
+      broadcast("task_update", pendingTask);
+      appendTaskLog(
+        resolvedTarget.id,
+        "system",
+        "Decision inbox: supplement round opened (review -> pending)",
+      );
+
+      let supplementStarted = false;
+      let supplementReason = "queued";
+      const assignedAgentId = resolvedTarget.assigned_agent_id;
+      if (!assignedAgentId) {
+        supplementReason = "no_assignee";
+        appendTaskLog(
+          resolvedTarget.id,
+          "system",
+          "Decision inbox: supplement round pending (no assigned agent)",
+        );
+      } else {
+        const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(assignedAgentId) as AgentRow | undefined;
+        if (!agent) {
+          supplementReason = "agent_not_found";
+          appendTaskLog(
+            resolvedTarget.id,
+            "system",
+            "Decision inbox: supplement round pending (assigned agent not found)",
+          );
+        } else if (agent.status === "offline") {
+          supplementReason = "agent_offline";
+          appendTaskLog(
+            resolvedTarget.id,
+            "system",
+            "Decision inbox: supplement round pending (assigned agent offline)",
+          );
+        } else if (activeProcesses.has(resolvedTarget.id)) {
+          supplementReason = "already_running";
+        } else if (
+          agent.status === "working"
+          && agent.current_task_id
+          && agent.current_task_id !== resolvedTarget.id
+          && activeProcesses.has(agent.current_task_id)
+        ) {
+          supplementReason = "agent_busy";
+          appendTaskLog(
+            resolvedTarget.id,
+            "system",
+            `Decision inbox: supplement round pending (agent busy on ${agent.current_task_id})`,
+          );
+        } else {
+          const deptId = agent.department_id ?? resolvedTarget.department_id ?? null;
+          const deptName = deptId ? getDeptName(deptId) : "Unassigned";
+          appendTaskLog(
+            resolvedTarget.id,
+            "system",
+            "Decision inbox: supplement round execution started",
+          );
+          startTaskExecutionForAgent(resolvedTarget.id, agent, deptId, deptName);
+          supplementStarted = true;
+          supplementReason = "started";
+        }
+      }
+
+      return res.json({
+        ok: true,
+        resolved: false,
+        kind: "project_review_ready",
+        action: "add_followup_request",
+        task_id: resolvedTarget.id,
+        subtask_id: subtaskId,
+        supplement_round_started: supplementStarted,
+        supplement_round_reason: supplementReason,
+      });
+    }
+
+    if (selectedAction === "start_project_review") {
+      const reviewTaskChoices = getProjectReviewTaskChoices(projectId);
+      const requiresRepresentativeSelection = reviewTaskChoices.length > 1;
+      const pendingChoices = requiresRepresentativeSelection
+        ? reviewTaskChoices.filter((task) => !task.selected)
+        : [];
+      if (requiresRepresentativeSelection && pendingChoices.length > 0) {
+        return res.status(409).json({
+          error: "project_task_options_pending",
+          pending_task_choices: pendingChoices.map((task) => ({ id: task.id, title: task.title })),
+        });
+      }
+
+      const readiness = db.prepare(`
+        SELECT
+          SUM(CASE WHEN status NOT IN ('done', 'cancelled') THEN 1 ELSE 0 END) AS active_total,
+          SUM(CASE WHEN status NOT IN ('done', 'cancelled') AND status = 'review' THEN 1 ELSE 0 END) AS active_review
+        FROM tasks
+        WHERE project_id = ?
+      `).get(projectId) as { active_total: number | null; active_review: number | null } | undefined;
+      const activeTotal = readiness?.active_total ?? 0;
+      const activeReview = readiness?.active_review ?? 0;
+      if (!(activeTotal > 0 && activeTotal === activeReview)) {
+        return res.status(409).json({
+          error: "project_not_ready_for_review_meeting",
+          active_total: activeTotal,
+          active_review: activeReview,
+        });
+      }
+
+      const reviewTasks = db.prepare(`
+        SELECT id, title
+        FROM tasks
+        WHERE project_id = ?
+          AND status = 'review'
+          AND source_task_id IS NULL
+        ORDER BY updated_at ASC
+      `).all(projectId) as Array<{ id: string; title: string }>;
+
+      for (const task of reviewTasks) {
+        appendTaskLog(task.id, "system", "Decision inbox: project-level review meeting approved by CEO");
+        finishReview(task.id, task.title, {
+          bypassProjectDecisionGate: true,
+          trigger: "decision_inbox",
+        });
+      }
+
+      return res.json({
+        ok: true,
+        resolved: true,
+        kind: "project_review_ready",
+        action: "start_project_review",
+        started_task_ids: reviewTasks.map((task) => task.id),
+      });
+    }
+
+    return res.status(400).json({ error: "unsupported_project_action", action: selectedAction });
+  }
+
+  if (currentItem.kind === "task_timeout_resume") {
+    const taskId = currentItem.task_id;
+    if (!taskId) return res.status(400).json({ error: "task_id_required" });
+    const selectedAction = selectedOption.action;
+
+    if (selectedAction === "keep_inbox") {
+      return res.json({
+        ok: true,
+        resolved: false,
+        kind: "task_timeout_resume",
+        action: "keep_inbox",
+      });
+    }
+    if (selectedAction !== "resume_timeout_task") {
+      return res.status(400).json({ error: "unsupported_timeout_action", action: selectedAction });
+    }
+
+    const task = db.prepare(`
+      SELECT id, title, description, status, assigned_agent_id, department_id
+      FROM tasks
+      WHERE id = ?
+    `).get(taskId) as {
+      id: string;
+      title: string;
+      description: string | null;
+      status: string;
+      assigned_agent_id: string | null;
+      department_id: string | null;
+    } | undefined;
+    if (!task) return res.status(404).json({ error: "task_not_found" });
+    if (task.status !== "inbox") {
+      return res.status(409).json({ error: "task_not_in_inbox", status: task.status });
+    }
+    if (!task.assigned_agent_id) {
+      return res.status(409).json({ error: "task_has_no_assigned_agent" });
+    }
+
+    const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(task.assigned_agent_id) as AgentRow | undefined;
+    if (!agent) return res.status(404).json({ error: "agent_not_found" });
+
+    if (activeProcesses.has(taskId)) {
+      return res.status(409).json({ error: "already_running" });
+    }
+    if (
+      agent.status === "working"
+      && agent.current_task_id
+      && agent.current_task_id !== taskId
+      && activeProcesses.has(agent.current_task_id)
+    ) {
+      return res.status(409).json({
+        error: "agent_busy",
+        current_task_id: agent.current_task_id,
+      });
+    }
+
+    const deptId = agent.department_id ?? task.department_id ?? null;
+    const deptName = deptId ? getDeptName(deptId) : "Unassigned";
+    appendTaskLog(taskId, "system", "Decision inbox: timeout resume approved by CEO");
+    startTaskExecutionForAgent(taskId, agent, deptId, deptName);
+
+    return res.json({
+      ok: true,
+      resolved: true,
+      kind: "task_timeout_resume",
+      action: "resume_timeout_task",
+      task_id: taskId,
+    });
+  }
+
+  return res.status(400).json({ error: "unknown_decision_id" });
+});
+
 app.get("/api/messages", (req, res) => {
   const receiverType = firstQueryValue(req.query.receiver_type);
   const receiverId = firstQueryValue(req.query.receiver_id);

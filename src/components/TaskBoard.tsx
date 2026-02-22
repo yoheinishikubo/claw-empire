@@ -1179,6 +1179,7 @@ function CreateModal({ agents, departments, onClose, onCreate, onAssign }: Creat
       </label>
       <AgentSelect
         agents={filteredAgents}
+        departments={departments}
         value={assignAgentId}
         onChange={(value) => {
           setAssignAgentId(value);
@@ -2481,6 +2482,7 @@ function TaskCard({
       <div className={`mb-3 rounded-lg transition-all ${agentWarning ? 'ring-2 ring-red-500 animate-[shake_0.4s_ease-in-out]' : ''}`}>
         <AgentSelect
           agents={agents}
+          departments={departments}
           value={task.assigned_agent_id ?? ''}
           onChange={(agentId) => {
             setAgentWarning(false);
@@ -2764,6 +2766,7 @@ function FilterBar({
       {/* Agent */}
       <AgentSelect
         agents={agents}
+        departments={departments}
         value={filterAgent}
         onChange={onFilterAgent}
         placeholder={t({ ko: '전체 에이전트', en: 'All Agents', ja: '全エージェント', zh: '全部代理' })}

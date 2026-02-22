@@ -12,6 +12,9 @@ import TaskReportPopup from "./components/TaskReportPopup";
 import ReportHistory from "./components/ReportHistory";
 import AgentStatusPanel from "./components/AgentStatusPanel";
 import OfficeRoomManager from "./components/OfficeRoomManager";
+import DecisionInboxModal from "./components/DecisionInboxModal";
+import { buildDecisionInboxItems } from "./components/chat/decision-inbox";
+import type { DecisionInboxItem } from "./components/chat/decision-inbox";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type {
   Department,
@@ -208,6 +211,10 @@ export default function App() {
   const [showReportHistory, setShowReportHistory] = useState(false);
   const [showAgentStatus, setShowAgentStatus] = useState(false);
   const [showRoomManager, setShowRoomManager] = useState(false);
+  const [showDecisionInbox, setShowDecisionInbox] = useState(false);
+  const [decisionInboxLoading, setDecisionInboxLoading] = useState(false);
+  const [decisionInboxItems, setDecisionInboxItems] = useState<DecisionInboxItem[]>([]);
+  const [decisionReplyBusyKey, setDecisionReplyBusyKey] = useState<string | null>(null);
   const [activeRoomThemeTargetId, setActiveRoomThemeTargetId] = useState<string | null>(null);
   const [customRoomThemes, setCustomRoomThemes] = useState<RoomThemeMap>(() => initialRoomThemes.themes);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -261,7 +268,7 @@ export default function App() {
   // Initial data fetch
   const fetchAll = useCallback(async () => {
     try {
-      const [depts, ags, tks, sts, sett, subs, presence] = await Promise.all([
+      const [depts, ags, tks, sts, sett, subs, presence, decisionItems] = await Promise.all([
         api.getDepartments(),
         api.getAgents(),
         api.getTasks(),
@@ -269,6 +276,7 @@ export default function App() {
         api.getSettings(),
         api.getActiveSubtasks(),
         api.getMeetingPresence().catch(() => []),
+        api.getDecisionInbox().catch(() => []),
       ]);
       setDepartments(depts);
       setAgents(ags);
@@ -321,6 +329,29 @@ export default function App() {
       }
       setSubtasks(subs);
       setMeetingPresence(presence);
+      setDecisionInboxItems(
+        (decisionItems ?? []).map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          agentId: null,
+          agentName: item.kind === "project_review_ready"
+            ? (item.project_name || item.project_id || "Project")
+            : (item.task_title || item.task_id || "Task"),
+          agentNameKo: item.kind === "project_review_ready"
+            ? (item.project_name || item.project_id || "프로젝트")
+            : (item.task_title || item.task_id || "작업"),
+          requestContent: item.summary,
+          options: item.options.map((option) => ({
+            number: option.number,
+            label: option.label ?? option.action,
+            action: option.action,
+          })),
+          createdAt: item.created_at,
+          taskId: item.task_id,
+          projectId: item.project_id,
+          projectName: item.project_name,
+        })),
+      );
     } catch (e) {
       console.error("Failed to fetch data:", e);
     } finally {
@@ -334,11 +365,39 @@ export default function App() {
       return;
     }
     liveSyncInFlightRef.current = true;
-    Promise.all([api.getTasks(), api.getAgents(), api.getStats()])
-      .then(([nextTasks, nextAgents, nextStats]) => {
+    Promise.all([api.getTasks(), api.getAgents(), api.getStats(), api.getDecisionInbox()])
+      .then(([nextTasks, nextAgents, nextStats, nextDecisionItems]) => {
         setTasks(nextTasks);
         setAgents(nextAgents);
         setStats(nextStats);
+        setDecisionInboxItems((prev) => {
+          const preservedAgentRequests = prev.filter((item) => item.kind === "agent_request");
+          const workflowItems: DecisionInboxItem[] = nextDecisionItems.map((item) => ({
+            id: item.id,
+            kind: item.kind,
+            agentId: null,
+            agentName: item.kind === "project_review_ready"
+              ? (item.project_name || item.project_id || "Project")
+              : (item.task_title || item.task_id || "Task"),
+            agentNameKo: item.kind === "project_review_ready"
+              ? (item.project_name || item.project_id || "프로젝트")
+              : (item.task_title || item.task_id || "작업"),
+            requestContent: item.summary,
+            options: item.options.map((option) => ({
+              number: option.number,
+              label: option.label ?? option.action,
+              action: option.action,
+            })),
+            createdAt: item.created_at,
+            taskId: item.task_id,
+            projectId: item.project_id,
+            projectName: item.project_name,
+          }));
+          const merged = [...workflowItems, ...preservedAgentRequests];
+          const deduped = new Map<string, DecisionInboxItem>();
+          for (const entry of merged) deduped.set(entry.id, entry);
+          return Array.from(deduped.values()).sort((a, b) => b.createdAt - a.createdAt);
+        });
       })
       .catch(console.error)
       .finally(() => {
@@ -903,6 +962,177 @@ export default function App() {
       .catch(console.error);
   }
 
+  const mapWorkflowDecisionItems = useCallback((items: api.DecisionInboxRouteItem[]): DecisionInboxItem[] => {
+    const locale = normalizeLanguage(settings.language);
+    const optionLabel = (kind: DecisionInboxItem["kind"], action: string, number: number): string => {
+      if (kind === "project_review_ready") {
+        if (action === "start_project_review") {
+          return pickLang(locale, {
+            ko: "팀장 회의 진행",
+            en: "Start Team-Lead Meeting",
+            ja: "チームリーダー会議を進行",
+            zh: "启动组长评审会议",
+          });
+        }
+        if (action === "keep_waiting") {
+          return pickLang(locale, {
+            ko: "대기 유지",
+            en: "Keep Waiting",
+            ja: "待機維持",
+            zh: "保持等待",
+          });
+        }
+      }
+      if (kind === "task_timeout_resume") {
+        if (action === "resume_timeout_task") {
+          return pickLang(locale, {
+            ko: "이어서 진행 (재개)",
+            en: "Resume Task",
+            ja: "続行する",
+            zh: "继续执行",
+          });
+        }
+        if (action === "keep_inbox") {
+          return pickLang(locale, {
+            ko: "Inbox 유지",
+            en: "Keep in Inbox",
+            ja: "Inboxで保留",
+            zh: "保留在 Inbox",
+          });
+        }
+      }
+      return `${number}. ${action}`;
+    };
+
+    return items.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      agentId: null,
+      agentName: item.kind === "project_review_ready"
+        ? (item.project_name || item.project_id || "Project")
+        : (item.task_title || item.task_id || "Task"),
+      agentNameKo: item.kind === "project_review_ready"
+        ? (item.project_name || item.project_id || "프로젝트")
+        : (item.task_title || item.task_id || "작업"),
+      requestContent: item.summary,
+      options: item.options.map((option) => ({
+        number: option.number,
+        label: option.label ?? optionLabel(item.kind, option.action, option.number),
+        action: option.action,
+      })),
+      createdAt: item.created_at,
+      taskId: item.task_id,
+      projectId: item.project_id,
+      projectName: item.project_name,
+    }));
+  }, [settings.language]);
+
+  const loadDecisionInbox = useCallback(async () => {
+    setDecisionInboxLoading(true);
+    try {
+      const [allMessages, workflowDecisionItems] = await Promise.all([
+        api.getMessages({ limit: 500 }),
+        api.getDecisionInbox(),
+      ]);
+      const agentDecisionItems = buildDecisionInboxItems(allMessages, agents);
+      const workflowItems = mapWorkflowDecisionItems(workflowDecisionItems);
+      const merged = [...workflowItems, ...agentDecisionItems];
+      const deduped = new Map<string, DecisionInboxItem>();
+      for (const item of merged) deduped.set(item.id, item);
+      setDecisionInboxItems(Array.from(deduped.values()).sort((a, b) => b.createdAt - a.createdAt));
+    } catch (error) {
+      console.error("Load decision inbox failed:", error);
+    } finally {
+      setDecisionInboxLoading(false);
+    }
+  }, [agents, mapWorkflowDecisionItems]);
+
+  const handleOpenDecisionInbox = useCallback(() => {
+    setShowDecisionInbox(true);
+    void loadDecisionInbox();
+  }, [loadDecisionInbox]);
+
+  const handleOpenDecisionChat = useCallback((agentId: string) => {
+    const matchedAgent = agents.find((agent) => agent.id === agentId);
+    if (!matchedAgent) {
+      window.alert(pickLang(normalizeLanguage(settings.language), {
+        ko: "요청 에이전트 정보를 찾지 못했습니다.",
+        en: "Could not find the requested agent.",
+        ja: "対象エージェント情報が見つかりません。",
+        zh: "未找到对应代理信息。",
+      }));
+      return;
+    }
+    setShowDecisionInbox(false);
+    handleOpenChat(matchedAgent);
+  }, [agents, settings.language]);
+
+  const handleReplyDecisionOption = useCallback(async (
+    item: DecisionInboxItem,
+    optionNumber: number,
+    payloadInput?: { note?: string },
+  ) => {
+    const option = item.options.find((entry) => entry.number === optionNumber);
+    if (!option) return;
+    const busyKey = `${item.id}:${option.number}`;
+    setDecisionReplyBusyKey(busyKey);
+    const locale = normalizeLanguage(settings.language);
+    try {
+      if (item.kind === "agent_request") {
+        if (!item.agentId) return;
+        const replyContent = pickLang(locale, {
+          ko: `[의사결정 회신] ${option.number}번으로 진행해 주세요. (${option.label})`,
+          en: `[Decision Reply] Please proceed with option ${option.number}. (${option.label})`,
+          ja: `[意思決定返信] ${option.number}番で進めてください。(${option.label})`,
+          zh: `[决策回复] 请按选项 ${option.number} 推进。（${option.label}）`,
+        });
+        await api.sendMessage({
+          receiver_type: "agent",
+          receiver_id: item.agentId,
+          content: replyContent,
+          message_type: "chat",
+          task_id: item.taskId ?? undefined,
+        });
+        setDecisionInboxItems((prev) => prev.filter((entry) => entry.id !== item.id));
+      } else {
+        const selectedAction = option.action ?? "";
+        let payload: { note?: string; target_task_id?: string } | undefined;
+        if (selectedAction === "add_followup_request") {
+          const note = payloadInput?.note?.trim() ?? "";
+          if (!note) {
+            window.alert(pickLang(locale, {
+              ko: "추가요청사항이 비어 있습니다.",
+              en: "Additional request is empty.",
+              ja: "追加要請が空です。",
+              zh: "追加请求内容为空。",
+            }));
+            return;
+          }
+          payload = {
+            note,
+            ...(item.taskId ? { target_task_id: item.taskId } : {}),
+          };
+        }
+        const replyResult = await api.replyDecisionInbox(item.id, optionNumber, payload);
+        if (replyResult.resolved) {
+          setDecisionInboxItems((prev) => prev.filter((entry) => entry.id !== item.id));
+          scheduleLiveSync(40);
+        }
+        await loadDecisionInbox();
+      }
+    } catch (error) {
+      console.error("Decision reply failed:", error);
+      window.alert(pickLang(locale, {
+        ko: "의사결정 회신 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+        en: "Failed to send decision reply. Please try again.",
+        ja: "意思決定返信の送信に失敗しました。もう一度お試しください。",
+        zh: "发送决策回复失败，请稍后重试。",
+      }));
+    } finally {
+      setDecisionReplyBusyKey((prev) => (prev === busyKey ? null : prev));
+    }
+  }, [settings.language, loadDecisionInbox, scheduleLiveSync]);
+
   const uiLanguage = normalizeLanguage(settings.language);
   const loadingTitle = pickLang(uiLanguage, {
     ko: "Claw-Empire 로딩 중...",
@@ -1010,6 +1240,12 @@ export default function App() {
     en: "Agents",
     ja: "エージェント",
     zh: "代理",
+  });
+  const decisionLabel = pickLang(uiLanguage, {
+    ko: "의사결정",
+    en: "Decisions",
+    ja: "意思決定",
+    zh: "决策",
   });
   const effectiveUpdateStatus = forceUpdateBanner
     ? {
@@ -1186,6 +1422,20 @@ export default function App() {
               >
                 <span className="sm:hidden">📋</span>
                 <span className="hidden sm:inline">📋 {tasksPrimaryLabel}</span>
+              </button>
+              <button
+                onClick={handleOpenDecisionInbox}
+                disabled={decisionInboxLoading}
+                className={`header-action-btn header-action-btn-secondary disabled:cursor-wait disabled:opacity-60${decisionInboxItems.length > 0 ? " decision-has-pending" : ""}`}
+                aria-label={decisionLabel}
+              >
+                <span className="sm:hidden">{decisionInboxLoading ? "⏳" : "🧭"}</span>
+                <span className="hidden sm:inline">
+                  {decisionInboxLoading ? "⏳" : "🧭"} {decisionLabel}
+                </span>
+                {decisionInboxItems.length > 0 && (
+                  <span className="header-decision-badge">{decisionInboxItems.length}</span>
+                )}
               </button>
               <button
                 onClick={() => setShowAgentStatus(true)}
@@ -1420,6 +1670,20 @@ export default function App() {
               }
             }}
             onClose={() => setShowChat(false)}
+          />
+        )}
+
+        {showDecisionInbox && (
+          <DecisionInboxModal
+            open={showDecisionInbox}
+            loading={decisionInboxLoading}
+            items={decisionInboxItems}
+            busyKey={decisionReplyBusyKey}
+            uiLanguage={uiLanguage}
+            onClose={() => setShowDecisionInbox(false)}
+            onRefresh={() => { void loadDecisionInbox(); }}
+            onReplyOption={handleReplyDecisionOption}
+            onOpenChat={handleOpenDecisionChat}
           />
         )}
 

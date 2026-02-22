@@ -540,6 +540,55 @@ export async function getMessages(params: { receiver_type?: ReceiverType; receiv
   return j.messages;
 }
 
+export type DecisionInboxRouteOption = {
+  number: number;
+  action: string;
+  label?: string;
+};
+
+export type DecisionInboxRouteItem = {
+  id: string;
+  kind: "project_review_ready" | "task_timeout_resume";
+  created_at: number;
+  summary: string;
+  project_id: string | null;
+  project_name: string | null;
+  project_path: string | null;
+  task_id: string | null;
+  task_title: string | null;
+  options: DecisionInboxRouteOption[];
+};
+
+export type DecisionInboxReplyResult = {
+  ok: boolean;
+  resolved: boolean;
+  kind: "project_review_ready" | "task_timeout_resume";
+  action: string;
+  started_task_ids?: string[];
+  task_id?: string;
+};
+
+export async function getDecisionInbox(): Promise<DecisionInboxRouteItem[]> {
+  const j = await request<{ items: DecisionInboxRouteItem[] }>("/api/decision-inbox");
+  return j.items ?? [];
+}
+
+export async function replyDecisionInbox(
+  id: string,
+  optionNumber: number,
+  payload?: { note?: string; target_task_id?: string },
+): Promise<DecisionInboxReplyResult> {
+  return request<DecisionInboxReplyResult>(`/api/decision-inbox/${encodeURIComponent(id)}/reply`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      option_number: optionNumber,
+      ...(payload?.note ? { note: payload.note } : {}),
+      ...(payload?.target_task_id ? { target_task_id: payload.target_task_id } : {}),
+    }),
+  });
+}
+
 export async function sendMessage(input: {
   receiver_type: ReceiverType;
   receiver_id?: string;
