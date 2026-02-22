@@ -488,6 +488,15 @@ function emitTaskReportEvent(taskId: string): void {
   }
 }
 
+function shouldDeferTaskReportUntilPlanningArchive(task: {
+  source_task_id?: string | null;
+  department_id?: string | null;
+}): boolean {
+  if (task.source_task_id) return false;
+  const planningLeader = findTeamLeader("planning") || findTeamLeader(task.department_id ?? "");
+  return Boolean(planningLeader);
+}
+
 function completeTaskWithoutReview(
   task: {
     id: string;
@@ -515,7 +524,12 @@ function completeTaskWithoutReview(
   notifyTaskStatus(task.id, task.title, "done", lang);
 
   refreshCliUsageData().then((usage) => broadcast("cli_usage_update", usage)).catch(() => {});
-  emitTaskReportEvent(task.id);
+  const deferTaskReport = shouldDeferTaskReportUntilPlanningArchive(task);
+  if (deferTaskReport) {
+    appendTaskLog(task.id, "system", "Task report popup deferred until planning consolidated archive is ready");
+  } else {
+    emitTaskReportEvent(task.id);
+  }
 
   const reporter = task.assigned_agent_id
     ? (db.prepare("SELECT * FROM agents WHERE id = ?").get(task.assigned_agent_id) as AgentRow | undefined)
@@ -1984,56 +1998,11 @@ function finishReview(
     notifyTaskStatus(taskId, taskTitle, "done", lang);
 
     refreshCliUsageData().then((usage) => broadcast("cli_usage_update", usage)).catch(() => {});
-
-    // ── Task Report 생성 및 broadcast ──
-    try {
-      const reportTask = db.prepare(`
-        SELECT t.id, t.title, t.description, t.department_id, t.assigned_agent_id,
-               t.status, t.project_path, t.created_at, t.completed_at,
-               COALESCE(a.name, '') AS agent_name,
-               COALESCE(a.name_ko, '') AS agent_name_ko,
-               COALESCE(a.role, '') AS agent_role,
-               COALESCE(d.name, '') AS dept_name,
-               COALESCE(d.name_ko, '') AS dept_name_ko
-        FROM tasks t
-        LEFT JOIN agents a ON a.id = t.assigned_agent_id
-        LEFT JOIN departments d ON d.id = t.department_id
-        WHERE t.id = ?
-      `).get(taskId) as Record<string, unknown> | undefined;
-      const reportLogs = db.prepare(
-        "SELECT kind, message, created_at FROM task_logs WHERE task_id = ? ORDER BY created_at ASC"
-      ).all(taskId) as Array<{ kind: string; message: string; created_at: number }>;
-      const reportSubtasks = db.prepare(
-        "SELECT id, title, status, assigned_agent_id, completed_at FROM subtasks WHERE task_id = ? ORDER BY created_at ASC"
-      ).all(taskId) as Array<Record<string, unknown>>;
-      const reportMinutes = db.prepare(`
-        SELECT
-          mm.meeting_type,
-          mm.round AS round_number,
-          COALESCE((
-            SELECT group_concat(entry_line, '\n')
-            FROM (
-              SELECT printf('[%s] %s', COALESCE(e.speaker_name, 'Unknown'), e.content) AS entry_line
-              FROM meeting_minute_entries e
-              WHERE e.meeting_id = mm.id
-              ORDER BY e.seq ASC, e.id ASC
-            )
-          ), '') AS entries,
-          mm.created_at
-        FROM meeting_minutes mm
-        WHERE mm.task_id = ?
-        ORDER BY mm.created_at ASC
-      `).all(taskId) as Array<Record<string, unknown>>;
-      if (reportTask) {
-        broadcast("task_report", {
-          task: reportTask,
-          logs: reportLogs.slice(-30),
-          subtasks: reportSubtasks,
-          meeting_minutes: reportMinutes,
-        });
-      }
-    } catch (reportErr) {
-      console.error("[Claw-Empire] task_report broadcast error:", reportErr);
+    const deferTaskReport = shouldDeferTaskReportUntilPlanningArchive(currentTask);
+    if (deferTaskReport) {
+      appendTaskLog(taskId, "system", "Task report popup deferred until planning consolidated archive is ready");
+    } else {
+      emitTaskReportEvent(taskId);
     }
 
     const leader = findTeamLeader(latestTask.department_id);

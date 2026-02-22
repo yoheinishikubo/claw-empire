@@ -880,6 +880,32 @@ CREATE TABLE IF NOT EXISTS task_report_archives (
   updated_at INTEGER DEFAULT (unixepoch()*1000)
 );
 
+CREATE TABLE IF NOT EXISTS project_review_decision_states (
+  project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  snapshot_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'collecting'
+    CHECK(status IN ('collecting','ready','failed')),
+  planner_summary TEXT,
+  planner_agent_id TEXT REFERENCES agents(id),
+  planner_agent_name TEXT,
+  created_at INTEGER DEFAULT (unixepoch()*1000),
+  updated_at INTEGER DEFAULT (unixepoch()*1000)
+);
+
+CREATE TABLE IF NOT EXISTS project_review_decision_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  snapshot_hash TEXT,
+  event_type TEXT NOT NULL
+    CHECK(event_type IN ('planning_summary','representative_pick','followup_request','start_review_meeting')),
+  summary TEXT NOT NULL,
+  selected_options_json TEXT,
+  note TEXT,
+  task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+  meeting_id TEXT REFERENCES meeting_minutes(id) ON DELETE SET NULL,
+  created_at INTEGER DEFAULT (unixepoch()*1000)
+);
+
 CREATE TABLE IF NOT EXISTS skill_learning_history (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL,
@@ -899,6 +925,10 @@ CREATE TABLE IF NOT EXISTS skill_learning_history (
 
 CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id);
 CREATE INDEX IF NOT EXISTS idx_task_report_archives_root ON task_report_archives(root_task_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_project_review_decision_states_updated
+  ON project_review_decision_states(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_project_review_decision_events_project
+  ON project_review_decision_events(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(assigned_agent_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_dept ON tasks(department_id);
@@ -1203,6 +1233,8 @@ try {
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id, updated_at DESC)"); } catch { /* project_id not ready yet */ }
 // Task creation audit completion flag
 try { db.exec("ALTER TABLE task_creation_audits ADD COLUMN completed INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+// Task hidden state (migrated from client localStorage)
+try { db.exec("ALTER TABLE tasks ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
 try {
   db.exec("CREATE INDEX IF NOT EXISTS idx_task_creation_audits_completed ON task_creation_audits(completed, created_at DESC)");
 } catch { /* table missing or migration in progress */ }

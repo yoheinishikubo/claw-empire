@@ -19,6 +19,8 @@ import { BUILTIN_GOOGLE_CLIENT_ID, BUILTIN_GOOGLE_CLIENT_SECRET, decryptSecret, 
 import { notifyTaskStatus } from "../../../gateway/client.ts";
 import { createWsHub } from "../../../ws/hub.ts";
 
+const REVIEW_DECISION_PENDING_LOG_PREFIX = "Decision inbox: review decision pending";
+
 export function initializeWorkflowMeetingTools(ctx: RuntimeContext): any {
   const __ctx: RuntimeContext = ctx;
   const db = __ctx.db;
@@ -1079,81 +1081,27 @@ function startReviewConsensusMeeting(
         const remediationRequestCount = remediationRequestCountRow?.cnt ?? 0;
         const remediationLimitReached = remediationRequestCount >= REVIEW_MAX_REMEDIATION_REQUESTS;
 
-        if (isRound1Remediation && !remediationLimitReached) {
-          const revisionSubtaskCount = seedReviewRevisionSubtasks(taskId, departmentId, memoItemsForAction);
+        if ((isRound1Remediation || isRound2Merge) && !remediationLimitReached) {
+          const nextRound = round + 1;
           appendTaskLog(
             taskId,
             "system",
-            `Review consensus round ${round}: revision subtasks queued for parallel remediation (${revisionSubtaskCount})`,
+            `${REVIEW_DECISION_PENDING_LOG_PREFIX} (round=${round}, options=${memoItemsForAction.length})`,
           );
-          // Start cross-department revision execution immediately.
-          // Without this, foreign remediation subtasks can remain blocked until the owner run completes.
-          processSubtaskDelegations(taskId);
           notifyCeo(pickL(l(
-            [`[CEO OFFICE] '${taskTitle}' 리뷰 라운드 ${round}는 조건부/보류 판정입니다. 보완 SubTask ${revisionSubtaskCount}건을 한번에 생성해 병렬 반영으로 전환합니다.`],
-            [`[CEO OFFICE] Review round ${round} for '${taskTitle}' is hold/conditional. Created ${revisionSubtaskCount} revision subtasks at once and switching to parallel remediation.`],
-            [`[CEO OFFICE] '${taskTitle}' のレビューラウンド${round}は保留/条件付き承認です。補完SubTaskを${revisionSubtaskCount}件一括生成し、並列反映へ移行します。`],
-            [`[CEO OFFICE] '${taskTitle}' 第${round}轮 Review 判定为保留/条件批准。已一次性创建 ${revisionSubtaskCount} 个整改 SubTask，并切换为并行整改。`],
+            [`[CEO OFFICE] '${taskTitle}' 리뷰 라운드 ${round}에서 팀장 보완 의견이 취합되었습니다. 의사결정 인박스에서 항목을 복수 선택(체리피킹)하고 필요 시 추가 의견을 입력해 보완 작업을 진행하거나, 다음 라운드(${nextRound})로 SKIP할지 선택해 주세요.`],
+            [`[CEO OFFICE] Team-lead remediation opinions for '${taskTitle}' in review round ${round} are consolidated. In Decision Inbox, cherry-pick multiple items and optionally add an extra note for remediation, or skip to round ${nextRound}.`],
+            [`[CEO OFFICE] '${taskTitle}' のレビューラウンド${round}でチームリーダー補完意見を集約しました。Decision Inboxで複数項目をチェリーピックし、必要に応じて追加意見を入力して補完実行するか、ラウンド${nextRound}へスキップするか選択してください。`],
+            [`[CEO OFFICE] '${taskTitle}' 第${round}轮已汇总组长整改意见。请在 Decision Inbox 中多选条目并可追加补充意见后执行整改，或直接跳到第 ${nextRound} 轮。`],
           ), lang), taskId);
-
           if (meetingId) finishMeetingMinutes(meetingId, "revision_requested");
           dismissLeadersFromCeoOffice(taskId, leaders);
           reviewRoundState.delete(taskId);
           reviewInFlight.delete(taskId);
-
-          const latestTask = db.prepare(
-            "SELECT assigned_agent_id, department_id FROM tasks WHERE id = ?"
-          ).get(taskId) as { assigned_agent_id: string | null; department_id: string | null } | undefined;
-          const assignedAgent = latestTask?.assigned_agent_id
-            ? (db.prepare("SELECT * FROM agents WHERE id = ?").get(latestTask.assigned_agent_id) as AgentRow | undefined)
-            : undefined;
-          const fallbackLeader = findTeamLeader(latestTask?.department_id ?? departmentId);
-          const execAgent = assignedAgent ?? fallbackLeader;
-
-          if (!execAgent || activeProcesses.has(taskId)) {
-            appendTaskLog(taskId, "system", `Review remediation queued; waiting for executor run (task=${taskId})`);
-            notifyCeo(pickL(l(
-              [`'${taskTitle}' 보완 SubTask가 생성되었습니다. 동일 담당 세션으로 반영 후 라운드2 취합 회의로 진행합니다.`],
-              [`Revision subtasks for '${taskTitle}' were created. The same owner session will resume remediation and proceed to round 2 consolidation.`],
-              [`'${taskTitle}' の補完SubTaskを作成しました。同一担当セッションで反映後、ラウンド2の集約会議へ進みます。`],
-              [`已为 '${taskTitle}' 创建整改 SubTask。将由同一负责人会话继续整改，并进入第2轮汇总会议。`],
-            ), lang), taskId);
-            return;
-          }
-
-          const provider = execAgent.cli_provider || "claude";
-          if (!["claude", "codex", "gemini", "opencode"].includes(provider)) {
-            appendTaskLog(taskId, "system", `Review remediation queued; provider '${provider}' requires manual run restart`);
-            notifyCeo(pickL(l(
-              [`'${taskTitle}' 보완 SubTask를 생성했습니다. 현재 담당 CLI(${provider})는 자동 재실행 경로가 없어 수동 Run 후 라운드2를 진행합니다.`],
-              [`Revision subtasks were created for '${taskTitle}'. This CLI (${provider}) requires manual run restart before round 2 consolidation.`],
-              [`'${taskTitle}' の補完SubTaskを作成しました。現在のCLI(${provider})は自動再実行に未対応のため、手動Run後にラウンド2へ進みます。`],
-              [`已为 '${taskTitle}' 创建整改 SubTask。当前 CLI（${provider}）不支持自动重跑，请手动 Run 后进入第2轮汇总。`],
-            ), lang), taskId);
-            return;
-          }
-
-          const execDeptId = execAgent.department_id ?? latestTask?.department_id ?? departmentId;
-          const execDeptName = execDeptId ? getDeptName(execDeptId) : "Unassigned";
-          if (typeof startTaskExecutionForAgent !== "function") {
-            appendTaskLog(
-              taskId,
-              "error",
-              "Review remediation queued, but auto-run starter is unavailable (startTaskExecutionForAgent missing)",
-            );
-            notifyCeo(pickL(l(
-              [`'${taskTitle}' 보완 SubTask 자동 재실행을 시작하지 못했습니다(startTaskExecutionForAgent 누락). 수동 Run으로 재개해 주세요.`],
-              [`Couldn't auto-start review remediation for '${taskTitle}' (missing startTaskExecutionForAgent). Please resume with manual Run.`],
-              [`'${taskTitle}' の補完SubTask自動再実行を開始できませんでした（startTaskExecutionForAgent欠落）。手動Runで再開してください。`],
-              [`'${taskTitle}' 无法自动启动整改重跑（缺少 startTaskExecutionForAgent）。请手动 Run 继续。`],
-            ), lang), taskId);
-            return;
-          }
-          startTaskExecutionForAgent(taskId, execAgent, execDeptId, execDeptName);
           return;
         }
 
-        if (isRound1Remediation && remediationLimitReached) {
+        if ((isRound1Remediation || isRound2Merge) && remediationLimitReached) {
           appendTaskLog(
             taskId,
             "system",
@@ -1175,21 +1123,6 @@ function startReviewConsensusMeeting(
           "system",
           `Review consensus round ${round}: forcing finalization with documented residual risk (${forceReason})`,
         );
-
-        if (isRound2Merge) {
-          notifyCeo(pickL(l(
-            [`[CEO OFFICE] '${taskTitle}' 리뷰 라운드 ${round} 취합 회의에서 잔여 리스크를 문서화했습니다. 추가 보완 없이 라운드 3 최종 승인 회의로 전환합니다.`],
-            [`[CEO OFFICE] In review round ${round} for '${taskTitle}', residual risks were documented during consolidation. Moving to round 3 final approval without additional remediation.`],
-            [`[CEO OFFICE] '${taskTitle}' のレビューラウンド${round}集約会議で残余リスクを文書化しました。追加補完なしでラウンド3最終承認へ移行します。`],
-            [`[CEO OFFICE] '${taskTitle}' 第${round}轮评审汇总会已完成剩余风险文档化。将不新增整改，直接转入第3轮最终审批。`],
-          ), lang), taskId);
-          if (meetingId) finishMeetingMinutes(meetingId, "completed");
-          dismissLeadersFromCeoOffice(taskId, leaders);
-          reviewRoundState.delete(taskId);
-          reviewInFlight.delete(taskId);
-          scheduleNextReviewRound(taskId, taskTitle, round, lang);
-          return;
-        }
 
         appendTaskReviewFinalMemo(taskId, round, transcript, lang, true);
         notifyCeo(pickL(l(

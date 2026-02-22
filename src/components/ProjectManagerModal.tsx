@@ -375,6 +375,27 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
     return [...detail.reports].sort((a, b) => (b.completed_at || b.created_at || 0) - (a.completed_at || a.created_at || 0));
   }, [detail]);
 
+  const sortedDecisionEvents = useMemo(() => {
+    if (!detail) return [];
+    return [...(detail.decision_events ?? [])].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  }, [detail]);
+
+  const getDecisionEventLabel = useCallback((eventType: string) => {
+    if (eventType === 'planning_summary') {
+      return t({ ko: '기획팀장 분류', en: 'Planning Classification', ja: '企画リード分類', zh: '规划负责人分类' });
+    }
+    if (eventType === 'representative_pick') {
+      return t({ ko: '대표 항목 선택', en: 'Representative Pick', ja: '代表項目選択', zh: '代表项选择' });
+    }
+    if (eventType === 'followup_request') {
+      return t({ ko: '추가 요청', en: 'Follow-up Request', ja: '追加要請', zh: '追加请求' });
+    }
+    if (eventType === 'start_review_meeting') {
+      return t({ ko: '팀장 회의 시작', en: 'Team-Lead Meeting Start', ja: 'チームリーダー会議開始', zh: '启动组长会议' });
+    }
+    return eventType;
+  }, [t]);
+
   const startCreate = () => {
     setIsCreating(true);
     setEditingProjectId(null);
@@ -1011,6 +1032,65 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+                <h4 className="text-sm font-semibold text-white">
+                  {t({ ko: '대표 선택사항', en: 'Representative Decisions', ja: '代表選択事項', zh: '代表选择事项' })}
+                </h4>
+                {!selectedProject ? (
+                  <p className="mt-2 text-xs text-slate-500">-</p>
+                ) : sortedDecisionEvents.length === 0 ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {t({
+                      ko: '기록된 대표 의사결정이 없습니다',
+                      en: 'No representative decision records',
+                      ja: '代表意思決定の記録はありません',
+                      zh: '暂无代表决策记录',
+                    })}
+                  </p>
+                ) : (
+                  <div className="mt-2 max-h-56 overflow-y-auto space-y-2">
+                    {sortedDecisionEvents.map((event) => {
+                      let selectedLabels: string[] = [];
+                      if (event.selected_options_json) {
+                        try {
+                          const parsed = JSON.parse(event.selected_options_json) as Array<{ label?: unknown }>;
+                          selectedLabels = Array.isArray(parsed)
+                            ? parsed
+                              .map((row) => (typeof row?.label === 'string' ? row.label.trim() : ''))
+                              .filter((label) => label.length > 0)
+                            : [];
+                        } catch {
+                          selectedLabels = [];
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={`${event.id}-${event.created_at}`}
+                          className="rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-100">{getDecisionEventLabel(event.event_type)}</p>
+                            <p className="text-[11px] text-slate-400">{fmtTime(event.created_at)}</p>
+                          </div>
+                          <p className="mt-1 whitespace-pre-wrap break-all text-[11px] text-slate-300">{event.summary}</p>
+                          {selectedLabels.length > 0 && (
+                            <p className="mt-1 whitespace-pre-wrap break-all text-[11px] text-blue-300">
+                              {t({ ko: '선택 내용', en: 'Selected Items', ja: '選択内容', zh: '已选内容' })}: {selectedLabels.join(' / ')}
+                            </p>
+                          )}
+                          {event.note && event.note.trim().length > 0 && (
+                            <p className="mt-1 whitespace-pre-wrap break-all text-[11px] text-emerald-300">
+                              {t({ ko: '추가 요청사항', en: 'Additional Request', ja: '追加要請事項', zh: '追加请求事项' })}: {event.note}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

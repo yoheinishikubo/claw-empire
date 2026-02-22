@@ -4,10 +4,11 @@ import type { DecisionOption } from "./decision-request";
 
 export interface DecisionInboxItem {
   id: string;
-  kind: "agent_request" | "project_review_ready" | "task_timeout_resume";
+  kind: "agent_request" | "project_review_ready" | "task_timeout_resume" | "review_round_pick";
   agentId: string | null;
   agentName: string;
   agentNameKo: string;
+  agentAvatar?: string | null;
   requestContent: string;
   options: DecisionOption[];
   createdAt: number;
@@ -49,6 +50,7 @@ export function buildDecisionInboxItems(messages: Message[], agents: Agent[]): D
       agentId: msg.sender_id,
       agentName: matchedAgent?.name || msg.sender_id,
       agentNameKo: matchedAgent?.name_ko || matchedAgent?.name || msg.sender_id,
+      agentAvatar: matchedAgent?.avatar_emoji || null,
       requestContent: msg.content,
       options: parsed.options,
       createdAt: msg.created_at,

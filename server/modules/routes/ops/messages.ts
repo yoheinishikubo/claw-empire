@@ -96,6 +96,8 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): any {
   const startPlannedApprovalMeeting = __ctx.startPlannedApprovalMeeting;
   const startProgressTimer = __ctx.startProgressTimer;
   const startTaskExecutionForAgent = __ctx.startTaskExecutionForAgent;
+  const scheduleNextReviewRound = __ctx.scheduleNextReviewRound;
+  const seedReviewRevisionSubtasks = __ctx.seedReviewRevisionSubtasks;
   const stopProgressTimer = __ctx.stopProgressTimer;
   const stopRequestModeByTask = __ctx.stopRequestModeByTask;
   const stopRequestedTasks = __ctx.stopRequestedTasks;
@@ -223,18 +225,372 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): any {
 
   type DecisionInboxRouteItem = {
     id: string;
-    kind: "project_review_ready" | "task_timeout_resume";
+    kind: "project_review_ready" | "task_timeout_resume" | "review_round_pick";
     created_at: number;
     summary: string;
+    agent_id?: string | null;
+    agent_name?: string | null;
+    agent_name_ko?: string | null;
+    agent_avatar?: string | null;
     project_id: string | null;
     project_name: string | null;
     project_path: string | null;
     task_id: string | null;
     task_title: string | null;
+    meeting_id?: string | null;
+    review_round?: number | null;
     options: Array<{ number: number; action: string; label: string }>;
   };
 
   const PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX = "Decision inbox: project review task option selected";
+  const REVIEW_DECISION_RESOLVED_LOG_PREFIX = "Decision inbox: review decision resolved";
+  const projectReviewDecisionConsolidationInFlight = new Set<string>();
+
+  type ProjectReviewDecisionStateRow = {
+    project_id: string;
+    snapshot_hash: string;
+    status: "collecting" | "ready" | "failed";
+    planner_summary: string | null;
+    planner_agent_id: string | null;
+    planner_agent_name: string | null;
+    created_at: number | null;
+    updated_at: number | null;
+  };
+
+  function buildProjectReviewSnapshotHash(
+    projectId: string,
+    reviewTaskChoices: Array<{ id: string; updated_at: number }>,
+  ): string {
+    const base = [...reviewTaskChoices]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((task) => `${task.id}:${task.updated_at}`)
+      .join("|");
+    return createHash("sha256")
+      .update(`${projectId}|${base}`)
+      .digest("hex")
+      .slice(0, 24);
+  }
+
+  function getProjectReviewDecisionState(projectId: string): ProjectReviewDecisionStateRow | null {
+    const row = db.prepare(`
+      SELECT
+        project_id,
+        snapshot_hash,
+        status,
+        planner_summary,
+        planner_agent_id,
+        planner_agent_name,
+        created_at,
+        updated_at
+      FROM project_review_decision_states
+      WHERE project_id = ?
+    `).get(projectId) as ProjectReviewDecisionStateRow | undefined;
+    return row ?? null;
+  }
+
+  function upsertProjectReviewDecisionState(
+    projectId: string,
+    snapshotHash: string,
+    status: "collecting" | "ready" | "failed",
+    plannerSummary: string | null,
+    plannerAgentId: string | null,
+    plannerAgentName: string | null,
+  ): void {
+    const ts = nowMs();
+    db.prepare(`
+      INSERT INTO project_review_decision_states (
+        project_id,
+        snapshot_hash,
+        status,
+        planner_summary,
+        planner_agent_id,
+        planner_agent_name,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(project_id) DO UPDATE SET
+        snapshot_hash = excluded.snapshot_hash,
+        status = excluded.status,
+        planner_summary = excluded.planner_summary,
+        planner_agent_id = excluded.planner_agent_id,
+        planner_agent_name = excluded.planner_agent_name,
+        updated_at = excluded.updated_at
+    `).run(
+      projectId,
+      snapshotHash,
+      status,
+      plannerSummary,
+      plannerAgentId,
+      plannerAgentName,
+      ts,
+      ts,
+    );
+  }
+
+  function recordProjectReviewDecisionEvent(input: {
+    project_id: string;
+    snapshot_hash?: string | null;
+    event_type: "planning_summary" | "representative_pick" | "followup_request" | "start_review_meeting";
+    summary: string;
+    selected_options_json?: string | null;
+    note?: string | null;
+    task_id?: string | null;
+    meeting_id?: string | null;
+  }): void {
+    db.prepare(`
+      INSERT INTO project_review_decision_events (
+        project_id,
+        snapshot_hash,
+        event_type,
+        summary,
+        selected_options_json,
+        note,
+        task_id,
+        meeting_id,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.project_id,
+      input.snapshot_hash ?? null,
+      input.event_type,
+      input.summary,
+      input.selected_options_json ?? null,
+      input.note ?? null,
+      input.task_id ?? null,
+      input.meeting_id ?? null,
+      nowMs(),
+    );
+  }
+
+  function buildProjectReviewPlanningFallbackSummary(
+    lang: string,
+    projectName: string,
+    taskTitles: string[],
+  ): string {
+    const topTasks = taskTitles.slice(0, 6);
+    const lines = topTasks.map((title, idx) => `${idx + 1}. ${title}`);
+    const noTaskLine = pickL(l(
+      ["- 검토 항목 정보 없음"],
+      ["- No review-item details available"],
+      ["- レビュー項目情報なし"],
+      ["- 无可用评审项信息"],
+    ), lang);
+    const taskBlock = lines.length > 0 ? lines.join("\n") : noTaskLine;
+    return pickL(l(
+      [`프로젝트 '${projectName}' 검토 항목을 기획팀장 기준으로 취합했습니다.\n- 주요 검토 포인트를 기준으로 대표 항목을 선택한 뒤 팀장 회의를 시작하세요.\n- 필요 시 추가요청 입력으로 보완 작업을 먼저 열 수 있습니다.\n\n검토 대상:\n${taskBlock}`],
+      [`Planning-lead consolidation is complete for project '${projectName}'.\n- Choose representative review item(s) from key checkpoints, then start the team-lead meeting.\n- If needed, open remediation first with Add Follow-up Request.\n\nReview targets:\n${taskBlock}`],
+      [`プロジェクト'${projectName}'のレビュー項目を企画リード基準で集約しました。\n- 主要チェックポイントを基準に代表項目を選択してからチームリーダー会議を開始してください。\n- 必要に応じて追加要請入力で先に補完作業を開けます。\n\nレビュー対象:\n${taskBlock}`],
+      [`项目'${projectName}'的评审项已按规划负责人标准完成汇总。\n- 请先按关键检查点选择代表项，再启动组长评审会议。\n- 如有需要，可先通过追加请求开启补充整改。\n\n评审目标:\n${taskBlock}`],
+    ), lang);
+  }
+
+  function formatPlannerSummaryForDisplay(input: string): string {
+    let text = String(input ?? "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    if (!text) return "";
+
+    text = text
+      .replace(/\s*;\s*/g, ";\n")
+      .replace(/\s+(?=\d+[.)]\s)/g, "\n")
+      .replace(/\s+(?=-\s)/g, "\n");
+
+    if (!text.includes("\n") && text.length > 220) {
+      text = text
+        .replace(/([.!?])\s+/g, "$1\n")
+        .replace(/(합니다\.|입니다\.|됩니다\.|습니다\.|요\.)\s+/g, "$1\n");
+    }
+
+    return text.replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  function resolvePlanningLeadMeta(
+    lang: string,
+    decisionState?: ProjectReviewDecisionStateRow | null,
+  ): {
+    agent_id: string | null;
+    agent_name: string;
+    agent_name_ko: string;
+    agent_avatar: string;
+  } {
+    const fallbackLead = findTeamLeader("planning");
+    const stateAgentId = String(decisionState?.planner_agent_id ?? "").trim();
+    const stateAgent = stateAgentId
+      ? db.prepare(`
+          SELECT id, name, name_ko, avatar_emoji
+          FROM agents
+          WHERE id = ?
+          LIMIT 1
+        `).get(stateAgentId) as {
+          id: string;
+          name: string;
+          name_ko: string;
+          avatar_emoji: string | null;
+        } | undefined
+      : undefined;
+    const picked = stateAgent ?? fallbackLead;
+    const defaultName = pickL(l(
+      ["기획팀장"],
+      ["Planning Lead"],
+      ["企画リード"],
+      ["规划负责人"],
+    ), lang);
+    const normalizePlanningLeadAvatar = (rawAvatar: string | null | undefined): string => {
+      const avatar = String(rawAvatar ?? "").trim();
+      if (!avatar || avatar === "🧠") return "🧑‍💼";
+      return avatar;
+    };
+    return {
+      agent_id: picked?.id ?? null,
+      agent_name: (picked?.name || decisionState?.planner_agent_name || defaultName).trim(),
+      agent_name_ko: (picked?.name_ko || decisionState?.planner_agent_name || "기획팀장").trim(),
+      agent_avatar: normalizePlanningLeadAvatar(picked?.avatar_emoji),
+    };
+  }
+
+  function queueProjectReviewPlanningConsolidation(
+    projectId: string,
+    projectName: string,
+    projectPath: string | null,
+    snapshotHash: string,
+    lang: string,
+  ): void {
+    const inFlightKey = `${projectId}:${snapshotHash}`;
+    if (projectReviewDecisionConsolidationInFlight.has(inFlightKey)) return;
+    projectReviewDecisionConsolidationInFlight.add(inFlightKey);
+
+    void (async () => {
+      try {
+        const currentState = getProjectReviewDecisionState(projectId);
+        if (!currentState || currentState.snapshot_hash !== snapshotHash) return;
+        if (currentState.status !== "collecting") return;
+
+        const taskRows = db.prepare(`
+          SELECT
+            t.id,
+            t.title,
+            t.updated_at,
+            COALESCE((
+              SELECT m.content
+              FROM messages m
+              WHERE m.task_id = t.id
+                AND m.message_type = 'report'
+              ORDER BY m.created_at DESC
+              LIMIT 1
+            ), '') AS latest_report
+          FROM tasks t
+          WHERE t.project_id = ?
+            AND t.status = 'review'
+            AND t.source_task_id IS NULL
+          ORDER BY t.updated_at ASC, t.created_at ASC
+          LIMIT 20
+        `).all(projectId) as Array<{
+          id: string;
+          title: string;
+          updated_at: number;
+          latest_report: string;
+        }>;
+
+        if (taskRows.length <= 0) return;
+        const planningLeader = findTeamLeader("planning");
+        const clip = (text: string, max = 180) => {
+          const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+          if (!normalized) return "-";
+          return normalized.length > max ? `${normalized.slice(0, max - 3).trimEnd()}...` : normalized;
+        };
+        const fallbackSummary = buildProjectReviewPlanningFallbackSummary(
+          lang,
+          projectName,
+          taskRows.map((task) => task.title),
+        );
+
+        let plannerSummary = fallbackSummary;
+        if (planningLeader) {
+          const sourceLines = taskRows.map((task, idx) => (
+            `${idx + 1}) ${task.title}\n- latest_report: ${clip(task.latest_report)}`
+          )).join("\n");
+          const prompt = [
+            `You are the planning lead (${planningLeader.name}).`,
+            `Consolidate project-level review status for '${projectName}'.`,
+            `Language: ${lang}`,
+            "Output requirements:",
+            "- Provide one concise paragraph for CEO decision support.",
+            "- Include: representative selection guidance, meeting start condition, and follow-up request usage hint.",
+            "- Keep it under 10 lines.",
+            "",
+            "Review item sources:",
+            sourceLines,
+          ].join("\n");
+          try {
+            const run = await runAgentOneShot(planningLeader, prompt, {
+              projectPath: projectPath || process.cwd(),
+              timeoutMs: 45_000,
+            });
+            const preferred = String(chooseSafeReply(run, lang, "summary", planningLeader) || "").trim();
+            const raw = String(run?.text || "").trim();
+            const merged = preferred || raw;
+            if (merged) {
+              const clipped = merged.length > 1800 ? `${merged.slice(0, 1797).trimEnd()}...` : merged;
+              plannerSummary = formatPlannerSummaryForDisplay(clipped);
+            }
+          } catch {
+            plannerSummary = fallbackSummary;
+          }
+        }
+        plannerSummary = formatPlannerSummaryForDisplay(plannerSummary);
+
+        const updateResult = db.prepare(`
+          UPDATE project_review_decision_states
+          SET status = 'ready',
+              planner_summary = ?,
+              planner_agent_id = ?,
+              planner_agent_name = ?,
+              updated_at = ?
+          WHERE project_id = ?
+            AND snapshot_hash = ?
+            AND status = 'collecting'
+        `).run(
+          plannerSummary,
+          planningLeader?.id ?? null,
+          planningLeader ? getAgentDisplayName(planningLeader, lang) : null,
+          nowMs(),
+          projectId,
+          snapshotHash,
+        ) as { changes?: number } | undefined;
+
+        if ((updateResult?.changes ?? 0) > 0) {
+          recordProjectReviewDecisionEvent({
+            project_id: projectId,
+            snapshot_hash: snapshotHash,
+            event_type: "planning_summary",
+            summary: plannerSummary,
+          });
+        }
+      } catch {
+        const failMsg = pickL(l(
+          ["기획팀장 의견 취합이 일시 지연되었습니다. 자동 재시도 중입니다."],
+          ["Planning-lead consolidation is temporarily delayed. Auto retry in progress."],
+          ["企画リード意見の集約が一時遅延しました。自動再試行中です。"],
+          ["规划负责人意见汇总暂时延迟，正在自动重试。"],
+        ), lang);
+        const ts = nowMs();
+        db.prepare(`
+          UPDATE project_review_decision_states
+          SET status = 'failed',
+              planner_summary = ?,
+              updated_at = ?
+          WHERE project_id = ?
+            AND snapshot_hash = ?
+        `).run(failMsg, ts, projectId, snapshotHash);
+      } finally {
+        projectReviewDecisionConsolidationInFlight.delete(inFlightKey);
+      }
+    })();
+  }
 
   function getProjectReviewTaskChoices(projectId: string): Array<{
     id: string;
@@ -362,18 +718,18 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): any {
         )
         : (requiresRepresentativeSelection
           ? t(
-            `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n대표 선택 대상 ${decisionTargetTotal}건 선택이 완료되었습니다.\n이제 팀장 회의를 진행할 수 있습니다.`,
-            `Project '${projectName}' has all ${activeTotal} active items in Review.\nSelection for ${decisionTargetTotal} target item(s) is complete.\nYou can now run the team-lead review meeting.`,
-            `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表者の選択対象${decisionTargetTotal}件の選択が完了しました。\nチームリーダー会議を進行できます。`,
-            `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n代表决策目标 ${decisionTargetTotal} 项已选择完成。\n现在可以进行组长评审会议。`,
+            `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n대표 선택 대상 ${decisionTargetTotal}건 선택이 완료되었습니다.\n아래 선택지에서 다음 단계를 선택해 주세요.`,
+            `Project '${projectName}' has all ${activeTotal} active items in Review.\nSelection for ${decisionTargetTotal} target item(s) is complete.\nChoose the next step from the options below.`,
+            `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表者の選択対象${decisionTargetTotal}件の選択が完了しました。\n以下の選択肢から次のステップを選んでください。`,
+            `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n代表决策目标 ${decisionTargetTotal} 项已选择完成。\n请从下方选项中选择下一步。`,
           )
           : t(
-            `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n선택 단계가 필요하지 않아 바로 팀장 회의를 진행할 수 있습니다.`,
-            `Project '${projectName}' has all ${activeTotal} active items in Review.\nNo selection step is required, so you can run the team-lead review meeting now.`,
-            `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n選択ステップは不要なため、すぐにチームリーダー会議を進行できます。`,
-            `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n无需选择步骤，现在可直接进行组长评审会议。`,
+            `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n대표 선택 단계는 필요하지 않습니다.\n아래 선택지에서 진행 방식을 선택해 주세요.`,
+            `Project '${projectName}' has all ${activeTotal} active items in Review.\nA representative pick step is not required.\nChoose how to proceed from the options below.`,
+            `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表選択ステップは不要です。\n以下の選択肢から進行方法を選択してください。`,
+            `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n无需代表选择步骤。\n请从下方选项中选择推进方式。`,
           ));
-      const options = pendingChoices.length > 0
+      const readyOptions = pendingChoices.length > 0
         ? [
           ...pendingChoices.map((task, index) => ({
             number: index + 1,
@@ -421,17 +777,107 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): any {
           },
         ];
 
+      const snapshotHash = buildProjectReviewSnapshotHash(
+        row.project_id,
+        reviewTaskChoices.map((task) => ({ id: task.id, updated_at: task.updated_at })),
+      );
+      const existingState = getProjectReviewDecisionState(row.project_id);
+      const now = nowMs();
+      const stateNeedsReset = !existingState || existingState.snapshot_hash !== snapshotHash;
+      if (stateNeedsReset) {
+        upsertProjectReviewDecisionState(
+          row.project_id,
+          snapshotHash,
+          "collecting",
+          null,
+          null,
+          null,
+        );
+      } else if (existingState.status === "failed" && (now - (existingState.updated_at ?? 0)) > 3000) {
+        upsertProjectReviewDecisionState(
+          row.project_id,
+          snapshotHash,
+          "collecting",
+          null,
+          null,
+          null,
+        );
+      }
+      const decisionState = getProjectReviewDecisionState(row.project_id);
+      const planningLeadMeta = resolvePlanningLeadMeta(lang, decisionState);
+      if (!decisionState || decisionState.status !== "ready") {
+        queueProjectReviewPlanningConsolidation(
+          row.project_id,
+          projectName,
+          row.project_path,
+          snapshotHash,
+          lang,
+        );
+        const collectingSummary = t(
+          `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n기획팀장 의견 취합중...\n취합 완료 후 대표 선택지와 회의 진행 선택지가 나타납니다.`,
+          `Project '${projectName}' has all ${activeTotal} active items in Review.\nPlanning lead is consolidating opinions...\nRepresentative options and meeting action will appear after consolidation.`,
+          `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n企画リードが意見を集約中...\n集約完了後に代表選択肢と会議進行選択肢が表示されます。`,
+          `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n规划负责人正在汇总意见...\n汇总完成后将显示代表选择项与会议启动选项。`,
+        );
+        out.push({
+          id: `project-review-ready:${row.project_id}`,
+          kind: "project_review_ready",
+          created_at: row.updated_at ?? now,
+          summary: collectingSummary,
+          agent_id: planningLeadMeta.agent_id,
+          agent_name: planningLeadMeta.agent_name,
+          agent_name_ko: planningLeadMeta.agent_name_ko,
+          agent_avatar: planningLeadMeta.agent_avatar,
+          project_id: row.project_id,
+          project_name: row.project_name,
+          project_path: row.project_path,
+          task_id: null,
+          task_title: null,
+          options: [],
+        });
+        continue;
+      }
+
+      const plannerHeader = t(
+        "기획팀장 의견 취합 완료",
+        "Planning consolidation complete",
+        "企画リード意見集約完了",
+        "规划负责人意见汇总完成",
+      );
+      const plannerSummary = formatPlannerSummaryForDisplay(String(decisionState.planner_summary ?? "").trim());
+      const optionGuide = pendingChoices.length <= 0
+        ? readyOptions.map((option) => `${option.number}. ${option.label}`).join("\n")
+        : "";
+      const optionGuideBlock = optionGuide
+        ? t(
+          `현재 선택 가능한 항목:\n${optionGuide}`,
+          `Available options now:\n${optionGuide}`,
+          `現在選択可能な項目:\n${optionGuide}`,
+          `当前可选项:\n${optionGuide}`,
+        )
+        : "";
+      const combinedSummaryBase = plannerSummary
+        ? `${plannerHeader}\n${plannerSummary}\n\n${summary}`
+        : `${plannerHeader}\n\n${summary}`;
+      const combinedSummary = optionGuideBlock
+        ? `${combinedSummaryBase}\n\n${optionGuideBlock}`
+        : combinedSummaryBase;
+
       out.push({
         id: `project-review-ready:${row.project_id}`,
         kind: "project_review_ready",
-        created_at: row.updated_at ?? nowMs(),
-        summary,
+        created_at: row.updated_at ?? now,
+        summary: combinedSummary,
+        agent_id: planningLeadMeta.agent_id,
+        agent_name: planningLeadMeta.agent_name,
+        agent_name_ko: planningLeadMeta.agent_name_ko,
+        agent_avatar: planningLeadMeta.agent_avatar,
         project_id: row.project_id,
         project_name: row.project_name,
         project_path: row.project_path,
         task_id: null,
         task_title: null,
-        options,
+        options: readyOptions,
       });
     }
 
@@ -517,9 +963,217 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): any {
     }));
   }
 
+  function getReviewDecisionFallbackLabel(lang: string): string {
+    return pickL(l(
+      ["기존 작업 이어서 진행"],
+      ["Continue Existing Work"],
+      ["既存作業を継続"],
+      ["继续现有工作"],
+    ), lang);
+  }
+
+  function getReviewDecisionNotes(taskId: string, reviewRound: number, limit = 6): string[] {
+    const boundedLimit = Math.max(1, Math.min(limit, 12));
+    const rawRows = db.prepare(`
+      SELECT raw_note
+      FROM review_revision_history
+      WHERE task_id = ?
+        AND first_round <= ?
+      ORDER BY
+        CASE WHEN first_round = ? THEN 0 ELSE 1 END ASC,
+        first_round DESC,
+        id DESC
+      LIMIT ?
+    `).all(taskId, reviewRound, reviewRound, Math.max(boundedLimit * 3, boundedLimit)) as Array<{
+      raw_note: string | null;
+    }>;
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const row of rawRows) {
+      const normalized = String(row.raw_note ?? "").replace(/\s+/g, " ").trim();
+      if (!normalized) continue;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(normalized);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  function buildReviewRoundDecisionItems(): DecisionInboxRouteItem[] {
+    const lang = getPreferredLanguage();
+    const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
+    const rows = db.prepare(`
+      SELECT
+        t.id AS task_id,
+        t.title AS task_title,
+        t.project_id AS project_id,
+        p.name AS project_name,
+        t.project_path AS project_path,
+        mm.id AS meeting_id,
+        mm.round AS meeting_round,
+        mm.started_at AS meeting_started_at,
+        mm.completed_at AS meeting_completed_at
+      FROM tasks t
+      JOIN meeting_minutes mm ON mm.task_id = t.id
+      LEFT JOIN projects p ON p.id = t.project_id
+      WHERE t.status = 'review'
+        AND t.source_task_id IS NULL
+        AND mm.meeting_type = 'review'
+        AND mm.round IN (1, 2)
+        AND mm.status = 'revision_requested'
+        AND mm.id = (
+          SELECT mm2.id
+          FROM meeting_minutes mm2
+          WHERE mm2.task_id = t.id
+            AND mm2.meeting_type = 'review'
+          ORDER BY mm2.started_at DESC, mm2.created_at DESC
+          LIMIT 1
+        )
+      ORDER BY COALESCE(mm.completed_at, mm.started_at) DESC
+      LIMIT 120
+    `).all() as Array<{
+      task_id: string;
+      task_title: string | null;
+      project_id: string | null;
+      project_name: string | null;
+      project_path: string | null;
+      meeting_id: string;
+      meeting_round: number;
+      meeting_started_at: number | null;
+      meeting_completed_at: number | null;
+    }>;
+
+    const out: DecisionInboxRouteItem[] = [];
+    for (const row of rows) {
+      const notesRaw = getReviewDecisionNotes(row.task_id, row.meeting_round, 6);
+      const notes = notesRaw.length > 0
+        ? notesRaw
+        : [getReviewDecisionFallbackLabel(lang)];
+
+      const taskTitle = (row.task_title || row.task_id).trim();
+      const projectName = row.project_name ? row.project_name.trim() : null;
+      const nextRound = Math.max(2, row.meeting_round + 1);
+      const options = notes.map((note, index) => {
+        const clipped = note.length > 150 ? `${note.slice(0, 147).trimEnd()}...` : note;
+        return {
+          number: index + 1,
+          action: "apply_review_pick",
+          label: clipped,
+        };
+      });
+      options.push({
+        number: notes.length + 1,
+        action: "skip_to_next_round",
+        label: t(
+          "다음 라운드로 SKIP",
+          "Skip to Next Round",
+          "次ラウンドへスキップ",
+          "跳到下一轮",
+        ),
+      });
+
+      const summary = t(
+        `라운드 ${row.meeting_round} 팀장 의견이 취합되었습니다.\n작업: '${taskTitle}'\n${projectName ? `프로젝트: '${projectName}'\n` : ""}필요한 의견을 여러 개 체리피킹하고, 추가 의견도 함께 입력해 보완 작업을 진행할 수 있습니다.\n또는 '다음 라운드로 SKIP'을 선택해 라운드 ${nextRound}(으)로 바로 진행할 수 있습니다.`,
+        `Round ${row.meeting_round} team-lead opinions are consolidated.\nTask: '${taskTitle}'\n${projectName ? `Project: '${projectName}'\n` : ""}You can cherry-pick multiple opinions and include an extra note for remediation in one batch.\nOr choose 'Skip to Next Round' to move directly to round ${nextRound}.`,
+        `ラウンド${row.meeting_round}のチームリーダー意見が集約されました。\nタスク: '${taskTitle}'\n${projectName ? `プロジェクト: '${projectName}'\n` : ""}必要な意見を複数チェリーピックし、追加意見も入力して一括補完できます。\nまたは「次ラウンドへスキップ」でラウンド${nextRound}へ進めます。`,
+        `第 ${row.meeting_round} 轮组长意见已汇总。\n任务：'${taskTitle}'\n${projectName ? `项目：'${projectName}'\n` : ""}可多选意见并追加输入补充意见，一次性执行整改。\n也可选择“跳到下一轮”直接进入第 ${nextRound} 轮。`,
+      );
+
+      out.push({
+        id: `review-round-pick:${row.task_id}:${row.meeting_id}`,
+        kind: "review_round_pick",
+        created_at: row.meeting_completed_at ?? row.meeting_started_at ?? nowMs(),
+        summary,
+        project_id: row.project_id,
+        project_name: row.project_name,
+        project_path: row.project_path,
+        task_id: row.task_id,
+        task_title: row.task_title,
+        meeting_id: row.meeting_id,
+        review_round: row.meeting_round,
+        options,
+      });
+    }
+    return out;
+  }
+
+  function openSupplementRound(
+    taskId: string,
+    assignedAgentId: string | null,
+    fallbackDepartmentId: string | null,
+    logPrefix = "Decision inbox",
+  ): { started: boolean; reason: string } {
+    const branchTs = nowMs();
+    db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?")
+      .run(branchTs, taskId);
+    const pendingTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
+    broadcast("task_update", pendingTask);
+    appendTaskLog(
+      taskId,
+      "system",
+      `${logPrefix}: supplement round opened (review -> pending)`,
+    );
+
+    if (!assignedAgentId) {
+      appendTaskLog(
+        taskId,
+        "system",
+        `${logPrefix}: supplement round pending (no assigned agent)`,
+      );
+      return { started: false, reason: "no_assignee" };
+    }
+
+    const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(assignedAgentId) as AgentRow | undefined;
+    if (!agent) {
+      appendTaskLog(
+        taskId,
+        "system",
+        `${logPrefix}: supplement round pending (assigned agent not found)`,
+      );
+      return { started: false, reason: "agent_not_found" };
+    }
+    if (agent.status === "offline") {
+      appendTaskLog(
+        taskId,
+        "system",
+        `${logPrefix}: supplement round pending (assigned agent offline)`,
+      );
+      return { started: false, reason: "agent_offline" };
+    }
+    if (activeProcesses.has(taskId)) {
+      return { started: false, reason: "already_running" };
+    }
+    if (
+      agent.status === "working"
+      && agent.current_task_id
+      && agent.current_task_id !== taskId
+      && activeProcesses.has(agent.current_task_id)
+    ) {
+      appendTaskLog(
+        taskId,
+        "system",
+        `${logPrefix}: supplement round pending (agent busy on ${agent.current_task_id})`,
+      );
+      return { started: false, reason: "agent_busy" };
+    }
+
+    const deptId = agent.department_id ?? fallbackDepartmentId ?? null;
+    const deptName = deptId ? getDeptName(deptId) : "Unassigned";
+    appendTaskLog(
+      taskId,
+      "system",
+      `${logPrefix}: supplement round execution started`,
+    );
+    startTaskExecutionForAgent(taskId, agent, deptId, deptName);
+    return { started: true, reason: "started" };
+  }
+
   function getDecisionInboxItems(): DecisionInboxRouteItem[] {
     const items = [
       ...buildProjectReviewDecisionItems(),
+      ...buildReviewRoundDecisionItems(),
       ...buildTimeoutResumeDecisionItems(),
     ];
     items.sort((a, b) => b.created_at - a.created_at);
@@ -554,6 +1208,7 @@ app.post("/api/decision-inbox/:id/reply", (req, res) => {
     const projectId = currentItem.project_id;
     if (!projectId) return res.status(400).json({ error: "project_id_required" });
     const selectedAction = selectedOption.action;
+    const decisionSnapshotHash = getProjectReviewDecisionState(projectId)?.snapshot_hash ?? null;
 
     if (selectedAction === "keep_waiting") {
       return res.json({
@@ -582,6 +1237,19 @@ app.post("/api/decision-inbox/:id/reply", (req, res) => {
         "system",
         `${PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX} (project_id=${projectId}, option=${optionNumber})`,
       );
+      recordProjectReviewDecisionEvent({
+        project_id: projectId,
+        snapshot_hash: decisionSnapshotHash,
+        event_type: "representative_pick",
+        summary: `대표 선택: ${targetTask.title}`,
+        selected_options_json: JSON.stringify([{
+          number: optionNumber,
+          action: selectedAction,
+          label: selectedOption.label || targetTask.title,
+          task_id: targetTask.id,
+        }]),
+        task_id: targetTask.id,
+      });
       const remaining = getProjectReviewTaskChoices(projectId).filter((task) => !task.selected).length;
       return res.json({
         ok: true,
@@ -655,74 +1323,29 @@ app.post("/api/decision-inbox/:id/reply", (req, res) => {
         "system",
         `Decision inbox follow-up request added: ${note}`,
       );
+      recordProjectReviewDecisionEvent({
+        project_id: projectId,
+        snapshot_hash: decisionSnapshotHash,
+        event_type: "followup_request",
+        summary: selectedOption.label || "추가요청 입력",
+        selected_options_json: JSON.stringify([{
+          number: optionNumber,
+          action: selectedAction,
+          label: selectedOption.label || "add_followup_request",
+          task_id: resolvedTarget.id,
+        }]),
+        note,
+        task_id: resolvedTarget.id,
+      });
       const insertedSubtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subtaskId);
       broadcast("subtask_update", insertedSubtask);
 
-      // Branch into supplement round: review -> pending -> in_progress (if executable).
-      const branchTs = nowMs();
-      db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?")
-        .run(branchTs, resolvedTarget.id);
-      const pendingTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(resolvedTarget.id);
-      broadcast("task_update", pendingTask);
-      appendTaskLog(
+      const supplement = openSupplementRound(
         resolvedTarget.id,
-        "system",
-        "Decision inbox: supplement round opened (review -> pending)",
+        resolvedTarget.assigned_agent_id,
+        resolvedTarget.department_id,
+        "Decision inbox",
       );
-
-      let supplementStarted = false;
-      let supplementReason = "queued";
-      const assignedAgentId = resolvedTarget.assigned_agent_id;
-      if (!assignedAgentId) {
-        supplementReason = "no_assignee";
-        appendTaskLog(
-          resolvedTarget.id,
-          "system",
-          "Decision inbox: supplement round pending (no assigned agent)",
-        );
-      } else {
-        const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(assignedAgentId) as AgentRow | undefined;
-        if (!agent) {
-          supplementReason = "agent_not_found";
-          appendTaskLog(
-            resolvedTarget.id,
-            "system",
-            "Decision inbox: supplement round pending (assigned agent not found)",
-          );
-        } else if (agent.status === "offline") {
-          supplementReason = "agent_offline";
-          appendTaskLog(
-            resolvedTarget.id,
-            "system",
-            "Decision inbox: supplement round pending (assigned agent offline)",
-          );
-        } else if (activeProcesses.has(resolvedTarget.id)) {
-          supplementReason = "already_running";
-        } else if (
-          agent.status === "working"
-          && agent.current_task_id
-          && agent.current_task_id !== resolvedTarget.id
-          && activeProcesses.has(agent.current_task_id)
-        ) {
-          supplementReason = "agent_busy";
-          appendTaskLog(
-            resolvedTarget.id,
-            "system",
-            `Decision inbox: supplement round pending (agent busy on ${agent.current_task_id})`,
-          );
-        } else {
-          const deptId = agent.department_id ?? resolvedTarget.department_id ?? null;
-          const deptName = deptId ? getDeptName(deptId) : "Unassigned";
-          appendTaskLog(
-            resolvedTarget.id,
-            "system",
-            "Decision inbox: supplement round execution started",
-          );
-          startTaskExecutionForAgent(resolvedTarget.id, agent, deptId, deptName);
-          supplementStarted = true;
-          supplementReason = "started";
-        }
-      }
 
       return res.json({
         ok: true,
@@ -731,8 +1354,8 @@ app.post("/api/decision-inbox/:id/reply", (req, res) => {
         action: "add_followup_request",
         task_id: resolvedTarget.id,
         subtask_id: subtaskId,
-        supplement_round_started: supplementStarted,
-        supplement_round_reason: supplementReason,
+        supplement_round_started: supplement.started,
+        supplement_round_reason: supplement.reason,
       });
     }
 
@@ -782,6 +1405,18 @@ app.post("/api/decision-inbox/:id/reply", (req, res) => {
           trigger: "decision_inbox",
         });
       }
+      recordProjectReviewDecisionEvent({
+        project_id: projectId,
+        snapshot_hash: decisionSnapshotHash,
+        event_type: "start_review_meeting",
+        summary: selectedOption.label || "팀장 회의 진행",
+        selected_options_json: JSON.stringify([{
+          number: optionNumber,
+          action: selectedAction,
+          label: selectedOption.label || "start_project_review",
+          task_count: reviewTasks.length,
+        }]),
+      });
 
       return res.json({
         ok: true,
@@ -793,6 +1428,143 @@ app.post("/api/decision-inbox/:id/reply", (req, res) => {
     }
 
     return res.status(400).json({ error: "unsupported_project_action", action: selectedAction });
+  }
+
+  if (currentItem.kind === "review_round_pick") {
+    const taskId = currentItem.task_id;
+    const meetingId = normalizeTextField((currentItem as { meeting_id?: string | null }).meeting_id);
+    if (!taskId || !meetingId) return res.status(400).json({ error: "task_or_meeting_required" });
+
+    const task = db.prepare(`
+      SELECT id, title, status, department_id, assigned_agent_id, description
+      FROM tasks
+      WHERE id = ?
+    `).get(taskId) as {
+      id: string;
+      title: string;
+      status: string;
+      department_id: string | null;
+      assigned_agent_id: string | null;
+      description: string | null;
+    } | undefined;
+    if (!task) return res.status(404).json({ error: "task_not_found" });
+    if (task.status !== "review") {
+      return res.status(409).json({ error: "task_not_in_review", status: task.status });
+    }
+
+    const meeting = db.prepare(`
+      SELECT id, round, status
+      FROM meeting_minutes
+      WHERE id = ?
+        AND task_id = ?
+        AND meeting_type = 'review'
+    `).get(meetingId, taskId) as {
+      id: string;
+      round: number;
+      status: string;
+    } | undefined;
+    if (!meeting) return res.status(404).json({ error: "meeting_not_found" });
+    if (meeting.status !== "revision_requested") {
+      return res.status(409).json({ error: "meeting_not_pending", status: meeting.status });
+    }
+    const reviewRound = Number.isFinite(meeting.round) ? Math.max(1, Math.trunc(meeting.round)) : 1;
+    const lang = resolveLang(task.description ?? task.title);
+    const notesRaw = getReviewDecisionNotes(taskId, reviewRound, 6);
+    const notes = notesRaw.length > 0
+      ? notesRaw
+      : [getReviewDecisionFallbackLabel(lang)];
+
+    const skipNumber = notes.length + 1;
+    const payloadNumbers = Array.isArray(req.body?.selected_option_numbers)
+      ? req.body.selected_option_numbers
+      : null;
+    const selectedNumbers = (payloadNumbers !== null ? payloadNumbers : [optionNumber])
+      .map((value: unknown) => Number(value))
+      .filter((num: number) => Number.isFinite(num))
+      .map((num: number) => Math.trunc(num));
+    const dedupedSelected = Array.from(new Set(selectedNumbers));
+    const extraNote = normalizeTextField(req.body?.note);
+
+    if (dedupedSelected.includes(skipNumber)) {
+      if (dedupedSelected.length > 1) {
+        return res.status(400).json({ error: "skip_option_must_be_alone" });
+      }
+      if (extraNote) {
+        return res.status(400).json({ error: "skip_option_disallows_extra_note" });
+      }
+      const resolvedAt = nowMs();
+      db.prepare("UPDATE meeting_minutes SET status = 'completed', completed_at = ? WHERE id = ?")
+        .run(resolvedAt, meetingId);
+      appendTaskLog(
+        taskId,
+        "system",
+        `${REVIEW_DECISION_RESOLVED_LOG_PREFIX} (action=skip_to_next_round, round=${reviewRound}, meeting_id=${meetingId})`,
+      );
+      scheduleNextReviewRound(taskId, task.title, reviewRound, lang);
+      return res.json({
+        ok: true,
+        resolved: true,
+        kind: "review_round_pick",
+        action: "skip_to_next_round",
+        task_id: taskId,
+        review_round: reviewRound,
+      });
+    }
+
+    const pickedNumbers = dedupedSelected
+      .filter((num) => num >= 1 && num <= notes.length)
+      .sort((a, b) => a - b);
+    const pickedNotes = pickedNumbers.map((num) => notes[num - 1]).filter(Boolean);
+    const mergedNotes: string[] = [];
+    const seen = new Set<string>();
+    for (const note of pickedNotes) {
+      const cleaned = String(note || "").replace(/\s+/g, " ").trim();
+      if (!cleaned) continue;
+      const key = cleaned.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      mergedNotes.push(cleaned);
+    }
+    if (extraNote) {
+      const key = extraNote.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        mergedNotes.push(extraNote);
+      }
+    }
+    if (mergedNotes.length <= 0) {
+      return res.status(400).json({ error: "review_pick_or_note_required" });
+    }
+
+    const subtaskCount = seedReviewRevisionSubtasks(taskId, task.department_id, mergedNotes);
+    processSubtaskDelegations(taskId);
+    const resolvedAt = nowMs();
+    db.prepare("UPDATE meeting_minutes SET status = 'completed', completed_at = ? WHERE id = ?")
+      .run(resolvedAt, meetingId);
+    appendTaskLog(
+      taskId,
+      "system",
+      `${REVIEW_DECISION_RESOLVED_LOG_PREFIX} (action=apply_review_pick, round=${reviewRound}, picks=${pickedNumbers.join(",") || "-"}, extra_note=${extraNote ? "yes" : "no"}, meeting_id=${meetingId}, subtasks=${subtaskCount})`,
+    );
+
+    const supplement = openSupplementRound(
+      taskId,
+      task.assigned_agent_id,
+      task.department_id,
+      `Decision inbox round${reviewRound}`,
+    );
+    return res.json({
+      ok: true,
+      resolved: true,
+      kind: "review_round_pick",
+      action: "apply_review_pick",
+      task_id: taskId,
+      selected_option_numbers: pickedNumbers,
+      review_round: reviewRound,
+      revision_subtask_count: subtaskCount,
+      supplement_round_started: supplement.started,
+      supplement_round_reason: supplement.reason,
+    });
   }
 
   if (currentItem.kind === "task_timeout_resume") {

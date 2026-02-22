@@ -333,13 +333,14 @@ export default function App() {
         (decisionItems ?? []).map((item) => ({
           id: item.id,
           kind: item.kind,
-          agentId: null,
+          agentId: item.agent_id ?? null,
           agentName: item.kind === "project_review_ready"
-            ? (item.project_name || item.project_id || "Project")
+            ? (item.agent_name || item.project_name || item.project_id || "Planning Lead")
             : (item.task_title || item.task_id || "Task"),
           agentNameKo: item.kind === "project_review_ready"
-            ? (item.project_name || item.project_id || "프로젝트")
+            ? (item.agent_name_ko || item.agent_name || item.project_name || item.project_id || "기획팀장")
             : (item.task_title || item.task_id || "작업"),
+          agentAvatar: item.agent_avatar ?? (item.kind === "project_review_ready" ? "🧑‍💼" : null),
           requestContent: item.summary,
           options: item.options.map((option) => ({
             number: option.number,
@@ -375,13 +376,14 @@ export default function App() {
           const workflowItems: DecisionInboxItem[] = nextDecisionItems.map((item) => ({
             id: item.id,
             kind: item.kind,
-            agentId: null,
+            agentId: item.agent_id ?? null,
             agentName: item.kind === "project_review_ready"
-              ? (item.project_name || item.project_id || "Project")
+              ? (item.agent_name || item.project_name || item.project_id || "Planning Lead")
               : (item.task_title || item.task_id || "Task"),
             agentNameKo: item.kind === "project_review_ready"
-              ? (item.project_name || item.project_id || "프로젝트")
+              ? (item.agent_name_ko || item.agent_name || item.project_name || item.project_id || "기획팀장")
               : (item.task_title || item.task_id || "작업"),
+            agentAvatar: item.agent_avatar ?? (item.kind === "project_review_ready" ? "🧑‍💼" : null),
             requestContent: item.summary,
             options: item.options.map((option) => ({
               number: option.number,
@@ -982,6 +984,14 @@ export default function App() {
             zh: "保持等待",
           });
         }
+        if (action === "add_followup_request") {
+          return pickLang(locale, {
+            ko: "추가요청 입력",
+            en: "Add Follow-up Request",
+            ja: "追加要請を入力",
+            zh: "输入追加请求",
+          });
+        }
       }
       if (kind === "task_timeout_resume") {
         if (action === "resume_timeout_task") {
@@ -1001,19 +1011,30 @@ export default function App() {
           });
         }
       }
+      if (kind === "review_round_pick") {
+        if (action === "skip_to_next_round") {
+          return pickLang(locale, {
+            ko: "다음 라운드로 SKIP",
+            en: "Skip to Next Round",
+            ja: "次ラウンドへスキップ",
+            zh: "跳到下一轮",
+          });
+        }
+      }
       return `${number}. ${action}`;
     };
 
     return items.map((item) => ({
       id: item.id,
       kind: item.kind,
-      agentId: null,
+      agentId: item.agent_id ?? null,
       agentName: item.kind === "project_review_ready"
-        ? (item.project_name || item.project_id || "Project")
+        ? (item.agent_name || item.project_name || item.project_id || "Planning Lead")
         : (item.task_title || item.task_id || "Task"),
       agentNameKo: item.kind === "project_review_ready"
-        ? (item.project_name || item.project_id || "프로젝트")
+        ? (item.agent_name_ko || item.agent_name || item.project_name || item.project_id || "기획팀장")
         : (item.task_title || item.task_id || "작업"),
+      agentAvatar: item.agent_avatar ?? (item.kind === "project_review_ready" ? "🧑‍💼" : null),
       requestContent: item.summary,
       options: item.options.map((option) => ({
         number: option.number,
@@ -1070,7 +1091,7 @@ export default function App() {
   const handleReplyDecisionOption = useCallback(async (
     item: DecisionInboxItem,
     optionNumber: number,
-    payloadInput?: { note?: string },
+    payloadInput?: { note?: string; selected_option_numbers?: number[] },
   ) => {
     const option = item.options.find((entry) => entry.number === optionNumber);
     if (!option) return;
@@ -1096,7 +1117,7 @@ export default function App() {
         setDecisionInboxItems((prev) => prev.filter((entry) => entry.id !== item.id));
       } else {
         const selectedAction = option.action ?? "";
-        let payload: { note?: string; target_task_id?: string } | undefined;
+        let payload: { note?: string; target_task_id?: string; selected_option_numbers?: number[] } | undefined;
         if (selectedAction === "add_followup_request") {
           const note = payloadInput?.note?.trim() ?? "";
           if (!note) {
@@ -1111,6 +1132,13 @@ export default function App() {
           payload = {
             note,
             ...(item.taskId ? { target_task_id: item.taskId } : {}),
+          };
+        } else if (item.kind === "review_round_pick") {
+          const selectedOptionNumbers = payloadInput?.selected_option_numbers;
+          const note = payloadInput?.note?.trim() ?? "";
+          payload = {
+            ...(note ? { note } : {}),
+            ...(Array.isArray(selectedOptionNumbers) ? { selected_option_numbers: selectedOptionNumbers } : {}),
           };
         }
         const replyResult = await api.replyDecisionInbox(item.id, optionNumber, payload);
@@ -1678,6 +1706,7 @@ export default function App() {
             open={showDecisionInbox}
             loading={decisionInboxLoading}
             items={decisionInboxItems}
+            agents={agents}
             busyKey={decisionReplyBusyKey}
             uiLanguage={uiLanguage}
             onClose={() => setShowDecisionInbox(false)}

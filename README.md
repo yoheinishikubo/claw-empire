@@ -76,6 +76,25 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ---
 
+## Decision Inbox Addendum (2026-02-22)
+
+- **Project Review Start Label Refinement** — When representative selection is not needed (single active review item), the decision action is shown as `Start Team-Lead Meeting` instead of showing the original request text.
+- **Planning Consolidation Loading Gate (Project Decision)** — When all active project items reach Review, the card first shows `Planning lead is consolidating opinions...` and keeps options hidden until consolidation completes.
+- **Round 1 + Round 2 Decision Gate** — Both review rounds now pause in Decision Inbox on `revision_requested` status; no automatic round transition happens before CEO decision.
+- **Cherry-Pick Multi-Select in Review Decisions** — In each review decision item, you can select multiple team-lead opinions at once and execute remediation in one batch.
+- **Optional Extra Note in Review Decisions** — Along with picked options, an extra remediation note can be entered and included in the same supplement round.
+- **Skip to Next Round Action** — Review decision items now support `Skip to Next Round`, moving from round 1 -> 2 or round 2 -> 3 without opening a duplicated new task line.
+- **Consolidation Summary Formatting + Option Guide** — Consolidated planning summaries now preserve readable line breaks, and single-item project decisions explicitly list available options in the summary.
+- **Project Decision SQL Audit Trail** — Project-level decision state/events are now persisted and surfaced in Project Manager representative-selection history (planning summary, representative picks, follow-up requests, meeting start).
+- **Planning-Lead Character Icon Consistency** — Project decision cards now preserve planning-lead metadata across initial load/live sync and keep the same character avatar (no emoji/sprite flicker).
+- **Single Report Popup After Planning Consolidation** — Task report popup/event is now deferred until the planning-lead LLM consolidated report is generated, preventing the previous double-popup behavior.
+- **Task Hidden State Migration (localStorage -> SQLite)** — Task hide/unhide state is now stored in the DB `hidden` column instead of browser localStorage, preventing hidden IDs from being wiped on server restart. Added `PATCH /api/tasks/:id` hidden field support and `POST /api/tasks/bulk-hide` for batch operations.
+- **Report History Pagination** — Report History modal now paginates the full list at 5 items per page with footer prev/next controls; project-group sub-pagination (3 per group) is preserved within each page.
+
+- Addendum notes: [`docs/releases/v1.1.5.md`](docs/releases/v1.1.5.md)
+
+---
+
 ## Install with AI
 
 > **Just paste this to your AI coding agent (Claude Code, Codex, Gemini CLI, etc.):**

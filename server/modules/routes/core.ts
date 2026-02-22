@@ -1800,7 +1800,24 @@ app.get("/api/projects/:id", (req, res) => {
     LIMIT 200
   `).all(id);
 
-  res.json({ project, tasks, reports });
+  const decisionEvents = db.prepare(`
+    SELECT
+      id,
+      snapshot_hash,
+      event_type,
+      summary,
+      selected_options_json,
+      note,
+      task_id,
+      meeting_id,
+      created_at
+    FROM project_review_decision_events
+    WHERE project_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT 300
+  `).all(id);
+
+  res.json({ project, tasks, reports, decision_events: decisionEvents });
 });
 
 // ---------------------------------------------------------------------------
@@ -2660,6 +2677,7 @@ app.patch("/api/tasks/:id", (req, res) => {
   const allowedFields = [
     "title", "description", "department_id", "assigned_agent_id",
     "status", "priority", "task_type", "project_path", "result",
+    "hidden",
   ];
 
   const updates: string[] = ["updated_at = ?"];
@@ -2727,6 +2745,19 @@ app.patch("/api/tasks/:id", (req, res) => {
   const updated = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
   broadcast("task_update", updated);
   res.json({ ok: true, task: updated });
+});
+
+app.post("/api/tasks/bulk-hide", (req, res) => {
+  const { statuses, hidden } = req.body ?? {};
+  if (!Array.isArray(statuses) || statuses.length === 0 || (hidden !== 0 && hidden !== 1)) {
+    return res.status(400).json({ error: "invalid_body" });
+  }
+  const placeholders = statuses.map(() => "?").join(",");
+  const result = db.prepare(
+    `UPDATE tasks SET hidden = ?, updated_at = ? WHERE status IN (${placeholders}) AND hidden != ?`
+  ).run(hidden, nowMs(), ...statuses, hidden);
+  broadcast("tasks_changed", {});
+  res.json({ ok: true, affected: result.changes });
 });
 
 app.delete("/api/tasks/:id", (req, res) => {

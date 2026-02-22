@@ -348,8 +348,12 @@ export async function createTask(input: {
   return j.id;
 }
 
-export async function updateTask(id: string, data: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'task_type' | 'department_id' | 'project_id' | 'project_path'>>): Promise<void> {
+export async function updateTask(id: string, data: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'task_type' | 'department_id' | 'project_id' | 'project_path' | 'hidden'>>): Promise<void> {
   await patch(`/api/tasks/${id}`, data);
+}
+
+export async function bulkHideTasks(statuses: string[], hidden: 0 | 1): Promise<void> {
+  await post('/api/tasks/bulk-hide', { statuses, hidden });
 }
 
 export async function deleteTask(id: string): Promise<void> {
@@ -404,10 +408,23 @@ export interface ProjectReportHistoryItem {
   dept_name_ko: string;
 }
 
+export interface ProjectDecisionEventItem {
+  id: number;
+  snapshot_hash: string | null;
+  event_type: 'planning_summary' | 'representative_pick' | 'followup_request' | 'start_review_meeting';
+  summary: string;
+  selected_options_json: string | null;
+  note: string | null;
+  task_id: string | null;
+  meeting_id: string | null;
+  created_at: number;
+}
+
 export interface ProjectDetailResponse {
   project: Project;
   tasks: ProjectTaskHistoryItem[];
   reports: ProjectReportHistoryItem[];
+  decision_events: ProjectDecisionEventItem[];
 }
 
 export async function getProjects(params?: {
@@ -548,21 +565,27 @@ export type DecisionInboxRouteOption = {
 
 export type DecisionInboxRouteItem = {
   id: string;
-  kind: "project_review_ready" | "task_timeout_resume";
+  kind: "project_review_ready" | "task_timeout_resume" | "review_round_pick";
   created_at: number;
   summary: string;
+  agent_id?: string | null;
+  agent_name?: string | null;
+  agent_name_ko?: string | null;
+  agent_avatar?: string | null;
   project_id: string | null;
   project_name: string | null;
   project_path: string | null;
   task_id: string | null;
   task_title: string | null;
+  meeting_id?: string | null;
+  review_round?: number | null;
   options: DecisionInboxRouteOption[];
 };
 
 export type DecisionInboxReplyResult = {
   ok: boolean;
   resolved: boolean;
-  kind: "project_review_ready" | "task_timeout_resume";
+  kind: "project_review_ready" | "task_timeout_resume" | "review_round_pick";
   action: string;
   started_task_ids?: string[];
   task_id?: string;
@@ -576,7 +599,7 @@ export async function getDecisionInbox(): Promise<DecisionInboxRouteItem[]> {
 export async function replyDecisionInbox(
   id: string,
   optionNumber: number,
-  payload?: { note?: string; target_task_id?: string },
+  payload?: { note?: string; target_task_id?: string; selected_option_numbers?: number[] },
 ): Promise<DecisionInboxReplyResult> {
   return request<DecisionInboxReplyResult>(`/api/decision-inbox/${encodeURIComponent(id)}/reply`, {
     method: "POST",
@@ -585,6 +608,9 @@ export async function replyDecisionInbox(
       option_number: optionNumber,
       ...(payload?.note ? { note: payload.note } : {}),
       ...(payload?.target_task_id ? { target_task_id: payload.target_task_id } : {}),
+      ...(payload && Object.prototype.hasOwnProperty.call(payload, "selected_option_numbers")
+        ? { selected_option_numbers: payload.selected_option_numbers }
+        : {}),
     }),
   });
 }

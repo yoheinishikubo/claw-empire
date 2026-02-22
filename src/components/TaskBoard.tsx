@@ -14,6 +14,7 @@ import {
   browseProjectPath,
   pickProjectPathNative,
   isApiRequestError,
+  bulkHideTasks,
   type TaskDiffResult,
 } from '../api';
 
@@ -49,8 +50,6 @@ type Locale = 'ko' | 'en' | 'ja' | 'zh';
 type TFunction = (messages: Record<Locale, string>) => string;
 
 const LANGUAGE_STORAGE_KEY = 'climpire.language';
-const HIDDEN_TASKS_STORAGE_KEY = 'climpire.hiddenTaskIds';
-const LEGACY_HIDDEN_DONE_TASKS_STORAGE_KEY = 'climpire.hiddenDoneTaskIds';
 const TASK_CREATE_DRAFTS_STORAGE_KEY = 'climpire.taskCreateDrafts';
 const HIDEABLE_STATUSES = ['done', 'pending', 'cancelled'] as const;
 type HideableStatus = typeof HIDEABLE_STATUSES[number];
@@ -90,24 +89,6 @@ const LOCALE_TAGS: Record<Locale, string> = {
 
 function isHideableStatus(status: TaskStatus): status is HideableStatus {
   return (HIDEABLE_STATUSES as readonly TaskStatus[]).includes(status);
-}
-
-function parseHiddenTaskIds(raw: string | null): string[] {
-  if (!raw) return [];
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
-}
-
-function loadHiddenTaskIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const rawHiddenTaskIds = window.localStorage.getItem(HIDDEN_TASKS_STORAGE_KEY);
-    if (rawHiddenTaskIds !== null) return parseHiddenTaskIds(rawHiddenTaskIds);
-    return parseHiddenTaskIds(window.localStorage.getItem(LEGACY_HIDDEN_DONE_TASKS_STORAGE_KEY));
-  } catch {
-    return [];
-  }
 }
 
 function createDraftId(): string {
@@ -2945,73 +2926,25 @@ export function TaskBoard({
   const [filterType, setFilterType] = useState('');
   const [search, setSearch] = useState('');
   const [showAllTasks, setShowAllTasks] = useState(false);
-  const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(
-    () => new Set(loadHiddenTaskIds()),
+  const hiddenTaskIds = useMemo(
+    () => new Set(tasks.filter((t) => t.hidden === 1).map((t) => t.id)),
+    [tasks],
   );
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(
-      HIDDEN_TASKS_STORAGE_KEY,
-      JSON.stringify([...hiddenTaskIds]),
-    );
-  }, [hiddenTaskIds]);
-
-  useEffect(() => {
-    const validHideableTaskIds = new Set(tasks.filter((task) => isHideableStatus(task.status)).map((task) => task.id));
-    setHiddenTaskIds((prev) => {
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (validHideableTaskIds.has(id)) next.add(id);
-      }
-      if (next.size === prev.size) {
-        let same = true;
-        for (const id of next) {
-          if (!prev.has(id)) {
-            same = false;
-            break;
-          }
-        }
-        if (same) return prev;
-      }
-      return next;
-    });
-  }, [tasks]);
-
   const hideTask = useCallback((taskId: string) => {
-    setHiddenTaskIds((prev) => {
-      if (prev.has(taskId)) return prev;
-      const next = new Set(prev);
-      next.add(taskId);
-      return next;
-    });
-  }, []);
+    onUpdateTask(taskId, { hidden: 1 });
+  }, [onUpdateTask]);
 
   const unhideTask = useCallback((taskId: string) => {
-    setHiddenTaskIds((prev) => {
-      if (!prev.has(taskId)) return prev;
-      const next = new Set(prev);
-      next.delete(taskId);
-      return next;
-    });
-  }, []);
+    onUpdateTask(taskId, { hidden: 0 });
+  }, [onUpdateTask]);
 
   const hideByStatuses = useCallback(
     (statuses: HideableStatus[]) => {
       if (statuses.length === 0) return;
-      const statusSet = new Set<HideableStatus>(statuses);
-      setHiddenTaskIds((prev) => {
-        const next = new Set(prev);
-        let changed = false;
-        for (const task of tasks) {
-          if (!isHideableStatus(task.status) || !statusSet.has(task.status) || next.has(task.id)) continue;
-          next.add(task.id);
-          changed = true;
-        }
-        return changed ? next : prev;
-      });
+      bulkHideTasks(statuses, 1);
     },
-    [tasks],
+    [],
   );
 
   const filteredTasks = useMemo(() => {

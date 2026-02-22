@@ -13,7 +13,8 @@ interface ReportHistoryProps {
   onClose: () => void;
 }
 
-const ITEMS_PER_PAGE = 3;
+const PAGE_SIZE = 5;
+const GROUP_ITEMS_PER_PAGE = 3;
 
 function fmtDate(ts: number | null | undefined): string {
   if (!ts) return '-';
@@ -36,22 +37,35 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
   const [reports, setReports] = useState<TaskReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<TaskReportDetail | null>(null);
+  const [page, setPage] = useState(0);
   const [groupPages, setGroupPages] = useState<Record<string, number>>({});
 
-  const groupedReports = useMemo(() => {
+  const totalPages = Math.max(1, Math.ceil(reports.length / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(page, 0), totalPages - 1);
+  const pageStart = currentPage * PAGE_SIZE;
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, reports.length);
+  const pageReports = reports.slice(pageStart, pageEnd);
+
+  const groupedPageReports = useMemo(() => {
     const groups = new Map<string, TaskReportSummary[]>();
-    for (const report of reports) {
+    for (const report of pageReports) {
       const key = projectNameFromSummary(report);
       const bucket = groups.get(key) ?? [];
       bucket.push(report);
       groups.set(key, bucket);
     }
     return [...groups.entries()];
-  }, [reports]);
+  }, [pageReports]);
 
   useEffect(() => {
+    setPage(0);
     setGroupPages({});
   }, [reports]);
+
+  // 페이지 변경 시 그룹 서브 페이지 리셋
+  useEffect(() => {
+    setGroupPages({});
+  }, [page]);
 
   useEffect(() => {
     getTaskReports()
@@ -60,6 +74,11 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
       .finally(() => setLoading(false));
   }, []);
 
+  const handleGroupPageChange = (groupKey: string, nextPage: number, groupTotalPages: number) => {
+    const bounded = Math.min(Math.max(nextPage, 0), Math.max(groupTotalPages - 1, 0));
+    setGroupPages((prev) => ({ ...prev, [groupKey]: bounded }));
+  };
+
   const handleOpenDetail = async (taskId: string) => {
     try {
       const d = await getTaskReportDetail(taskId);
@@ -67,11 +86,6 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
     } catch (e) {
       console.error('Failed to load report detail:', e);
     }
-  };
-
-  const handlePageChange = (groupKey: string, nextPage: number, totalPages: number) => {
-    const boundedPage = Math.min(Math.max(nextPage, 0), Math.max(totalPages - 1, 0));
-    setGroupPages((prev) => ({ ...prev, [groupKey]: boundedPage }));
   };
 
   // 상세 보기가 열려 있으면 TaskReportPopup 표시
@@ -125,12 +139,12 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
             </div>
           ) : (
             <div className="space-y-4 px-4 py-3">
-              {groupedReports.map(([projectName, rows]) => {
-                const totalPages = Math.max(1, Math.ceil(rows.length / ITEMS_PER_PAGE));
-                const currentPage = Math.min(Math.max(groupPages[projectName] ?? 0, 0), totalPages - 1);
-                const startIndex = currentPage * ITEMS_PER_PAGE;
-                const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, rows.length);
-                const visibleRows = rows.slice(startIndex, endIndex);
+              {groupedPageReports.map(([projectName, rows]) => {
+                const groupTotal = Math.max(1, Math.ceil(rows.length / GROUP_ITEMS_PER_PAGE));
+                const groupCurrent = Math.min(Math.max(groupPages[projectName] ?? 0, 0), groupTotal - 1);
+                const gStart = groupCurrent * GROUP_ITEMS_PER_PAGE;
+                const gEnd = Math.min(gStart + GROUP_ITEMS_PER_PAGE, rows.length);
+                const visibleRows = rows.slice(gStart, gEnd);
 
                 return (
                   <div key={projectName} className="overflow-hidden rounded-xl border border-slate-700/50">
@@ -166,39 +180,34 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
                         );
                       })}
                     </div>
-                    {totalPages > 1 ? (
+                    {groupTotal > 1 && (
                       <div className="flex items-center justify-between border-t border-slate-700/40 bg-slate-900/40 px-3 py-2">
                         <span className="text-[11px] text-slate-500">
-                          {t({
-                            ko: `${startIndex + 1}-${endIndex} / ${rows.length}`,
-                            en: `${startIndex + 1}-${endIndex} / ${rows.length}`,
-                            ja: `${startIndex + 1}-${endIndex} / ${rows.length}`,
-                            zh: `${startIndex + 1}-${endIndex} / ${rows.length}`,
-                          })}
+                          {gStart + 1}-{gEnd} / {rows.length}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => handlePageChange(projectName, currentPage - 1, totalPages)}
-                            disabled={currentPage <= 0}
+                            onClick={() => handleGroupPageChange(projectName, groupCurrent - 1, groupTotal)}
+                            disabled={groupCurrent <= 0}
                             className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             {t({ ko: '이전', en: 'Prev', ja: '前へ', zh: '上一页' })}
                           </button>
                           <span className="text-[11px] text-slate-400">
-                            {currentPage + 1} / {totalPages}
+                            {groupCurrent + 1} / {groupTotal}
                           </span>
                           <button
                             type="button"
-                            onClick={() => handlePageChange(projectName, currentPage + 1, totalPages)}
-                            disabled={currentPage >= totalPages - 1}
+                            onClick={() => handleGroupPageChange(projectName, groupCurrent + 1, groupTotal)}
+                            disabled={groupCurrent >= groupTotal - 1}
                             className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             {t({ ko: '다음', en: 'Next', ja: '次へ', zh: '下一页' })}
                           </button>
                         </div>
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 );
               })}
@@ -212,12 +221,37 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
             <span className="text-xs text-slate-500">
               {t({ ko: `총 ${reports.length}건`, en: `${reports.length} reports`, ja: `全${reports.length}件`, zh: `共${reports.length}条` })}
             </span>
-            <button
-              onClick={onClose}
-              className="rounded-lg bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-slate-600"
-            >
-              {t({ ko: '닫기', en: 'Close', ja: '閉じる', zh: '关闭' })}
-            </button>
+            <div className="flex items-center gap-3">
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPage(currentPage - 1)}
+                    disabled={currentPage <= 0}
+                    className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t({ ko: '이전', en: 'Prev', ja: '前へ', zh: '上一页' })}
+                  </button>
+                  <span className="text-[11px] text-slate-400">
+                    {currentPage + 1} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage(currentPage + 1)}
+                    disabled={currentPage >= totalPages - 1}
+                    className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t({ ko: '다음', en: 'Next', ja: '次へ', zh: '下一页' })}
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={onClose}
+                className="rounded-lg bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-slate-600"
+              >
+                {t({ ko: '닫기', en: 'Close', ja: '閉じる', zh: '关闭' })}
+              </button>
+            </div>
           </div>
         </div>
       </div>

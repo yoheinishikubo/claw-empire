@@ -74,6 +74,7 @@ export interface Task {
   source_task_id?: string | null;
   subtask_total?: number;
   subtask_done?: number;
+  hidden?: number;
 }
 
 export interface Project {
