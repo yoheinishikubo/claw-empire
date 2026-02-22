@@ -703,13 +703,13 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
           </div>
         </aside>
 
-        <section className="flex flex-1 flex-col overflow-hidden">
+        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-slate-700 px-5 py-3">
             <h3 className="text-sm font-semibold text-white">{formTitle}</h3>
           </div>
 
-          <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 xl:grid-cols-[360px_1fr]">
-            <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-800/50 p-4">
+          <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 overflow-y-auto overflow-x-hidden p-5 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-3 rounded-xl border border-slate-700 bg-slate-800/50 p-4">
               <label className="block text-xs text-slate-400">
                 {t({ ko: '프로젝트 이름', en: 'Project Name', ja: 'プロジェクト名', zh: '项目名称' })}
                 <input
@@ -937,8 +937,8 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+            <div className="min-w-0 space-y-4">
+              <div className="min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
                 <h4 className="text-sm font-semibold text-white">
                   {t({ ko: '프로젝트 정보', en: 'Project Info', ja: 'プロジェクト情報', zh: '项目信息' })}
                 </h4>
@@ -957,7 +957,7 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+              <div className="min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
                 <h4 className="text-sm font-semibold text-white">
                   {t({ ko: '작업 이력', en: 'Task History', ja: '作業履歴', zh: '任务历史' })}
                 </h4>
@@ -1007,7 +1007,7 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+              <div className="min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
                 <h4 className="text-sm font-semibold text-white">
                   {t({ ko: '보고서 이력(프로젝트 매핑)', en: 'Mapped Reports', ja: '紐づくレポート', zh: '映射报告' })}
                 </h4>
@@ -1016,17 +1016,17 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                 ) : sortedReports.length === 0 ? (
                   <p className="mt-2 text-xs text-slate-500">{t({ ko: '연결된 보고서가 없습니다', en: 'No mapped reports', ja: '紐づくレポートなし', zh: '没有映射报告' })}</p>
                 ) : (
-                  <div className="mt-2 max-h-56 overflow-y-auto space-y-2">
+                  <div className="mt-2 max-h-56 overflow-x-hidden overflow-y-auto space-y-2 pr-1">
                     {sortedReports.map((row) => (
-                      <div key={row.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2">
+                      <div key={row.id} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-medium text-slate-100">{row.title}</p>
+                          <p className="whitespace-pre-wrap break-all text-xs font-medium text-slate-100">{row.title}</p>
                           <p className="text-[11px] text-slate-400">{fmtTime(row.completed_at || row.created_at)}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => void handleOpenTaskDetail(row.id)}
-                          className="rounded-md bg-emerald-700 px-2 py-1 text-[11px] text-white hover:bg-emerald-600"
+                          className="shrink-0 rounded-md bg-emerald-700 px-2 py-1 text-[11px] text-white hover:bg-emerald-600"
                         >
                           {t({ ko: '열람', en: 'Open', ja: '表示', zh: '查看' })}
                         </button>
@@ -1036,7 +1036,7 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4">
+              <div className="min-w-0 rounded-xl border border-slate-700 bg-slate-800/40 p-4">
                 <h4 className="text-sm font-semibold text-white">
                   {t({ ko: '대표 선택사항', en: 'Representative Decisions', ja: '代表選択事項', zh: '代表选择事项' })}
                 </h4>
@@ -1052,7 +1052,7 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                     })}
                   </p>
                 ) : (
-                  <div className="mt-2 max-h-56 overflow-y-auto space-y-2">
+                  <div className="mt-2 max-h-56 overflow-x-hidden overflow-y-auto space-y-2 pr-1">
                     {sortedDecisionEvents.map((event) => {
                       let selectedLabels: string[] = [];
                       if (event.selected_options_json) {
@@ -1074,7 +1074,7 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                           className="rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-slate-100">{getDecisionEventLabel(event.event_type)}</p>
+                            <p className="min-w-0 truncate text-xs font-semibold text-slate-100">{getDecisionEventLabel(event.event_type)}</p>
                             <p className="text-[11px] text-slate-400">{fmtTime(event.created_at)}</p>
                           </div>
                           <p className="mt-1 whitespace-pre-wrap break-all text-[11px] text-slate-300">{event.summary}</p>

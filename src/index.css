@@ -455,6 +455,7 @@ code, pre, .font-mono {
 [data-theme="light"] [class*="hover\:bg-red-500"]:hover { background-color: #ef4444 !important; }
 [data-theme="light"] .bg-red-600 { background-color: #dc2626 !important; color: #fff !important; }
 [data-theme="light"] .bg-emerald-600 { background-color: #059669 !important; color: #fff !important; }
+[data-theme="light"] .bg-emerald-700 { background-color: #047857 !important; color: #fff !important; }
 
 /* ── Modal overlay ── */
 [data-theme="light"] .bg-black\/50,
@@ -464,10 +465,12 @@ code, pre, .font-mono {
 /* ── White text on colored backgrounds should stay white ── */
 [data-theme="light"] .bg-blue-600 .text-white,
 [data-theme="light"] .bg-red-600 .text-white,
-[data-theme="light"] .bg-emerald-600 .text-white { color: #ffffff !important; }
+[data-theme="light"] .bg-emerald-600 .text-white,
+[data-theme="light"] .bg-emerald-700 .text-white { color: #ffffff !important; }
 [data-theme="light"] .bg-blue-600.text-white,
 [data-theme="light"] .bg-red-600.text-white,
-[data-theme="light"] .bg-emerald-600.text-white { color: #ffffff !important; }
+[data-theme="light"] .bg-emerald-600.text-white,
+[data-theme="light"] .bg-emerald-700.text-white { color: #ffffff !important; }
 
 /* ── Update banner light mode ── */
 [data-theme="light"] [class*="text-amber-100"] { color: #92400e !important; }
