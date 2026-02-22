@@ -454,11 +454,12 @@ type PromptSkillRow = {
 
 const SKILL_PROMPT_FETCH_LIMIT = 8;
 const SKILL_PROMPT_INLINE_LIMIT = 4;
+const DEFAULT_LOCAL_TASTE_SKILL_PATH = "tools/taste-skill/skill.md";
 const DEFAULT_PROMPT_SKILLS: PromptSkillRow[] = [
   {
-    repo: "GreenSheep01201/taste-skill",
+    repo: DEFAULT_LOCAL_TASTE_SKILL_PATH,
     skill_id: "",
-    skill_label: "GreenSheep01201/taste-skill (default baseline)",
+    skill_label: `${DEFAULT_LOCAL_TASTE_SKILL_PATH} (default local baseline)`,
     learned_at: Number.MAX_SAFE_INTEGER,
   },
 ];
@@ -587,6 +588,7 @@ function formatPromptSkillTagLine(rows: Array<{ repo: string; skill_id: string; 
 
 function buildAvailableSkillsPromptBlock(provider: string): string {
   const providerDisplay = getPromptSkillProviderDisplayName(provider);
+  const localDefaultSkillRule = `[Skills Rule] Default local skill: \`${DEFAULT_LOCAL_TASTE_SKILL_PATH}\`. Read and apply it before execution when available.`;
   try {
     const providerKey = isPromptSkillProvider(provider) ? provider : null;
     const providerLearnedSkills = providerKey
@@ -596,7 +598,8 @@ function buildAvailableSkillsPromptBlock(provider: string): string {
       const providerSkills = withDefaultPromptSkills(providerLearnedSkills);
       return [
         `[Available Skills][provider=${providerDisplay}][default=taste-skill]${formatPromptSkillTagLine(providerSkills)}`,
-        "[Skills Rule] Use provider-matched skills first when relevant. Treat `GreenSheep01201/taste-skill` as baseline default.",
+        "[Skills Rule] Use provider-matched skills first when relevant.",
+        localDefaultSkillRule,
       ].join("\n");
     }
 
@@ -605,20 +608,23 @@ function buildAvailableSkillsPromptBlock(provider: string): string {
       const fallbackSkills = withDefaultPromptSkills(fallbackLearnedSkills);
       return [
         `[Available Skills][provider=${providerDisplay}][default=taste-skill][fallback=global]${formatPromptSkillTagLine(fallbackSkills)}`,
-        "[Skills Rule] No provider-specific history yet. Use global learned skills and treat `GreenSheep01201/taste-skill` as baseline default.",
+        "[Skills Rule] No provider-specific history yet. Use global learned skills when relevant.",
+        localDefaultSkillRule,
       ].join("\n");
     }
 
     const defaultSkills = withDefaultPromptSkills([]);
     return [
       `[Available Skills][provider=${providerDisplay}][default=taste-skill]${formatPromptSkillTagLine(defaultSkills)}`,
-      "[Skills Rule] No learned skills recorded yet. Use `GreenSheep01201/taste-skill` as baseline default.",
+      "[Skills Rule] No learned skills recorded yet.",
+      localDefaultSkillRule,
     ].join("\n");
   } catch {
     const defaultSkills = withDefaultPromptSkills([]);
     return [
       `[Available Skills][provider=${providerDisplay}][default=taste-skill][fallback=unavailable]${formatPromptSkillTagLine(defaultSkills)}`,
-      "[Skills Rule] Skills history lookup failed. Keep `GreenSheep01201/taste-skill` as baseline default.",
+      "[Skills Rule] Skills history lookup failed.",
+      localDefaultSkillRule,
     ].join("\n");
   }
 }

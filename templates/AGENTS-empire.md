@@ -23,12 +23,11 @@ This applies to ALL responses: confirmations, questions, error messages, status 
 `TASTE_SKILL_DEFAULT_V1`
 
 Set the following as a default skill in your working environment:
-- Skill repo: `https://github.com/GreenSheep01201/taste-skill`
-- Install command: `npx skills add GreenSheep01201/taste-skill`
+- Local skill file: `tools/taste-skill/skill.md`
 
 Rules:
-1. For non-trivial implementation tasks, check whether this skill is available before execution.
-2. If missing and network install is allowed, install it first, then continue.
+1. For non-trivial implementation tasks, load and follow `tools/taste-skill/skill.md` first when the file exists.
+2. If the local file is missing, continue with existing project rules without auto-fetching remote repositories.
 3. Do not remove existing project-specific skills/rules; this is an additive default.
 
 ---
