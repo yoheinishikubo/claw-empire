@@ -81,6 +81,17 @@ function firstQueryValue(value: unknown): string | undefined {
   return undefined;
 }
 
+function readSettingString(key: string): string | undefined {
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value?: unknown } | undefined;
+    if (!row || typeof row.value !== "string") return undefined;
+    const trimmed = row.value.trim();
+    return trimmed || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const securityAuditLogPath = path.join(logsDir, "security-audit.ndjson");
 const securityAuditFallbackLogPath = path.join(logsDir, "security-audit-fallback.ndjson");
 const SECURITY_AUDIT_CHAIN_SEED =
@@ -1721,6 +1732,7 @@ const runtimeContext: Record<string, any> & BaseRuntimeContext = {
   nowMs,
   runInTransaction,
   firstQueryValue,
+  readSettingString,
 
   IN_PROGRESS_ORPHAN_GRACE_MS,
   IN_PROGRESS_ORPHAN_SWEEP_MS,
