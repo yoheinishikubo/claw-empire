@@ -207,15 +207,10 @@ function resolveWorkspaceDir() {
 }
 
 function resolveAgentsPath() {
-  const workspaceDir = resolveWorkspaceDir();
-  const candidates = [
-    path.join(workspaceDir, "AGENTS.md"),
-    path.join(ROOT_DIR, "AGENTS.md"),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return path.join(workspaceDir, "AGENTS.md");
+  const projectAgentsPath = path.join(ROOT_DIR, "AGENTS.md");
+  // Default target for migration: project-local AGENTS.md (claw-empire users first).
+  // OpenClaw workspace targeting should be explicit via setup --agents-path.
+  return projectAgentsPath;
 }
 
 function shouldRefreshAgentsRules() {

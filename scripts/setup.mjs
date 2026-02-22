@@ -72,19 +72,10 @@ function resolveWorkspaceDir() {
 }
 
 function findAgentsPath() {
-  const workspaceDir = resolveWorkspaceDir();
-
-  const candidates = [
-    path.join(workspaceDir, "AGENTS.md"),
-    path.join(process.cwd(), "AGENTS.md"),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
-  // Default: create in detected workspace
-  return path.join(workspaceDir, "AGENTS.md");
+  const projectAgentsPath = path.join(process.cwd(), "AGENTS.md");
+  // Default target: current project root (claw-empire users first).
+  // OpenClaw workspace targeting should be explicit via --agents-path.
+  return projectAgentsPath;
 }
 
 function main() {
