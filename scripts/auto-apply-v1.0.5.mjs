@@ -16,6 +16,10 @@ const MIGRATION_DONE_KEY = "CLAW_MIGRATION_V1_0_5_DONE";
 const START_MARKER = "<!-- BEGIN claw-empire orchestration rules -->";
 const END_MARKER = "<!-- END claw-empire orchestration rules -->";
 const REQUIRED_AGENTS_SECRET_TOKEN = "INBOX_SECRET_DISCOVERY_V2";
+const REQUIRED_AGENTS_ADDITIONAL_TOKENS = [
+  "TASTE_SKILL_DEFAULT_V1",
+  "WORKFLOW_ORCHESTRATION_BASELINE_V1",
+];
 const MEETING_PROMPT_ENV_DEFAULTS = [
   ["MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS", "1200"],
   ["MEETING_TRANSCRIPT_MAX_TURNS", "20"],
@@ -222,6 +226,9 @@ function shouldRefreshAgentsRules() {
   if (!content.includes(START_MARKER) || !content.includes(END_MARKER)) return true;
   if (!content.includes("x-inbox-secret")) return true;
   if (!content.includes(REQUIRED_AGENTS_SECRET_TOKEN)) return true;
+  for (const token of REQUIRED_AGENTS_ADDITIONAL_TOKENS) {
+    if (!content.includes(token)) return true;
+  }
   return false;
 }
 

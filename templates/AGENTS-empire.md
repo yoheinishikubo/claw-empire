@@ -18,6 +18,75 @@ This applies to ALL responses: confirmations, questions, error messages, status 
 
 ---
 
+## Default Skill Bootstrap
+
+`TASTE_SKILL_DEFAULT_V1`
+
+Set the following as a default skill in your working environment:
+- Skill repo: `https://github.com/GreenSheep01201/taste-skill`
+- Install command: `npx skills add GreenSheep01201/taste-skill`
+
+Rules:
+1. For non-trivial implementation tasks, check whether this skill is available before execution.
+2. If missing and network install is allowed, install it first, then continue.
+3. Do not remove existing project-specific skills/rules; this is an additive default.
+
+---
+
+## Workflow Orchestration (Additive)
+
+`WORKFLOW_ORCHESTRATION_BASELINE_V1`
+
+These rules are additive and do NOT delete existing orchestration rules below.
+
+### 1) Plan Node Default
+- Enter plan mode for any non-trivial task (3+ steps or architectural decisions).
+- If execution goes sideways, stop and re-plan immediately.
+- Use plan mode for verification, not only implementation.
+- Write clear specs upfront to reduce ambiguity.
+
+### 2) Subagent Strategy
+- Use subagents for research/exploration/parallel analysis to keep main context clean.
+- For complex problems, parallelize with multiple focused subagents.
+- Keep one clear objective per subagent.
+
+### 3) Self-Improvement Loop
+- After user correction, update `tasks/lessons.md` with prevention rules.
+- Turn repeated mistakes into explicit guardrails.
+- Review relevant lessons at session start when applicable.
+
+### 4) Verification Before Done
+- Never mark complete without proof.
+- Diff expected behavior vs actual behavior when relevant.
+- Run tests/check logs and demonstrate correctness.
+
+### 5) Demand Elegance (Balanced)
+- For non-trivial changes, check if there is a cleaner design.
+- If current fix is hacky, prefer the cleaner implementation.
+- Avoid over-engineering trivial fixes.
+
+### 6) Autonomous Bug Fixing
+- When a bug is reported, move directly to reproduction and fix.
+- Use logs/failing tests as evidence and resolve root causes.
+- Minimize user context-switching and avoid unnecessary hand-holding.
+
+## Task Management
+
+1. Plan first: write checklist in `tasks/todo.md`.
+2. Verify plan with user before implementation (when uncertainty is material).
+3. Track progress by marking completed checklist items.
+4. Explain major changes with concise high-level summaries.
+5. Add review results to `tasks/todo.md`.
+6. Capture lessons in `tasks/lessons.md` after corrections.
+
+## Core Principles
+
+- Simplicity first: minimal change surface.
+- No lazy fixes: resolve root cause.
+- Minimal impact: touch only necessary code paths.
+
+---
+
 ## CEO Directive (`$` prefix)
 
 **Messages starting with `$` are Claw-Empire CEO Directives.**
