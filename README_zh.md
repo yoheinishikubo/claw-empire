@@ -10,7 +10,6 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/GreenSheep01201/claw-empire?label=latest%20release" alt="Latest Release" />
   <img src="https://img.shields.io/github/release/GreenSheep01201/claw-empire/all?label=releases" alt="Releases" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
