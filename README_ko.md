@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.8-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.9-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.1.8.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.1.9.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -66,16 +66,16 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 
 ---
 
-## 최신 릴리즈 (v1.1.8)
+## 최신 릴리즈 (v1.1.9)
 
-- **모델별 서브에이전트 스트림 파싱 확장** — Claude, Codex, OpenCode, Gemini의 서로 다른 tool/stream payload 형식을 정규화해 서브에이전트 소환/종료 감지가 더 안정적으로 동작합니다.
-- **CLI 출력 폭주 구간 UI 누락 완화** — 태스크별 스트림 tail 버퍼를 추가해 청크 경계에서 잘리던 JSON 라인을 이어 파싱하도록 개선했고, 대량 출력 시 서브에이전트 UI 누락 가능성을 줄였습니다.
-- **상태 동기화 가드 강화** — agent/task 동등성 비교에 extra-field fallback을 추가했고, 미등록 `agent_status`는 즉시 렌더링 대신 live sync를 트리거해 stale 프레임/유령 agent 현상을 완화했습니다.
-- **오피스 알바생 연출 리프레시** — 검은 그림자 분신 대신 작은 캐릭터 알바생으로 바꾸고, 움직임을 완만하게 조정했으며 소환/해제 연막 + 주기적 폭죽 효과를 추가했습니다.
-- **알바생 캐릭터 랜덤화** — 알바생은 부모 캐릭터 복제가 아니라 sub-agent ID 기반 랜덤 스프라이트로 표시됩니다.
-- **에이전트 상세 알바 탭 아이콘 동기화** — 에이전트 상세 `알바생` 탭에서 고정 이모지 대신 오피스와 동일 규칙의 스프라이트 아이콘을 사용합니다.
+- **서브에이전트 상태 동기화 강화** — 순서가 뒤섞이거나 미등록된 `agent_status` 페이로드는 즉시 추가 대신 canonical live sync를 트리거하도록 변경했고, Codex thread 매핑에는 TTL+사이즈 상한 정리 로직을 추가해 오래된 바인딩 누적을 방지했습니다.
+- **Codex 스레드 바인딩 완료 시 즉시 정리** — 서브에이전트가 `done` 처리되면 연결된 Codex thread 바인딩을 즉시 삭제해, 지연 도착한 스트림 조각이 stale 항목을 잘못 종료시키지 않도록 했습니다.
+- **위임 Pause/Resume 리뷰 게이트 핫픽스** — 위임 실행을 pause로 중단할 때 graceful interrupt 종료코드로 연동 서브태스크가 `blocked`로 확정되지 않도록 수정했습니다.
+- **재개 후 위임 서브태스크 자동 정합성 처리** — 위임 실행 완료 시 연동 서브태스크를 자동 정합화(`성공=done / 실제 실패=blocked`)하고, 남은 서브태스크가 없으면 상위 리뷰 완료를 자동 재시도합니다.
+- **stale blocked 위임 자동 복구** — 리뷰 완료 단계에서 delegated task가 이미 `review`/`done`인 경우 남아 있던 `blocked` 위임 서브태스크를 자동 복구해, “팀장 회의 진행이 시작되지 않는” 반복 상태를 방지합니다.
+- **Decision Inbox 라운드 SKIP 라우팅 수정** — `review_round_pick -> skip_to_next_round` 경로의 `scheduleNextReviewRound` 런타임 배선을 복구해 응답 오류와 프로젝트 의사결정 모드(팀장 회의 진행)로의 오분기를 해결했습니다. 스케줄링 실패 시 회의 상태를 `revision_requested`로 롤백하는 안전장치도 추가했습니다.
 
-- 상세 문서: [`docs/releases/v1.1.8.md`](docs/releases/v1.1.8.md)
+- 상세 문서: [`docs/releases/v1.1.9.md`](docs/releases/v1.1.9.md)
 
 ---
 

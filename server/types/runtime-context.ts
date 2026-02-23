@@ -281,6 +281,7 @@ export interface WorkflowOrchestrationExports {
   clearTaskWorkflowState: (...args: any[]) => any;
   startProgressTimer: (...args: any[]) => any;
   stopProgressTimer: (...args: any[]) => any;
+  scheduleNextReviewRound: (...args: any[]) => any;
   notifyCeo: (...args: any[]) => any;
   isAgentInMeeting: (...args: any[]) => any;
   startTaskExecutionForAgent: (...args: any[]) => any;

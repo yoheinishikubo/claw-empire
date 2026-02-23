@@ -2211,6 +2211,7 @@ function finishReview(
     isAgentInMeeting,
     startTaskExecutionForAgent,
     startPlannedApprovalMeeting,
+    scheduleNextReviewRound,
     handleTaskRunComplete,
     finishReview,
   };

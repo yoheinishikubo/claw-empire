@@ -2017,7 +2017,19 @@ app.post("/api/decision-inbox/:id/reply", (req, res) => {
           meeting_id: meetingId,
         });
       }
-      scheduleNextReviewRound(taskId, task.title, reviewRound, lang);
+      try {
+        scheduleNextReviewRound(taskId, task.title, reviewRound, lang);
+      } catch (err: any) {
+        db.prepare("UPDATE meeting_minutes SET status = 'revision_requested', completed_at = NULL WHERE id = ?")
+          .run(meetingId);
+        const msg = err?.message ? String(err.message) : String(err);
+        appendTaskLog(
+          taskId,
+          "error",
+          `Decision inbox skip rollback: next round scheduling failed (round=${reviewRound}, meeting_id=${meetingId}, reason=${msg})`,
+        );
+        return res.status(500).json({ error: "schedule_next_review_round_failed", message: msg });
+      }
       return res.json({
         ok: true,
         resolved: true,

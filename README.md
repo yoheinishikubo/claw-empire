@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.8-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.9-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.1.8.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.1.9.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -66,16 +66,16 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ---
 
-## Latest Release (v1.1.8)
+## Latest Release (v1.1.9)
 
-- **Sub-agent Stream Parsing Expanded Across Models** — Normalized sub-agent event parsing now covers Claude, Codex, OpenCode, and Gemini stream/tool payload shapes, improving cross-provider spawn/done lifecycle detection.
-- **Burst-safe Sub-agent UI Tracking** — CLI output parsing now keeps a per-task stream tail buffer so split JSON lines survive chunk boundaries and sub-agent events are less likely to disappear during large output bursts.
-- **State Sync Guardrails** — Agent/task equality checks now include extra-field fallback comparison, and unknown `agent_status` payloads trigger live sync instead of temporary direct append, reducing stale-frame and ghost-agent artifacts.
-- **Office Sub-agent Visual Refresh** — Sub-agents now appear as small helper characters (not dark shadow clones), with calmer support motion, smoke summon/despawn effects, and periodic fireworks.
-- **Random Helper Character Assignment** — Sub-agent helpers are now selected from random character sprites by sub-agent ID instead of cloning the parent character.
-- **Agent Detail Sub-agent Icon Sync** — In the agent detail `Sub-agents` tab, the icon now uses sprite avatars that match Office-view helper rendering instead of a fixed emoji.
+- **Sub-agent Status Sync Hardening** — Unknown/out-of-order `agent_status` payloads now trigger canonical live sync, and Codex thread mappings are bounded with TTL+size pruning to prevent stale UI binding accumulation.
+- **Codex Thread Binding Cleanup on Done** — When a sub-agent completes, mapped Codex thread bindings are cleared immediately so delayed stream fragments cannot finalize stale entries.
+- **Delegated Pause/Resume Review-Gate Hotfix** — Paused delegated runs no longer mark linked subtasks as `blocked` from graceful interrupt exits.
+- **Post-resume Delegated Subtask Reconciliation** — After delegated runs complete, linked subtasks are reconciled automatically (`done` on success / `blocked` on real failure), and parent review completion is retried when all subtasks are resolved.
+- **Review-Gate Auto-heal for Stale Blocked Delegations** — Review completion now auto-recovers stale blocked delegated subtasks when their delegated task has already reached `review`/`done`, preventing repeated “team-lead meeting not starting” loops.
+- **Decision Inbox Round-Skip Routing Fix** — Fixed runtime wiring for `review_round_pick -> skip_to_next_round` (`scheduleNextReviewRound`) so round-skip replies no longer fail and misroute into project-level decision mode. Added rollback guard to restore `revision_requested` if scheduling fails.
 
-- Full notes: [`docs/releases/v1.1.8.md`](docs/releases/v1.1.8.md)
+- Full notes: [`docs/releases/v1.1.9.md`](docs/releases/v1.1.9.md)
 
 ---
 

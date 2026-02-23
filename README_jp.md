@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.8-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.9-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.1.8.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.1.9.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -66,16 +66,16 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ---
 
-## 最新リリース (v1.1.8)
+## 最新リリース (v1.1.9)
 
-- **モデル横断のサブエージェントストリーム解析を強化** — Claude/Codex/OpenCode/Gemini の異なる tool/stream ペイロードを正規化し、サブエージェントの spawn/done ライフサイクル検出を安定化しました。
-- **CLI 出力バースト時の UI 取りこぼしを軽減** — タスク単位のストリーム tail バッファを追加し、チャンク境界で分割された JSON 行を連結して解析できるようにして、サブエージェント表示欠落を減らしました。
-- **状態同期ガードを追加** — agent/task 同値判定に extra-field fallback を導入し、未知の `agent_status` は即時追加ではなく live sync を起動する方式に変更。stale フレームや ghost agent の一時表示を抑制します。
-- **Office のサブエージェント演出を刷新** — 黒い影分身ではなく小型キャラクターヘルパー表示へ変更し、動きを穏やかに調整。召喚/解除の煙エフェクトと定期花火を追加しました。
-- **サブエージェントのキャラをランダム化** — 親キャラの複製ではなく、sub-agent ID ベースのランダムスプライトを使うように変更しました。
-- **エージェント詳細のサブエージェントタブでアイコン同期** — 固定絵文字ではなく、Office 表示と同じルールのスプライトアイコンを表示します。
+- **サブエージェント状態同期を強化** — 未知/順不同の `agent_status` は直接追加せず canonical live sync を起動するように変更し、Codex thread マッピングには TTL + 件数上限のクリーンアップを追加して古いバインディング蓄積を防止しました。
+- **Codex スレッドバインディングの完了時即時クリーンアップ** — サブエージェントが `done` になった時点で関連 thread バインディングを即時削除し、遅延到着したストリーム断片で stale 項目が誤って完了扱いになることを防ぎます。
+- **委任 Pause/Resume のレビューゲート Hotfix** — 委任実行を pause した際、graceful interrupt の終了コードで連動サブタスクが `blocked` 確定されないよう修正しました。
+- **再開後の委任サブタスク自動整合** — 委任実行完了時に連動サブタスクを自動整合（成功=`done` / 実失敗=`blocked`）し、未完了サブタスクが無ければ親レビュー完了を自動再試行します。
+- **stale blocked 委任の自動回復** — レビュー完了判定で delegated task がすでに `review`/`done` の場合、残存していた `blocked` 委任サブタスクを自動回復し、「チームリーダー会議が始まらない」ループを防止します。
+- **Decision Inbox ラウンドSKIPルーティング修正** — `review_round_pick -> skip_to_next_round` 経路で使う `scheduleNextReviewRound` のランタイム配線を修正し、返信エラーやプロジェクト意思決定モード（チームリーダー会議）への誤分岐を解消しました。スケジューリング失敗時は会議状態を `revision_requested` に戻すロールバックガードも追加しています。
 
-- 詳細: [`docs/releases/v1.1.8.md`](docs/releases/v1.1.8.md)
+- 詳細: [`docs/releases/v1.1.9.md`](docs/releases/v1.1.9.md)
 
 ---
 

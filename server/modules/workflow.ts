@@ -87,6 +87,7 @@ export function initializeWorkflow(ctx: RuntimeContext): WorkflowCoreExports & W
     spawnCliAgent: runtime.spawnCliAgent,
     startPlannedApprovalMeeting: runtime.startPlannedApprovalMeeting,
     startProgressTimer: runtime.startProgressTimer,
+    scheduleNextReviewRound: runtime.scheduleNextReviewRound,
     startTaskExecutionForAgent: runtime.startTaskExecutionForAgent,
     stopProgressTimer: runtime.stopProgressTimer,
     stopRequestModeByTask: runtime.stopRequestModeByTask,

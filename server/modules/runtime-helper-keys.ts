@@ -13,6 +13,7 @@ export const ROUTE_RUNTIME_HELPER_KEYS = [
   "processSubtaskDelegations",
   "recoverCrossDeptQueueAfterMissingCallback",
   "refreshCliUsageData",
+  "scheduleNextReviewRound",
   "resolveLang",
   "resolveProjectPath",
   "sendAgentMessage",
