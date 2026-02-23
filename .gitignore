@@ -55,6 +55,7 @@ coverage/
 # Local AI assistant artifacts
 .agents/
 .claude/
+skills-lock.json
 
 # OS metadata
 .DS_Store
