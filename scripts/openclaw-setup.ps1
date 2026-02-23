@@ -159,7 +159,7 @@ Write-Host "[Claw-Empire] Installing AGENTS.md orchestration rules..."
 
 Write-Host ""
 Write-Host "[Claw-Empire] Setup complete."
-Write-Host "Frontend: http://127.0.0.1:5173"
+Write-Host "Frontend: http://127.0.0.1:8800"
 Write-Host "API:      http://127.0.0.1:$portToUse/healthz"
 
 if ($Start) {

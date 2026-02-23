@@ -205,7 +205,7 @@ pnpm setup -- "${SETUP_ARGS[@]}"
 
 echo
 echo "[Claw-Empire] Setup complete."
-echo "Frontend: http://127.0.0.1:5173"
+echo "Frontend: http://127.0.0.1:8800"
 echo "API:      http://127.0.0.1:${PORT_TO_USE}/healthz"
 
 if [[ "${START_AFTER_SETUP}" == "1" ]]; then
