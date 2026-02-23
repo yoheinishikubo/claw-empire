@@ -1830,6 +1830,10 @@ function normalizeConversationReply(
     .replace(/^\[reasoning\]\s*/gim, "")
     .replace(/\[(tool|result|output|spawn_agent|agent_done|one-shot-error)[^\]]*\]/gi, " ")
     .replace(/^\[(copilot|antigravity)\][^\n]*$/gim, "")
+    // opencode JSON 이벤트 노이즈 제거 (step_finish, tool_use 등이 raw로 남은 경우)
+    .replace(/\{"type"\s*:\s*"(?:step_finish|step-finish|tool_use|tool_result|thinking|reasoning|text|content)"[^\n]*\}/gm, " ")
+    // opencode permission rejection 메시지 제거
+    .replace(/^!?\s*permission requested:.*auto-rejecting\s*$/gim, "")
     .replace(/\b(Crafting|Formulating|Composing|Thinking|Analyzing)\b[^.!?。！？]{0,80}\b(message|reply)\s*/gi, "")
     .replace(/\b(I need to|Let me|I'll|I will|First, I'?ll)\b[^.!?。！？]{0,140}\b(analy[sz]e|examin|inspect|check|review|look at)\b[^.!?。！？]*[.!?。！？]?/gi, " ")
     .replace(/\b(current codebase|relevant files|quickly examine|let me quickly|analyze the current project)\b[^.!?。！？]*[.!?。！？]?/gi, " ")
@@ -1936,6 +1940,124 @@ function fallbackTurnReply(kind: ReplyKind, lang: string, agent?: AgentRow): str
   }
 }
 
+function buildAgentReplyText(
+  lang: string,
+  agent: AgentRow | undefined,
+  messages: { ko: string; en: string; ja: string; zh: string },
+): string {
+  const body = lang === "en"
+    ? messages.en
+    : lang === "ja"
+      ? messages.ja
+      : lang === "zh"
+        ? messages.zh
+        : messages.ko;
+  const name = agent ? getAgentDisplayName(agent, lang) : "";
+  return name ? `${name}: ${body}` : body;
+}
+
+function clipFailureDetail(value: string, max = 180): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, max - 1).trimEnd()}…`;
+}
+
+function extractRunFailureDetail(rawText: string, runError?: string): string {
+  const candidates: string[] = [];
+  if (runError && runError.trim()) {
+    candidates.push(runError.trim());
+  }
+  for (const line of rawText.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    candidates.push(trimmed);
+  }
+  for (const candidate of candidates) {
+    let line = candidate
+      .replace(/^\[(?:one-shot-error|tool-error)\]\s*/i, "")
+      .replace(/^error:\s*/i, "")
+      .trim();
+    if (!line) continue;
+    if (line.startsWith("{")) continue;
+    if (/^(permission requested:|auto-rejecting)/i.test(line)) continue;
+    if (/^(type=|sessionid=|timestamp=)/i.test(line)) continue;
+    return clipFailureDetail(line);
+  }
+  return "";
+}
+
+type RunFailureKind = "permission" | "stale_file" | "tool_calls_only" | "timeout" | "generic";
+
+function detectRunFailure(rawText: string, runError?: string): RunFailureKind | null {
+  const source = [runError || "", rawText || ""].filter(Boolean).join("\n");
+  if (!source.trim()) return null;
+
+  if (/auto-rejecting|permission.*rejected|rejected permission|external_directory|user rejected permission/i.test(source)) {
+    return "permission";
+  }
+  if (/modified since it was last read|read the file again before modifying/i.test(source)) {
+    return "stale_file";
+  }
+  if (/"type"\s*:\s*"(?:step_finish|step-finish)".*"reason"\s*:\s*"tool-calls"/i.test(source)) {
+    return "tool_calls_only";
+  }
+  if (/timeout after|timed out|request timed out/i.test(source)) {
+    return "timeout";
+  }
+  if (runError || /\[(?:one-shot-error|tool-error)\]/i.test(source) || /^error:/im.test(source)) {
+    return "generic";
+  }
+  return null;
+}
+
+function buildRunFailureReply(
+  kind: RunFailureKind,
+  lang: string,
+  agent?: AgentRow,
+  detail = "",
+): string {
+  if (kind === "permission") {
+    return buildAgentReplyText(lang, agent, {
+      ko: "파일 접근 권한에 의해 작업이 차단되었습니다. 프로젝트 디렉터리 설정을 확인해주세요.",
+      en: "The requested operation was blocked by a file-access permission. Please check the project directory settings.",
+      ja: "ファイルアクセス権限により操作がブロックされました。プロジェクトディレクトリ設定を確認してください。",
+      zh: "操作因文件访问权限被阻止，请检查项目目录设置。",
+    });
+  }
+  if (kind === "stale_file") {
+    return buildAgentReplyText(lang, agent, {
+      ko: "파일이 읽은 뒤 변경되어 작업이 중단되었습니다. 파일을 다시 읽고 재시도해주세요.",
+      en: "The file changed after it was read, so the operation was stopped. Please re-read the file and retry.",
+      ja: "読み取り後にファイルが変更されたため、処理が停止しました。再読込して再試行してください。",
+      zh: "文件在读取后被修改，操作已中止。请重新读取该文件后再试。",
+    });
+  }
+  if (kind === "tool_calls_only") {
+    return buildAgentReplyText(lang, agent, {
+      ko: "도구 호출 단계에서 종료되어 최종 답변이 생성되지 않았습니다. 다시 시도해주세요.",
+      en: "The run ended at tool-calls without producing a final reply. Please retry.",
+      ja: "ツール呼び出し段階で終了し、最終回答が生成されませんでした。再試行してください。",
+      zh: "执行在工具调用阶段结束，未生成最终回复。请重试。",
+    });
+  }
+  if (kind === "timeout") {
+    return buildAgentReplyText(lang, agent, {
+      ko: "응답 생성 시간이 초과되어 작업이 중단되었습니다. 잠시 후 다시 시도해주세요.",
+      en: "Response generation timed out, so the run was stopped. Please try again shortly.",
+      ja: "応答生成がタイムアウトしたため処理を停止しました。しばらくして再試行してください。",
+      zh: "回复生成超时，任务已中止。请稍后重试。",
+    });
+  }
+  const suffix = detail ? ` (${detail})` : "";
+  return buildAgentReplyText(lang, agent, {
+    ko: `CLI 실행 중 오류가 발생했습니다${suffix}.`,
+    en: `CLI execution failed${suffix}.`,
+    ja: `CLI 実行中にエラーが発生しました${suffix}。`,
+    zh: `CLI 执行失败${suffix}。`,
+  });
+}
+
 function chooseSafeReply(
   run: OneShotRunResult,
   lang: string,
@@ -1944,7 +2066,13 @@ function chooseSafeReply(
 ): string {
   // Direct 1:1 chat replies should preserve longer answers for the chat UI.
   const maxReplyChars = kind === "direct" ? 12000 : 2000;
-  const cleaned = normalizeConversationReply(run.text || "", maxReplyChars, { maxSentences: 0 });
+  const rawText = run.text || "";
+  const failureKind = detectRunFailure(rawText, run.error);
+  if (failureKind) {
+    const detail = failureKind === "generic" ? extractRunFailureDetail(rawText, run.error) : "";
+    return buildRunFailureReply(failureKind, lang, agent, detail);
+  }
+  const cleaned = normalizeConversationReply(rawText, maxReplyChars, { maxSentences: 0 });
   if (!cleaned) return fallbackTurnReply(kind, lang, agent);
   if (/timeout after|CLI 응답 생성에 실패|response failed|one-shot-error/i.test(cleaned)) {
     return fallbackTurnReply(kind, lang, agent);

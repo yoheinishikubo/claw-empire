@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.6-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.7-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.1.6.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.1.7.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -66,18 +66,16 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ---
 
-## 最新发布 (v1.1.6)
+## 最新发布 (v1.1.7)
 
-- **GitHub 项目 dev 分支合并 + PR 自动创建** — 从 GitHub 导入的项目，完成的任务现在合并到 `dev` 分支而非 `main`，推送至 origin 后自动创建 GitHub Pull Request（dev → main）。如已存在打开的 PR 则自动复用，本地项目保持原有直接合并到 main 的行为。
-- **`github_repo` 列与 API 支持** — 在 projects 表新增 `github_repo TEXT` 列。`POST /api/projects` 和 `PATCH /api/projects/:id` 支持存储/更新 `github_repo`（格式：`owner/repo`）。前端 `createProject()` / `updateProject()` 已同步适配。
-- **GitHub Import 面板 Bug 修复** — 修复 `process is not defined` 错误（移除浏览器不兼容的 `process.env` 引用），修复 `[object Object]` 项目 ID 错误（正确提取 `project.id`）。
-- **服务端 `~` 路径解析（Clone）** — `POST /api/github/clone` 现在在服务端解析 `~/...` 路径。
-- **Base-Branch Worktree 支持** — `createWorktree()` 新增可选 `baseBranch` 参数，任务执行时使用任务记录中的 `base_branch`。
-- **编排层 GitHub 感知终审处理** — `finalizeApprovedReview()` 检查 `project.github_repo`，决定走 dev 合并 + PR 还是直接合并到 main。
-- **SubTask 委派 Worktree/队列稳定性加固** — 批量委派在 CLI + HTTP/API 提供方（`claude`、`codex`、`gemini`、`opencode`、`copilot`、`antigravity`、`api`）统一使用隔离 worktree。新增共享分配器 `getNextHttpAgentPid()` 以降低跨模块 fake PID 冲突风险，并强化取消路径中的委派回调推进，避免部门批次队列卡死。
-- **合并前自动提交策略强化** — 合并路径会自动提交 worktree 中的安全变更，并阻断受限未跟踪文件（密钥/数据库/日志/压缩包等）。错误信息会区分 `策略阻断` 与 `git 执行失败`。
+- **OpenCode/Kimi 流式输出稳定性提升** — 强化流解析逻辑，仅保留面向用户的最终答复文本，抑制 `thinking`、`reasoning`、`tool_use`、`tool_result`、`step_finish` 等内部噪声事件，避免暴露推理片段或原始 JSON。
+- **终端 Pretty 日志恢复思考轨迹显示** — `/api/tasks/:id/terminal?pretty=1` 现已恢复展示 OpenCode 的 `thinking` / `reasoning` 轨迹，便于排障；最终面向用户的回复路径仍保持隐藏内部推理。
+- **已知失败场景改为明确报错，不再静默 fallback** — OpenCode 路径下，以下场景会返回清晰错误提示：文件访问权限阻断（`external_directory` auto-reject）、文件并发修改冲突（`modified since it was last read`）、仅停留在 `tool-calls` 阶段未生成最终答复、超时/通用 CLI 失败。
+- **OpenCode 进度提示稳定性增强** — 终端进度提示解析新增对 `callID` / `callId` / `call_id` 兼容，并跟踪同一调用的状态跃迁，减少 `ok/error` 提示丢失。
+- **Hotfix：自定义 API Provider 非 `v1` 路径兼容** — OpenAI 兼容自定义提供商可保留 `/vN`（例如 `/v4`）版本路径，避免出现 `/v4/v1/chat/completions` 这类双版本拼接导致的 404。
+- **Hotfix：setup 前端端口提示修正** — setup 脚本输出的前端地址已修正为 `http://127.0.0.1:8800`（此前为 `5173`）。
 
-- 详细说明：[`docs/releases/v1.1.6.md`](docs/releases/v1.1.6.md)
+- 详细说明：[`docs/releases/v1.1.7.md`](docs/releases/v1.1.7.md)
 
 ---
 

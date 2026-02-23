@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.6-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.7-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.1.6.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.1.7.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -66,18 +66,16 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 
 ---
 
-## 최신 릴리즈 (v1.1.6)
+## 최신 릴리즈 (v1.1.7)
 
-- **GitHub 프로젝트 dev 브랜치 머지 + PR 자동 생성** — GitHub에서 가져온 프로젝트는 완료된 태스크를 `main`이 아닌 `dev` 브랜치에 머지하고, origin에 push 후 GitHub Pull Request(dev → main)를 자동 생성합니다. 이미 열려 있는 PR이 있으면 재사용하며, 로컬 전용 프로젝트는 기존 main 직접 병합을 유지합니다.
-- **`github_repo` 컬럼 및 API 지원** — projects 테이블에 `github_repo TEXT` 컬럼을 추가했습니다. `POST /api/projects`와 `PATCH /api/projects/:id`에서 `github_repo`(형식: `owner/repo`)를 저장/수정할 수 있으며, 프론트엔드 `createProject()` / `updateProject()`도 대응합니다.
-- **GitHub Import 패널 버그 수정** — `process is not defined` 오류 수정(브라우저 비호환 `process.env` 제거), `[object Object]` 프로젝트 ID 오류 수정(`project.id` 정상 추출).
-- **서버 사이드 `~` 경로 해석 (Clone)** — `POST /api/github/clone`에서 `~/...` 경로를 서버에서 직접 해석합니다.
-- **Base-Branch 워크트리 지원** — `createWorktree()`에 선택적 `baseBranch` 파라미터 추가, 태스크 실행 시 `base_branch` 레코드를 사용합니다.
-- **오케스트레이션 GitHub 프로젝트 분기 처리** — `finalizeApprovedReview()`에서 `project.github_repo` 여부를 확인하고, dev 머지+PR 또는 main 직접 병합으로 분기합니다.
-- **서브태스크 위임 워크트리/큐 안정화** — 일괄 위임이 CLI + HTTP/API 프로바이더(`claude`, `codex`, `gemini`, `opencode`, `copilot`, `antigravity`, `api`) 전체에서 동일하게 격리 워크트리를 사용합니다. 공용 `getNextHttpAgentPid()` 할당으로 모듈 간 fake PID 충돌 가능성을 줄였고, 취소 경로에서 위임 콜백 진행을 보강해 부서 배치 큐 정지(stall)를 방지합니다.
-- **병합 전 자동 커밋 정책 보강** — 병합 경로에서 워크트리의 안전한 변경사항을 자동 커밋하고, 제한된 미추적 파일(시크릿/DB/로그/아카이브)은 차단합니다. 오류 메시지도 `정책 차단`과 `git 실행 실패`를 구분해 반환합니다.
+- **OpenCode/Kimi 스트림 출력 안정화** — 스트림 파서가 사용자 최종 답변 텍스트만 유지하고, 내부/노이즈 이벤트(`thinking`, `reasoning`, `tool_use`, `tool_result`, `step_finish`)를 제외하도록 보강해 reasoning 문장이나 원시 JSON 조각 노출을 방지합니다.
+- **터미널 Pretty 로그 사고흐름 재노출** — `/api/tasks/:id/terminal?pretty=1`에서 OpenCode 사고 로그(`thinking`/`reasoning`)를 다시 볼 수 있도록 복원했습니다. 최종 사용자 답변 경로는 기존처럼 내부 추론을 숨깁니다.
+- **침묵 fallback 대신 명시 에러 메시지 반환** — OpenCode 실패 경로에서 다음 케이스를 명확한 사용자 메시지로 반환합니다: 파일 접근 권한 차단(`external_directory` auto-reject), 파일 동시수정 충돌(`modified since it was last read`), `tool-calls` 종료 후 최종 답변 누락, 타임아웃/일반 CLI 실패.
+- **OpenCode 진행 힌트 안정성 개선** — 터미널 진행 힌트 파서가 `callID` / `callId` / `call_id`를 모두 인식하고, 동일 호출의 상태 전이 이벤트를 추적해 `ok/error` 힌트 누락을 줄였습니다.
+- **핫픽스: 커스텀 API 프로바이더 non-`v1` 경로 지원** — OpenAI 호환 커스텀 프로바이더에서 `/vN` 버전 경로(예: `/v4`)를 그대로 사용해 `/v4/v1/chat/completions` 같은 이중 경로 404를 방지합니다.
+- **핫픽스: setup 프론트엔드 포트 안내 수정** — setup 스크립트 출력 프론트엔드 URL을 `http://127.0.0.1:8800`으로 정정했습니다(기존 `5173`).
 
-- 상세 문서: [`docs/releases/v1.1.6.md`](docs/releases/v1.1.6.md)
+- 상세 문서: [`docs/releases/v1.1.7.md`](docs/releases/v1.1.7.md)
 
 ---
 

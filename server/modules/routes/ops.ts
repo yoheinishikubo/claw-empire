@@ -295,13 +295,18 @@ app.get("/api/stats", (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// prettyStreamJson: parse stream-JSON from Claude/Codex/Gemini into readable text
+// prettyStreamJson: parse stream-JSON from Claude/Codex/Gemini/OpenCode into readable text
 // (ported from claw-kanban)
 // ---------------------------------------------------------------------------
-function prettyStreamJson(raw: string): string {
+function prettyStreamJson(raw: string, opts: { includeReasoning?: boolean } = {}): string {
   const chunks: string[] = [];
   let sawJson = false;
   let sawClaudeTextDelta = false;
+  const includeReasoning = opts.includeReasoning === true;
+  const pushReasoningChunk = (text: string): void => {
+    if (!text) return;
+    pushMessageChunk(`[reasoning] ${text}`);
+  };
   const pushMessageChunk = (text: string): void => {
     if (!text) return;
     if (chunks.length > 0 && !chunks[chunks.length - 1].endsWith("\n")) {
@@ -368,6 +373,51 @@ function prettyStreamJson(raw: string): string {
         if (item.type === "agent_message" && item.text) {
           pushMessageChunk(String(item.text));
         }
+        continue;
+      }
+
+      // OpenCode: text content events (--format json streaming)
+      if (j.type === "text") {
+        // reasoning/thinking은 기본적으로 숨기고, terminal pretty 모드에서만 노출
+        if (j.part?.type === "reasoning" || j.part?.type === "thinking") {
+          if (!includeReasoning) continue;
+          const reasoningVal = typeof j.part?.text === "string"
+            ? j.part.text
+            : (typeof j.text === "string" ? j.text : "");
+          if (reasoningVal) pushReasoningChunk(String(reasoningVal));
+          continue;
+        }
+        const textVal = typeof j.part?.text === "string"
+          ? j.part.text
+          : (typeof j.text === "string" ? j.text : "");
+        if (textVal) chunks.push(String(textVal));
+        continue;
+      }
+
+      // OpenCode: thinking/reasoning — 기본 숨김, terminal pretty 모드에서만 표시
+      if (j.type === "thinking" || j.type === "reasoning") {
+        if (includeReasoning) {
+          const reasoningVal = typeof j.part?.text === "string"
+            ? j.part.text
+            : (typeof j.text === "string"
+              ? j.text
+              : (typeof j.content === "string" ? j.content : ""));
+          if (reasoningVal) pushReasoningChunk(String(reasoningVal));
+        }
+        continue;
+      }
+
+      // OpenCode: content events
+      if (j.type === "content" && (j.content || j.text)) {
+        chunks.push(String(j.content ?? j.text));
+        continue;
+      }
+
+      // OpenCode: step_finish, tool_use (with part wrapper), tool_result — 사용자 텍스트 아님
+      if (j.type === "step_finish" || j.type === "step-finish") {
+        continue;
+      }
+      if ((j.type === "tool_use" || j.type === "tool_result") && j.part) {
         continue;
       }
 
@@ -543,6 +593,22 @@ function parseJsonObject(value: string): any | null {
   }
 }
 
+// OpenCode tool 이름을 대문자로 (read→Read, bash→Bash)
+function capitalizeToolName(name: string): string {
+  if (!name) return "Tool";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// OpenCode input 키 정규화 (filePath→file_path 등)
+function normalizeOpencodeInput(input: any): any {
+  if (!input || typeof input !== "object") return input;
+  const normalized: any = { ...input };
+  if (typeof input.filePath === "string" && !input.file_path) {
+    normalized.file_path = input.filePath;
+  }
+  return normalized;
+}
+
 function buildTerminalProgressHints(raw: string, maxHints = 14): {
   current_file: string | null;
   hints: TerminalProgressHintItem[];
@@ -551,6 +617,7 @@ function buildTerminalProgressHints(raw: string, maxHints = 14): {
   const toolUseMeta = new Map<string, { tool: string; summary: string; file_path: string | null }>();
   const streamToolUseByIndex = new Map<number, StreamToolUseState>();
   const emittedToolUseIds = new Set<string>();
+  const emittedToolResultIds = new Set<string>();
   const hints: TerminalProgressHintItem[] = [];
 
   for (const line of raw.split(/\r?\n/)) {
@@ -733,6 +800,65 @@ function buildTerminalProgressHints(raw: string, maxHints = 14): {
         }
       }
 
+      // OpenCode: tool_use with part.type === "tool"
+      if (j.type === "tool_use" && j.part?.type === "tool") {
+        const part = j.part as any;
+        const rawCallId = typeof part.callID === "string"
+          ? part.callID.trim()
+          : (typeof part.callId === "string"
+            ? part.callId.trim()
+            : (typeof part.call_id === "string" ? part.call_id.trim() : ""));
+        const toolUseId = rawCallId ? `opencode:${rawCallId}` : "";
+        const tool = capitalizeToolName(String(part.tool || "Tool"));
+        const input = normalizeOpencodeInput(part.state?.input);
+        const summary = summarizeToolUse(tool, input);
+        const filePath = extractToolUseFilePath(tool, input);
+        const status = part.state?.status;
+        const statusKey = toolUseId && (status === "completed" || status === "error")
+          ? `${toolUseId}:${status}`
+          : "";
+
+        if (toolUseId && emittedToolUseIds.has(toolUseId)) {
+          if (statusKey && !emittedToolResultIds.has(statusKey)) {
+            const isError = status === "error";
+            const resultSummary = summarizeToolResult(part.state?.output)
+              || summarizeToolResult(part.state?.error)
+              || summary;
+            emittedToolResultIds.add(statusKey);
+            hints.push({
+              phase: isError ? "error" : "ok",
+              tool,
+              summary: resultSummary,
+              file_path: filePath,
+            });
+          }
+          continue;
+        }
+        if (toolUseId) {
+          emittedToolUseIds.add(toolUseId);
+          toolUseMeta.set(toolUseId, { tool, summary, file_path: filePath });
+        }
+
+        // phase 1: "use" hint
+        hints.push({ phase: "use", tool, summary, file_path: filePath });
+
+        // phase 2: state가 이미 completed/error면 결과도 즉시 추가
+        if (status === "completed" || status === "error") {
+          const isError = status === "error";
+          const resultSummary = summarizeToolResult(part.state?.output)
+            || summarizeToolResult(part.state?.error)
+            || summary;
+          if (statusKey) emittedToolResultIds.add(statusKey);
+          hints.push({
+            phase: isError ? "error" : "ok",
+            tool,
+            summary: resultSummary,
+            file_path: filePath,
+          });
+        }
+        continue;
+      }
+
       // Gemini: tool_use/tool_result (stream-json mode)
       if (j.type === "tool_use" && typeof j.tool_name === "string") {
         const rawToolId = typeof j.tool_id === "string" ? j.tool_id.trim() : "";
@@ -833,7 +959,7 @@ app.get("/api/tasks/:id/terminal", (req, res) => {
   let text = tail;
   let progressHints: ReturnType<typeof buildTerminalProgressHints> | null = null;
   if (pretty) {
-    const parsed = prettyStreamJson(tail);
+    const parsed = prettyStreamJson(tail, { includeReasoning: true });
     // Show only natural-language assistant output in pretty mode.
     text = parsed;
     if (hasStructuredJsonLines(tail)) {

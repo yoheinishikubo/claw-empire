@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.6-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.7-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.1.6.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.1.7.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -66,18 +66,16 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ---
 
-## Latest Release (v1.1.6)
+## Latest Release (v1.1.7)
 
-- **GitHub Project Dev-Branch Merge + PR Flow** — GitHub-imported projects now merge completed tasks into `dev` branch instead of `main`, push to origin, and automatically create a GitHub Pull Request (dev → main). Existing open PRs are reused; local-only projects retain the direct-to-main merge.
-- **`github_repo` Column & API** — Added `github_repo TEXT` column to projects table. `POST /api/projects` and `PATCH /api/projects/:id` accept `github_repo` (format: `owner/repo`). Frontend `createProject()` / `updateProject()` updated accordingly.
-- **GitHub Import Panel Fixes** — Fixed `process is not defined` error (removed browser-incompatible `process.env`); fixed `[object Object]` project ID error (correctly extract `project.id` from response).
-- **Server-Side `~` Path Resolution for Clone** — `POST /api/github/clone` now resolves `~/...` paths server-side.
-- **Base-Branch Worktree Support** — `createWorktree()` accepts optional `baseBranch`; task execution uses `base_branch` from task record.
-- **Orchestration GitHub-Aware Finalization** — `finalizeApprovedReview()` checks `project.github_repo` and routes to dev-merge+PR or direct-to-main accordingly.
-- **Subtask Delegation Worktree + Queue Safety Hardening** — Batched delegated subtasks now run in isolated worktrees across CLI and HTTP/API providers (`claude`, `codex`, `gemini`, `opencode`, `copilot`, `antigravity`, `api`). Added shared `getNextHttpAgentPid()` allocation to avoid cross-module fake PID collisions, and reinforced cancel paths so delegated batch callbacks can advance parent queue progression without stall.
-- **Pre-Merge Auto-Commit Policy Hardening** — Merge paths now auto-commit safe pending worktree changes, block restricted untracked files (secrets/DB/log/archive), and return explicit policy-block vs git-runtime error messages.
+- **OpenCode/Kimi Stream Output Reliability** — Stream parsing now keeps only user-facing final text and suppresses internal/noise events (`thinking`, `reasoning`, `tool_use`, `tool_result`, `step_finish`) so raw JSON or internal reasoning fragments are not exposed.
+- **Terminal Pretty Log Reasoning Restored** — `/api/tasks/:id/terminal?pretty=1` now shows OpenCode reasoning/thinking traces again for debugging, while final user replies still hide internal reasoning.
+- **Explicit Failure Replies Instead of Silent Fallback** — Known OpenCode failure paths now return clear user-visible errors: file-access permission block (`external_directory` auto-reject), stale file write conflict (`modified since it was last read`), `tool-calls` termination without final answer, and timeout/generic CLI failure.
+- **OpenCode Progress Hint Stability** — Terminal progress hint parsing now supports `callID` / `callId` / `call_id` variants and repeated status transitions, preventing dropped `ok/error` hints.
+- **Hotfix: Custom API Provider Non-`v1` Paths** — OpenAI-compatible custom providers now preserve `/vN` version paths (for example `/v4`) and avoid malformed double paths like `/v4/v1/chat/completions`.
+- **Hotfix: Setup Frontend Port Output Correction** — Setup scripts now print the correct frontend URL `http://127.0.0.1:8800` (previously `5173`).
 
-- Full notes: [`docs/releases/v1.1.6.md`](docs/releases/v1.1.6.md)
+- Full notes: [`docs/releases/v1.1.7.md`](docs/releases/v1.1.7.md)
 
 ---
 

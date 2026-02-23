@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.6-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.7-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.1.6.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.1.7.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -66,18 +66,16 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ---
 
-## 最新リリース (v1.1.6)
+## 最新リリース (v1.1.7)
 
-- **GitHub プロジェクト dev ブランチマージ + PR 自動作成** — GitHub からインポートしたプロジェクトでは、完了タスクを `main` ではなく `dev` ブランチにマージし、origin にプッシュ後、GitHub Pull Request（dev → main）を自動作成します。既存のオープン PR があればそのまま再利用し、ローカル専用プロジェクトは従来通り main への直接マージを維持します。
-- **`github_repo` カラムと API 対応** — projects テーブルに `github_repo TEXT` カラムを追加。`POST /api/projects` と `PATCH /api/projects/:id` で `github_repo`（形式: `owner/repo`）を保存・更新可能。フロントエンドの `createProject()` / `updateProject()` も対応済み。
-- **GitHub Import パネルのバグ修正** — `process is not defined` エラー修正（ブラウザ非互換の `process.env` 参照を削除）、`[object Object]` プロジェクト ID エラー修正（`project.id` を正しく抽出）。
-- **サーバーサイド `~` パス解決（Clone）** — `POST /api/github/clone` で `~/...` パスをサーバー側で解決するよう改善。
-- **Base-Branch Worktree 対応** — `createWorktree()` にオプションの `baseBranch` パラメータを追加。タスク実行時にタスクレコードの `base_branch` を使用。
-- **オーケストレーションの GitHub 対応ファイナライズ** — `finalizeApprovedReview()` が `project.github_repo` を確認し、dev マージ + PR または main 直接マージに分岐処理。
-- **サブタスク委任の Worktree / キュー安定化** — バッチ委任が CLI + HTTP/API プロバイダ（`claude`, `codex`, `gemini`, `opencode`, `copilot`, `antigravity`, `api`）全体で分離 Worktree を利用します。共有 allocator `getNextHttpAgentPid()` を導入し、モジュール間 fake PID 重複リスクを低減。キャンセル経路のコールバック進行も補強し、部門バッチキューの stall を防止します。
-- **マージ前自動コミットポリシー強化** — マージ経路で Worktree の安全な未コミット変更を自動コミットし、制限付き未追跡ファイル（シークレット/DB/ログ/アーカイブ）はブロックします。エラーメッセージは `ポリシーブロック` と `git 実行失敗` を区別して返します。
+- **OpenCode/Kimi のストリーム出力安定化** — ストリームパーサーを強化し、ユーザー向け最終回答テキストのみを残すよう改善しました。`thinking` / `reasoning` / `tool_use` / `tool_result` / `step_finish` などの内部イベントや生 JSON 断片の露出を抑制します。
+- **ターミナル Pretty ログで思考ログ再表示** — `/api/tasks/:id/terminal?pretty=1` で OpenCode の `thinking` / `reasoning` トレースを再表示するよう復元しました。最終ユーザー返信経路では従来どおり内部推論を非表示のまま維持します。
+- **サイレント fallback ではなく明示的エラー応答** — OpenCode 実行失敗時に、次の既知ケースは明示メッセージを返します: ファイル権限ブロック（`external_directory` auto-reject）、ファイル同時更新競合（`modified since it was last read`）、`tool-calls` 終了で最終回答未生成、タイムアウト/一般 CLI 失敗。
+- **OpenCode 進行ヒントの安定性向上** — ターミナル進行ヒント解析で `callID` / `callId` / `call_id` をすべて認識し、同一呼び出しの状態遷移を追跡して `ok/error` ヒント欠落を低減しました。
+- **Hotfix: カスタム API プロバイダの non-`v1` パス対応** — OpenAI 互換のカスタム API で `/vN`（例: `/v4`）を保持し、`/v4/v1/chat/completions` のような二重パス 404 を防止します。
+- **Hotfix: setup フロントエンドポート表示修正** — setup スクリプトのフロントエンド URL 表示を `http://127.0.0.1:8800` に修正しました（旧: `5173`）。
 
-- 詳細: [`docs/releases/v1.1.6.md`](docs/releases/v1.1.6.md)
+- 詳細: [`docs/releases/v1.1.7.md`](docs/releases/v1.1.7.md)
 
 ---
 
