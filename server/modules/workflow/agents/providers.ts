@@ -1028,11 +1028,11 @@ function resolveApiProviderModel(provider: ApiProviderRow, requestedModel: strin
   );
 }
 
-// base_url 정규화: 후행 경로(/v1/chat/completions, /v1/models, /v1/ 등)를 정리하여 /v1 까지만 남김
+// base_url 정규화: 후행 경로(/vN/chat/completions, /vN/models 등)를 정리하여 /vN 까지만 남김
 function normalizeApiBaseUrl(rawUrl: string): string {
   let url = rawUrl.replace(/\/+$/, "");
-  // /v1/chat/completions 같은 전체 경로가 입력된 경우 → /v1 까지만 유지
-  url = url.replace(/\/v1\/(chat\/completions|models|messages)$/i, "/v1");
+  // /v1/chat/completions, /v4/chat/completions 등 전체 경로 → /vN 까지만 유지
+  url = url.replace(/\/(v\d+)\/(chat\/completions|models|messages)$/i, "/$1");
   // /v1beta/models/... 같은 Google 경로
   url = url.replace(/\/v1beta\/models\/.+$/i, "/v1beta");
   return url;
@@ -1086,7 +1086,8 @@ function buildApiProviderRequest(
   }
 
   // OpenAI-compatible: openai, ollama, openrouter, together, groq, cerebras, custom
-  const chatUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
+  // /v1, /v2, /v3, /v4 등 버전 경로로 끝나면 그대로 /chat/completions 추가, 아니면 /v1 삽입
+  const chatUrl = /\/v\d+$/.test(baseUrl) ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
