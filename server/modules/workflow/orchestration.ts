@@ -1662,6 +1662,7 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
     // Collaboration child tasks should wait in review until parent consolidation meeting.
     // Queue continuation is still triggered so sequential delegation does not stall.
     if (task?.source_task_id) {
+      reconcileDelegatedSubtasksAfterRun(taskId, 0);
       const sourceLang = resolveLang(task.description ?? task.title);
       appendTaskLog(taskId, "system", "Status → review (delegated collaboration task waiting for parent consolidation)");
       notifyCeo(pickL(l(
@@ -1791,6 +1792,10 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
       "UPDATE tasks SET status = 'inbox', updated_at = ? WHERE id = ?"
     ).run(t, taskId);
 
+    if (task?.source_task_id) {
+      reconcileDelegatedSubtasksAfterRun(taskId, exitCode);
+    }
+
     const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
     broadcast("task_update", updatedTask);
 
@@ -1866,6 +1871,64 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
   }
 }
 
+function reconcileDelegatedSubtasksAfterRun(taskId: string, exitCode: number): void {
+  const linked = db.prepare(`
+    SELECT id, task_id
+    FROM subtasks
+    WHERE delegated_task_id = ?
+      AND status NOT IN ('done', 'cancelled')
+  `).all(taskId) as Array<{ id: string; task_id: string }>;
+  if (linked.length <= 0) return;
+
+  const touchedParents = new Set<string>();
+  for (const sub of linked) {
+    if (sub.task_id) touchedParents.add(sub.task_id);
+  }
+
+  if (exitCode === 0) {
+    const doneAt = nowMs();
+    for (const sub of linked) {
+      db.prepare(
+        "UPDATE subtasks SET status = 'done', completed_at = ?, blocked_reason = NULL WHERE id = ?"
+      ).run(doneAt, sub.id);
+      broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id));
+    }
+    appendTaskLog(taskId, "system", `Delegated subtask sync: marked ${linked.length} linked subtask(s) as done`);
+
+    for (const parentTaskId of touchedParents) {
+      const parent = db.prepare("SELECT id, title, status FROM tasks WHERE id = ?").get(parentTaskId) as {
+        id: string;
+        title: string;
+        status: string;
+      } | undefined;
+      if (!parent) continue;
+      const remaining = db.prepare(
+        "SELECT COUNT(*) AS cnt FROM subtasks WHERE task_id = ? AND status != 'done'"
+      ).get(parentTaskId) as { cnt: number } | undefined;
+      if ((remaining?.cnt ?? 0) === 0 && parent.status === "review") {
+        appendTaskLog(parentTaskId, "system", "All delegated subtasks completed after resume; retrying review completion");
+        setTimeout(() => finishReview(parentTaskId, parent.title), 1200);
+      }
+    }
+    return;
+  }
+
+  const lang = getPreferredLanguage();
+  const blockedReason = pickL(l(
+    ["위임 작업 실패"],
+    ["Delegated task failed"],
+    ["委任タスク失敗"],
+    ["委派任务失败"],
+  ), lang);
+  for (const sub of linked) {
+    db.prepare(
+      "UPDATE subtasks SET status = 'blocked', blocked_reason = ?, completed_at = NULL WHERE id = ?"
+    ).run(blockedReason, sub.id);
+    broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id));
+  }
+  appendTaskLog(taskId, "system", `Delegated subtask sync: marked ${linked.length} linked subtask(s) as blocked`);
+}
+
 // Move a reviewed task to 'done'
 function finishReview(
   taskId: string,
@@ -1910,6 +1973,30 @@ function finishReview(
   if (options?.bypassProjectDecisionGate && currentTask.project_id) {
     projectReviewGateNotifiedAt.delete(currentTask.project_id);
     appendTaskLog(taskId, "system", `Review gate bypassed (trigger=${options.trigger ?? "manual"})`);
+  }
+
+  const healed = db.prepare(`
+    UPDATE subtasks
+    SET status = 'done',
+        completed_at = COALESCE(completed_at, ?),
+        blocked_reason = NULL
+    WHERE task_id = ?
+      AND status = 'blocked'
+      AND delegated_task_id IS NOT NULL
+      AND delegated_task_id != ''
+      AND EXISTS (
+        SELECT 1
+        FROM tasks dt
+        WHERE dt.id = subtasks.delegated_task_id
+          AND dt.status IN ('review', 'done')
+      )
+  `).run(nowMs(), taskId) as { changes?: number } | undefined;
+  if ((healed?.changes ?? 0) > 0) {
+    appendTaskLog(
+      taskId,
+      "system",
+      `Review gate auto-heal: recovered ${healed?.changes ?? 0} blocked delegated subtask(s) after successful resume`,
+    );
   }
 
   const remainingSubtasks = db.prepare(

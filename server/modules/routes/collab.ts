@@ -1750,6 +1750,20 @@ function delegateSubtaskBatch(
 
 function finalizeDelegatedSubtasks(delegatedTaskId: string, subtaskIds: string[], exitCode: number): void {
   if (subtaskIds.length === 0) return;
+
+  const pausedRun = exitCode !== 0
+    && stopRequestedTasks.has(delegatedTaskId)
+    && stopRequestModeByTask.get(delegatedTaskId) === "pause";
+  if (pausedRun) {
+    appendTaskLog(
+      delegatedTaskId,
+      "system",
+      "Delegated subtask finalization deferred (pause requested, waiting for resume)",
+    );
+    handleTaskRunComplete(delegatedTaskId, exitCode);
+    return;
+  }
+
   delegatedTaskToSubtask.delete(delegatedTaskId);
   handleTaskRunComplete(delegatedTaskId, exitCode);
 
