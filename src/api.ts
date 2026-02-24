@@ -312,6 +312,10 @@ export async function deleteDepartment(id: string): Promise<void> {
   await del(`/api/departments/${id}`);
 }
 
+export async function reorderDepartments(orders: { id: string; sort_order: number }[]): Promise<void> {
+  await patch('/api/departments/reorder', { orders });
+}
+
 // Agents
 export async function getAgents(): Promise<Agent[]> {
   const j = await request<{ agents: Agent[] }>('/api/agents');
@@ -474,6 +478,7 @@ export interface ProjectDecisionEventItem {
 
 export interface ProjectDetailResponse {
   project: Project;
+  assigned_agents?: Agent[];
   tasks: ProjectTaskHistoryItem[];
   reports: ProjectReportHistoryItem[];
   decision_events: ProjectDecisionEventItem[];
@@ -504,6 +509,8 @@ export async function createProject(input: {
   core_goal: string;
   create_path_if_missing?: boolean;
   github_repo?: string;
+  assignment_mode?: 'auto' | 'manual';
+  agent_ids?: string[];
 }): Promise<Project> {
   const j = await post('/api/projects', input) as { ok: boolean; project: Project };
   return j.project;
@@ -514,6 +521,8 @@ export async function updateProject(
   patchData: Partial<Pick<Project, 'name' | 'project_path' | 'core_goal'>> & {
     create_path_if_missing?: boolean;
     github_repo?: string | null;
+    assignment_mode?: 'auto' | 'manual';
+    agent_ids?: string[];
   },
 ): Promise<Project> {
   const j = await patch(`/api/projects/${id}`, patchData) as { ok: boolean; project: Project };

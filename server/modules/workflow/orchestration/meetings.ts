@@ -252,6 +252,26 @@ function getTaskReviewLeaders(
   fallbackDeptId: string | null,
   opts?: { minLeaders?: number; includePlanning?: boolean; fallbackAll?: boolean },
 ): AgentRow[] {
+  // 프로젝트 manual 모드 확인 — 지정 직원의 부서 팀장만 참석
+  const taskRow = db.prepare("SELECT project_id FROM tasks WHERE id = ?").get(taskId) as { project_id: string | null } | undefined;
+  if (taskRow?.project_id) {
+    const proj = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(taskRow.project_id) as { assignment_mode: string } | undefined;
+    if (proj?.assignment_mode === "manual") {
+      const assignedAgents = db.prepare(
+        "SELECT DISTINCT a.department_id FROM project_agents pa JOIN agents a ON a.id = pa.agent_id WHERE pa.project_id = ?"
+      ).all(taskRow.project_id) as Array<{ department_id: string | null }>;
+      const manualDeptIds = assignedAgents.map((r) => r.department_id).filter(Boolean) as string[];
+      const leaders = getLeadersByDepartmentIds(manualDeptIds);
+      const seen = new Set(leaders.map((l) => l.id));
+      // 기획팀장은 항상 포함
+      const planningLeader = findTeamLeader("planning");
+      if (planningLeader && !seen.has(planningLeader.id)) {
+        leaders.unshift(planningLeader);
+      }
+      return leaders;
+    }
+  }
+
   const deptIds = getTaskRelatedDepartmentIds(taskId, fallbackDeptId);
   const leaders = getLeadersByDepartmentIds(deptIds);
   const includePlanning = opts?.includePlanning ?? true;

@@ -3170,6 +3170,7 @@ export function TaskBoard({
       {showProjectManager && (
         <ProjectManagerModal
           agents={agents}
+          departments={departments}
           onClose={() => setShowProjectManager(false)}
         />
       )}

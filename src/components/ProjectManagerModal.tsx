@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Agent, Project } from '../types';
+import type { Agent, Department, Project, AssignmentMode } from '../types';
 import {
   browseProjectPath,
   checkProjectPath,
@@ -19,9 +19,11 @@ import {
 import { useI18n } from '../i18n';
 import TaskReportPopup from './TaskReportPopup';
 import GitHubImportPanel from './GitHubImportPanel';
+import AgentAvatar, { useSpriteMap } from './AgentAvatar';
 
 interface ProjectManagerModalProps {
   agents: Agent[];
+  departments?: Department[];
   onClose: () => void;
 }
 
@@ -48,7 +50,7 @@ function fmtTime(ts: number | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function ProjectManagerModal({ agents, onClose }: ProjectManagerModalProps) {
+export default function ProjectManagerModal({ agents, departments = [], onClose }: ProjectManagerModalProps) {
   const { t, language } = useI18n();
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -85,6 +87,12 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
   const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
 
   const [reportDetail, setReportDetail] = useState<TaskReportDetail | null>(null);
+
+  // 직원 직접선택 상태
+  const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>('auto');
+  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
+  const [agentFilterDept, setAgentFilterDept] = useState<string>('all');
+  const spriteMap = useSpriteMap(agents);
 
   const loadProjects = useCallback(async (targetPage: number, keyword: string) => {
     setLoadingList(true);
@@ -127,6 +135,8 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
           setName(res.project.name);
           setProjectPath(res.project.project_path);
           setCoreGoal(res.project.core_goal);
+          setAssignmentMode(res.project.assignment_mode || 'auto');
+          setSelectedAgentIds(new Set(res.project.assigned_agent_ids || []));
         }
       })
       .catch((err) => {
@@ -404,6 +414,8 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
     setName('');
     setProjectPath('');
     setCoreGoal('');
+    setAssignmentMode('auto');
+    setSelectedAgentIds(new Set());
     resetPathHelperState();
   };
 
@@ -414,6 +426,8 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
     setName(viewedProject.name);
     setProjectPath(viewedProject.project_path);
     setCoreGoal(viewedProject.core_goal);
+    setAssignmentMode(viewedProject.assignment_mode || 'auto');
+    setSelectedAgentIds(new Set(viewedProject.assigned_agent_ids || []));
     resetPathHelperState();
   };
 
@@ -480,6 +494,8 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
           project_path: savePath,
           core_goal: coreGoal.trim(),
           create_path_if_missing: createPathIfMissing,
+          assignment_mode: assignmentMode,
+          agent_ids: assignmentMode === 'manual' ? Array.from(selectedAgentIds) : [],
         });
         setSelectedProjectId(updated.id);
       } else {
@@ -488,6 +504,8 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
           project_path: savePath,
           core_goal: coreGoal.trim(),
           create_path_if_missing: createPathIfMissing,
+          assignment_mode: assignmentMode,
+          agent_ids: assignmentMode === 'manual' ? Array.from(selectedAgentIds) : [],
         });
         setSelectedProjectId(created.id);
       }
@@ -893,8 +911,8 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                 <div
                   className={`rounded-lg border px-3 py-2 text-xs ${
                     formFeedback.tone === 'error'
-                      ? 'border-rose-500/60 bg-rose-500/10 text-rose-200'
-                      : 'border-cyan-500/50 bg-cyan-500/10 text-cyan-100'
+                      ? 'border-rose-500/60 bg-rose-500/10 text-rose-800 dark:text-rose-200'
+                      : 'border-cyan-500/50 bg-cyan-500/10 text-cyan-800 dark:text-cyan-100'
                   }`}
                 >
                   {formFeedback.message}
@@ -913,6 +931,136 @@ export default function ProjectManagerModal({ agents, onClose }: ProjectManagerM
                   className="mt-1 w-full resize-none rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
                 />
               </label>
+
+              {/* 직원 할당 모드 */}
+              {(isCreating || !!editingProjectId) && (
+                <div className="space-y-3 mt-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-slate-400">
+                      {t({ ko: '직원 할당 방식', en: 'Assignment Mode', ja: '割り当てモード', zh: '分配模式' })}
+                    </span>
+                    <div className="flex gap-1 p-0.5 rounded-lg bg-slate-800 border border-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => setAssignmentMode('auto')}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                          assignmentMode === 'auto' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {t({ ko: '자동 할당', en: 'Auto', ja: '自動', zh: '自动' })}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAssignmentMode('manual')}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                          assignmentMode === 'manual' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {t({ ko: '직접 선택', en: 'Manual', ja: '手動', zh: '手动' })}
+                      </button>
+                    </div>
+                  </div>
+
+                  {assignmentMode === 'manual' && (
+                    <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-400">
+                          {t({ ko: '참여 직원 선택', en: 'Select Agents', ja: 'エージェント選択', zh: '选择员工' })}
+                          <span className="ml-2 text-blue-400 font-medium">{selectedAgentIds.size}{t({ ko: '명', en: ' selected', ja: '人', zh: '人' })}</span>
+                        </span>
+                        {departments.length > 0 && (
+                          <select
+                            value={agentFilterDept}
+                            onChange={(e) => setAgentFilterDept(e.target.value)}
+                            className="text-[11px] px-2 py-1 rounded border border-slate-700 bg-slate-800 text-slate-300 outline-none"
+                          >
+                            <option value="all">{t({ ko: '전체 부서', en: 'All Depts', ja: '全部署', zh: '所有部门' })}</option>
+                            {departments.map((d) => (
+                              <option key={d.id} value={d.id}>{d.icon} {language === 'ko' ? d.name_ko || d.name : d.name}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                      <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                        {agents
+                          .filter((a) => agentFilterDept === 'all' || a.department_id === agentFilterDept)
+                          .sort((a, b) => {
+                            const roleOrder: Record<string, number> = { team_leader: 0, senior: 1, junior: 2, intern: 3 };
+                            return (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9) || a.name.localeCompare(b.name);
+                          })
+                          .map((agent) => {
+                            const checked = selectedAgentIds.has(agent.id);
+                            const dept = departments.find((d) => d.id === agent.department_id);
+                            return (
+                              <label
+                                key={agent.id}
+                                className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all ${
+                                  checked ? 'bg-blue-600/10 border border-blue-500/30' : 'hover:bg-slate-800 border border-transparent'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    const next = new Set(selectedAgentIds);
+                                    if (checked) next.delete(agent.id);
+                                    else next.add(agent.id);
+                                    setSelectedAgentIds(next);
+                                  }}
+                                  className="w-3.5 h-3.5 rounded border-slate-600 accent-blue-500"
+                                />
+                                <AgentAvatar agent={agent} spriteMap={spriteMap} size={24} />
+                                <span className="text-xs font-medium text-slate-200">
+                                  {language === 'ko' ? agent.name_ko || agent.name : agent.name}
+                                </span>
+                                {dept && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: dept.color + '22', color: dept.color }}>
+                                    {language === 'ko' ? dept.name_ko || dept.name : dept.name}
+                                  </span>
+                                )}
+                                <span className="text-[10px] ml-auto px-1.5 py-0.5 rounded" style={{ color: 'var(--th-text-muted)', background: 'rgba(255,255,255,0.05)' }}>
+                                  {agent.role === 'team_leader'
+                                    ? (language === 'ko' ? '팀장' : 'Leader')
+                                    : agent.role === 'senior'
+                                    ? (language === 'ko' ? '시니어' : 'Senior')
+                                    : agent.role === 'junior'
+                                    ? (language === 'ko' ? '주니어' : 'Junior')
+                                    : agent.role === 'intern'
+                                    ? (language === 'ko' ? '인턴' : 'Intern')
+                                    : ''}
+                                </span>
+                              </label>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 읽기 전용에서 할당 모드 표시 */}
+              {!isCreating && !editingProjectId && selectedProject && (selectedProject as any).assignment_mode === 'manual' && (
+                <div className="mt-2 px-3 py-2 rounded-lg bg-violet-600/10 border border-violet-500/20">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-violet-400">
+                      {t({ ko: '직접 선택 모드', en: 'Manual Assignment', ja: '手動割り当て', zh: '手动分配' })}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {detail?.assigned_agents?.length ?? 0}{t({ ko: '명 지정', en: ' agents', ja: '人', zh: '人' })}
+                    </span>
+                  </div>
+                  {detail?.assigned_agents && detail.assigned_agents.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {detail.assigned_agents.map((a: Agent) => (
+                        <span key={a.id} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                          <AgentAvatar agent={a} spriteMap={spriteMap} size={16} />
+                          {language === 'ko' ? (a as any).name_ko || a.name : a.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2 pt-1">
                 {(isCreating || !!editingProjectId) && (

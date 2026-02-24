@@ -143,6 +143,7 @@ export function registerRoutesPartA(ctx: RuntimeContext): Record<string, never> 
   const SUPPORTED_LANGS = __ctx.SUPPORTED_LANGS;
   const isLang = __ctx.isLang;
   const readSettingString = __ctx.readSettingString;
+  const runInTransaction = __ctx.runInTransaction;
   const getFlairs = __ctx.getFlairs;
   const ROLE_LABEL_L10N = __ctx.ROLE_LABEL_L10N;
   const classifyIntent = __ctx.classifyIntent;
@@ -1307,6 +1308,41 @@ app.delete("/api/departments/:id", (req, res) => {
   }
 });
 
+// 부서 순번 일괄 변경
+app.patch("/api/departments/reorder", (req, res) => {
+  try {
+    const body = req.body;
+    if (!body || !Array.isArray(body.orders)) {
+      return res.status(400).json({ error: "orders_array_required" });
+    }
+    const orders = body.orders as Array<{ id: string; sort_order: number }>;
+    for (const item of orders) {
+      if (!item.id || typeof item.sort_order !== "number" || !Number.isInteger(item.sort_order) || item.sort_order < 0) {
+        return res.status(400).json({ error: "invalid_order_entry", detail: item });
+      }
+    }
+    // sort_order UNIQUE 인덱스가 있으므로 일시적으로 큰 값 할당 후 재배치
+    runInTransaction(() => {
+      // 먼저 모든 대상 부서를 높은 임시값으로 이동 (충돌 방지)
+      const tempBase = 90000;
+      const stmtTemp = db.prepare("UPDATE departments SET sort_order = ? WHERE id = ?");
+      for (let i = 0; i < orders.length; i++) {
+        stmtTemp.run(tempBase + i, orders[i].id);
+      }
+      // 최종 순번 할당
+      const stmtFinal = db.prepare("UPDATE departments SET sort_order = ? WHERE id = ?");
+      for (const item of orders) {
+        stmtFinal.run(item.sort_order, item.id);
+      }
+    });
+    broadcast("departments_changed", {});
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[departments] PATCH reorder failed:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------
@@ -1343,8 +1379,15 @@ app.get("/api/projects", (req, res) => {
     LIMIT ? OFFSET ?
   `).all(...([...(params as SQLInputValue[]), pageSize, offset] as SQLInputValue[]));
 
+  // 각 프로젝트에 assigned_agent_ids 첨부
+  const stmtPA = db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?");
+  const projects = (rows as any[]).map((row) => {
+    const agentIds = (stmtPA.all(row.id) as Array<{ agent_id: string }>).map((r) => r.agent_id);
+    return { ...row, assigned_agent_ids: agentIds };
+  });
+
   res.json({
-    projects: rows,
+    projects,
     page,
     page_size: pageSize,
     total,
@@ -1848,16 +1891,29 @@ app.post("/api/projects", (req, res) => {
   }
 
   const githubRepo = typeof body.github_repo === "string" ? body.github_repo.trim() || null : null;
+  const assignmentMode = body.assignment_mode === "manual" ? "manual" : "auto";
+  const agentIds = Array.isArray(body.agent_ids) ? body.agent_ids.filter((v: unknown) => typeof v === "string" && v.trim()) : [];
 
   const id = randomUUID();
   const t = nowMs();
-  db.prepare(`
-    INSERT INTO projects (id, name, project_path, core_goal, last_used_at, created_at, updated_at, github_repo)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, name, projectPath, coreGoal, t, t, t, githubRepo);
+  runInTransaction(() => {
+    db.prepare(`
+      INSERT INTO projects (id, name, project_path, core_goal, assignment_mode, last_used_at, created_at, updated_at, github_repo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, projectPath, coreGoal, assignmentMode, t, t, t, githubRepo);
+
+    if (assignmentMode === "manual" && agentIds.length > 0) {
+      const insertPA = db.prepare("INSERT INTO project_agents (project_id, agent_id, created_at) VALUES (?, ?, ?)");
+      for (const agentId of agentIds) {
+        insertPA.run(id, agentId, t);
+      }
+    }
+  });
 
   const project = db.prepare("SELECT * FROM projects WHERE id = ?").get(id);
-  res.json({ ok: true, project });
+  // 지정된 직원 ID 목록 첨부
+  const assignedAgentIds = (db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?").all(id) as Array<{ agent_id: string }>).map((r) => r.agent_id);
+  res.json({ ok: true, project: { ...project, assigned_agent_ids: assignedAgentIds } });
 });
 
 app.patch("/api/projects/:id", (req, res) => {
@@ -1926,15 +1982,41 @@ app.patch("/api/projects/:id", (req, res) => {
     updates.push("github_repo = ?");
     params.push(value);
   }
+  if ("assignment_mode" in body) {
+    const value = body.assignment_mode === "manual" ? "manual" : "auto";
+    updates.push("assignment_mode = ?");
+    params.push(value);
+  }
 
-  if (updates.length <= 1) {
+  const hasAgentIdsUpdate = "agent_ids" in body;
+  const agentIds = hasAgentIdsUpdate && Array.isArray(body.agent_ids)
+    ? body.agent_ids.filter((v: unknown) => typeof v === "string" && v.trim())
+    : [];
+
+  if (updates.length <= 1 && !hasAgentIdsUpdate) {
     return res.status(400).json({ error: "no_fields" });
   }
 
-  params.push(id);
-  db.prepare(`UPDATE projects SET ${updates.join(", ")} WHERE id = ?`).run(...(params as SQLInputValue[]));
+  runInTransaction(() => {
+    if (updates.length > 1) {
+      params.push(id);
+      db.prepare(`UPDATE projects SET ${updates.join(", ")} WHERE id = ?`).run(...(params as SQLInputValue[]));
+    }
+    if (hasAgentIdsUpdate) {
+      db.prepare("DELETE FROM project_agents WHERE project_id = ?").run(id);
+      if (agentIds.length > 0) {
+        const insertPA = db.prepare("INSERT INTO project_agents (project_id, agent_id, created_at) VALUES (?, ?, ?)");
+        const t = nowMs();
+        for (const agentId of agentIds) {
+          insertPA.run(id, agentId, t);
+        }
+      }
+    }
+  });
+
   const project = db.prepare("SELECT * FROM projects WHERE id = ?").get(id);
-  res.json({ ok: true, project });
+  const assignedAgentIds = (db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?").all(id) as Array<{ agent_id: string }>).map((r) => r.agent_id);
+  res.json({ ok: true, project: { ...project, assigned_agent_ids: assignedAgentIds } });
 });
 
 app.delete("/api/projects/:id", (req, res) => {
@@ -1999,7 +2081,22 @@ app.get("/api/projects/:id", (req, res) => {
     LIMIT 300
   `).all(id);
 
-  res.json({ project, tasks, reports, decision_events: decisionEvents });
+  // 프로젝트 지정 직원 목록
+  const assignedAgents = db.prepare(`
+    SELECT a.* FROM agents a
+    INNER JOIN project_agents pa ON pa.agent_id = a.id
+    WHERE pa.project_id = ?
+    ORDER BY a.department_id, a.role, a.name
+  `).all(id);
+  const assignedAgentIds = assignedAgents.map((a: any) => a.id);
+
+  res.json({
+    project: { ...project, assigned_agent_ids: assignedAgentIds },
+    assigned_agents: assignedAgents,
+    tasks,
+    reports,
+    decision_events: decisionEvents,
+  });
 });
 
 // ---------------------------------------------------------------------------

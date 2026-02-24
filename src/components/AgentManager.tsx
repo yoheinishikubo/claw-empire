@@ -133,6 +133,9 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
   const isKo = locale.startsWith('ko');
   const tr = (ko: string, en: string) => t({ ko, en, ja: en, zh: en });
 
+  // 서브탭: 직원관리 / 부서관리
+  const [subTab, setSubTab] = useState<'agents' | 'departments'>('agents');
+
   const [search, setSearch] = useState('');
   const [deptTab, setDeptTab] = useState('all');
   const [modalAgent, setModalAgent] = useState<Agent | null>(null); // null + showModal=true → 생성
@@ -144,6 +147,16 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
   // 부서 관리 상태
   const [showDeptModal, setShowDeptModal] = useState(false);
   const [editDept, setEditDept] = useState<Department | null>(null);
+  // 부서 순번 변경용 로컬 상태
+  const [deptOrder, setDeptOrder] = useState<Department[]>([]);
+  const [deptOrderDirty, setDeptOrderDirty] = useState(false);
+  const [reorderSaving, setReorderSaving] = useState(false);
+
+  // departments가 변경되면 순번 로컬 상태 동기화
+  useEffect(() => {
+    setDeptOrder([...departments].sort((a, b) => a.sort_order - b.sort_order));
+    setDeptOrderDirty(false);
+  }, [departments]);
 
   const spriteMap = buildSpriteMap(agents);
 
@@ -242,6 +255,27 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
 
   const workingCount = agents.filter((a) => a.status === 'working').length;
 
+  // 부서 순번 이동 헬퍼
+  const moveDept = (index: number, direction: -1 | 1) => {
+    const newOrder = [...deptOrder];
+    const target = index + direction;
+    if (target < 0 || target >= newOrder.length) return;
+    [newOrder[index], newOrder[target]] = [newOrder[target], newOrder[index]];
+    setDeptOrder(newOrder);
+    setDeptOrderDirty(true);
+  };
+
+  const saveDeptOrder = async () => {
+    setReorderSaving(true);
+    try {
+      const orders = deptOrder.map((d, i) => ({ id: d.id, sort_order: i + 1 }));
+      await api.reorderDepartments(orders);
+      setDeptOrderDirty(false);
+      onAgentsChange();
+    } catch (e) { console.error('Reorder failed:', e); }
+    finally { setReorderSaving(false); }
+  };
+
   return (
     <div className="mx-auto max-w-4xl space-y-4 sm:space-y-5">
       {/* Header */}
@@ -254,112 +288,261 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
           {tr('직원 관리', 'Agent Manager')}
         </h2>
         <div className="flex items-center gap-2">
-          <button
-            onClick={openCreateDept}
-            className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:opacity-80 shadow-sm"
-            style={{ background: '#7c3aed', color: '#ffffff', boxShadow: '0 1px 3px rgba(124,58,237,0.3)' }}
-          >
-            + {tr('부서 추가', 'Add Dept')}
-          </button>
-          <button
-            onClick={openCreate}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-sm shadow-blue-600/20"
-          >
-            + {tr('신규 채용', 'Hire Agent')}
-          </button>
+          {subTab === 'agents' && (
+            <>
+              <button
+                onClick={openCreateDept}
+                className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:opacity-80 shadow-sm"
+                style={{ background: '#7c3aed', color: '#ffffff', boxShadow: '0 1px 3px rgba(124,58,237,0.3)' }}
+              >
+                + {tr('부서 추가', 'Add Dept')}
+              </button>
+              <button
+                onClick={openCreate}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-sm shadow-blue-600/20"
+              >
+                + {tr('신규 채용', 'Hire Agent')}
+              </button>
+            </>
+          )}
+          {subTab === 'departments' && (
+            <button
+              onClick={openCreateDept}
+              className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:opacity-80 shadow-sm"
+              style={{ background: '#7c3aed', color: '#ffffff', boxShadow: '0 1px 3px rgba(124,58,237,0.3)' }}
+            >
+              + {tr('부서 추가', 'Add Dept')}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: tr('전체 인원', 'Total'), value: agents.length, icon: (
-            <span className="relative inline-flex items-center" style={{ width: 22, height: 16 }}>
-              <img src="/sprites/8-D-1.png" alt="" className="absolute left-0 top-0 w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', opacity: 0.85 }} />
-              <img src="/sprites/3-D-1.png" alt="" className="absolute left-1.5 top-px w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', zIndex: 1 }} />
-            </span>
-          ) as React.ReactNode, accent: 'blue' },
-          { label: tr('근무 중', 'Working'), value: workingCount, icon: '💼', accent: 'emerald' },
-          { label: tr('부서', 'Departments'), value: departments.length, icon: '🏢', accent: 'violet' },
-        ].map((s) => (
-          <div
-            key={s.label}
-            className="rounded-xl px-4 py-3"
-            style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}
+      {/* 서브탭: 직원관리 / 부서관리 */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}>
+        {([
+          { key: 'agents' as const, label: tr('직원관리', 'Agents'), icon: '👥' },
+          { key: 'departments' as const, label: tr('부서관리', 'Departments'), icon: '🏢' },
+        ]).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setSubTab(tab.key)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              subTab === tab.key
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'hover:bg-white/5'
+            }`}
+            style={subTab !== tab.key ? { color: 'var(--th-text-muted)' } : undefined}
           >
-            <div className="text-xs mb-1" style={{ color: 'var(--th-text-muted)' }}>{s.icon} {s.label}</div>
-            <div className="text-2xl font-bold tabular-nums" style={{ color: 'var(--th-text-heading)' }}>{s.value}</div>
-          </div>
+            <span>{tab.icon}</span>
+            {tab.label}
+          </button>
         ))}
       </div>
 
-      {/* Department tabs + Search */}
-      <div className="flex items-center gap-2 flex-wrap" style={{ borderBottom: '1px solid var(--th-card-border)' }}>
-        <button
-          onClick={() => setDeptTab('all')}
-          className={`flex items-center gap-1 px-3 py-2 text-xs font-medium transition-colors ${
-            deptTab === 'all' ? 'text-blue-400 border-b-2 border-blue-400' : 'hover:text-slate-200'
-          }`}
-          style={deptTab !== 'all' ? { color: 'var(--th-text-muted)' } : undefined}
-        >
-          {tr('전체', 'All')} <span className="opacity-60">{agents.length}</span>
-        </button>
-        {departments.map((d) => {
-          const c = deptCounts.get(d.id);
-          return (
-            <button
-              key={d.id}
-              onClick={() => setDeptTab(d.id)}
-              onDoubleClick={(e) => { e.preventDefault(); openEditDept(d); }}
-              title={tr('더블클릭: 부서 편집', 'Double-click: edit dept')}
-              className={`flex items-center gap-1 px-3 py-2 text-xs font-medium transition-colors ${
-                deptTab === d.id ? 'text-blue-400 border-b-2 border-blue-400' : 'hover:text-slate-200'
-              }`}
-              style={deptTab !== d.id ? { color: 'var(--th-text-muted)' } : undefined}
-            >
-              <span>{d.icon}</span>
-              <span className="hidden sm:inline">{localeName(locale, d)}</span>
-              <span className="opacity-60">{c?.total ?? 0}</span>
-            </button>
-          );
-        })}
-        <div className="ml-auto pb-1">
-          <input
-            type="text"
-            placeholder={`${tr('검색', 'Search')}...`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="px-3 py-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500/40 transition-shadow w-36"
-            style={{ background: 'var(--th-input-bg)', border: '1px solid var(--th-input-border)', color: 'var(--th-text-primary)' }}
-          />
-        </div>
-      </div>
+      {/* ═══ 직원관리 탭 ═══ */}
+      {subTab === 'agents' && (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: tr('전체 인원', 'Total'), value: agents.length, icon: (
+                <span className="relative inline-flex items-center" style={{ width: 22, height: 16 }}>
+                  <img src="/sprites/8-D-1.png" alt="" className="absolute left-0 top-0 w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', opacity: 0.85 }} />
+                  <img src="/sprites/3-D-1.png" alt="" className="absolute left-1.5 top-px w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', zIndex: 1 }} />
+                </span>
+              ) as React.ReactNode, accent: 'blue' },
+              { label: tr('근무 중', 'Working'), value: workingCount, icon: '💼', accent: 'emerald' },
+              { label: tr('부서', 'Departments'), value: departments.length, icon: '🏢', accent: 'violet' },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="rounded-xl px-4 py-3"
+                style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}
+              >
+                <div className="text-xs mb-1" style={{ color: 'var(--th-text-muted)' }}>{s.icon} {s.label}</div>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: 'var(--th-text-heading)' }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
 
-      {/* Agent grid */}
-      {sorted.length === 0 ? (
-        <div className="text-center py-16" style={{ color: 'var(--th-text-muted)' }}>
-          <div className="text-3xl mb-2">🔍</div>
-          {tr('검색 결과 없음', 'No agents found')}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {sorted.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              spriteMap={spriteMap}
-              isKo={isKo}
-              locale={locale}
-              tr={tr}
-              departments={departments}
-              onEdit={() => openEdit(agent)}
-              confirmDeleteId={confirmDeleteId}
-              onDeleteClick={() => setConfirmDeleteId(agent.id)}
-              onDeleteConfirm={() => handleDelete(agent.id)}
-              onDeleteCancel={() => setConfirmDeleteId(null)}
-              saving={saving}
-            />
-          ))}
+          {/* Department tabs + Search */}
+          <div className="flex items-center gap-2 flex-wrap" style={{ borderBottom: '1px solid var(--th-card-border)' }}>
+            <button
+              onClick={() => setDeptTab('all')}
+              className={`flex items-center gap-1 px-3 py-2 text-xs font-medium transition-colors ${
+                deptTab === 'all' ? 'text-blue-400 border-b-2 border-blue-400' : 'hover:text-slate-200'
+              }`}
+              style={deptTab !== 'all' ? { color: 'var(--th-text-muted)' } : undefined}
+            >
+              {tr('전체', 'All')} <span className="opacity-60">{agents.length}</span>
+            </button>
+            {departments.map((d) => {
+              const c = deptCounts.get(d.id);
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => setDeptTab(d.id)}
+                  onDoubleClick={(e) => { e.preventDefault(); openEditDept(d); }}
+                  title={tr('더블클릭: 부서 편집', 'Double-click: edit dept')}
+                  className={`flex items-center gap-1 px-3 py-2 text-xs font-medium transition-colors ${
+                    deptTab === d.id ? 'text-blue-400 border-b-2 border-blue-400' : 'hover:text-slate-200'
+                  }`}
+                  style={deptTab !== d.id ? { color: 'var(--th-text-muted)' } : undefined}
+                >
+                  <span>{d.icon}</span>
+                  <span className="hidden sm:inline">{localeName(locale, d)}</span>
+                  <span className="opacity-60">{c?.total ?? 0}</span>
+                </button>
+              );
+            })}
+            <div className="ml-auto pb-1">
+              <input
+                type="text"
+                placeholder={`${tr('검색', 'Search')}...`}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="px-3 py-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500/40 transition-shadow w-36"
+                style={{ background: 'var(--th-input-bg)', border: '1px solid var(--th-input-border)', color: 'var(--th-text-primary)' }}
+              />
+            </div>
+          </div>
+
+          {/* Agent grid */}
+          {sorted.length === 0 ? (
+            <div className="text-center py-16" style={{ color: 'var(--th-text-muted)' }}>
+              <div className="text-3xl mb-2">🔍</div>
+              {tr('검색 결과 없음', 'No agents found')}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {sorted.map((agent) => (
+                <AgentCard
+                  key={agent.id}
+                  agent={agent}
+                  spriteMap={spriteMap}
+                  isKo={isKo}
+                  locale={locale}
+                  tr={tr}
+                  departments={departments}
+                  onEdit={() => openEdit(agent)}
+                  confirmDeleteId={confirmDeleteId}
+                  onDeleteClick={() => setConfirmDeleteId(agent.id)}
+                  onDeleteConfirm={() => handleDelete(agent.id)}
+                  onDeleteCancel={() => setConfirmDeleteId(null)}
+                  saving={saving}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ═══ 부서관리 탭 ═══ */}
+      {subTab === 'departments' && (
+        <div className="space-y-4">
+          {/* 순번 저장 버튼 */}
+          {deptOrderDirty && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)' }}>
+              <span className="text-sm" style={{ color: 'var(--th-text-primary)' }}>
+                {tr('순번이 변경되었습니다.', 'Order has been changed.')}
+              </span>
+              <button
+                onClick={saveDeptOrder}
+                disabled={reorderSaving}
+                className="ml-auto px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-all"
+              >
+                {reorderSaving ? tr('저장 중...', 'Saving...') : tr('순번 저장', 'Save Order')}
+              </button>
+              <button
+                onClick={() => { setDeptOrder([...departments].sort((a, b) => a.sort_order - b.sort_order)); setDeptOrderDirty(false); }}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:bg-white/5"
+                style={{ color: 'var(--th-text-muted)' }}
+              >
+                {tr('취소', 'Cancel')}
+              </button>
+            </div>
+          )}
+
+          {/* 부서 목록 */}
+          <div className="space-y-2">
+            {deptOrder.map((dept, idx) => {
+              const agentCountForDept = agents.filter(a => a.department_id === dept.id).length;
+              return (
+                <div
+                  key={dept.id}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:shadow-md group"
+                  style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}
+                >
+                  {/* 순번 컨트롤 */}
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => moveDept(idx, -1)}
+                      disabled={idx === 0}
+                      className="w-6 h-5 flex items-center justify-center rounded text-xs transition-all hover:bg-white/10 disabled:opacity-20"
+                      style={{ color: 'var(--th-text-muted)' }}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moveDept(idx, 1)}
+                      disabled={idx === deptOrder.length - 1}
+                      className="w-6 h-5 flex items-center justify-center rounded text-xs transition-all hover:bg-white/10 disabled:opacity-20"
+                      style={{ color: 'var(--th-text-muted)' }}
+                    >
+                      ▼
+                    </button>
+                  </div>
+
+                  {/* 순번 번호 */}
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold" style={{ background: dept.color + '22', color: dept.color }}>
+                    {idx + 1}
+                  </div>
+
+                  {/* 아이콘 */}
+                  <span className="text-2xl">{dept.icon}</span>
+
+                  {/* 부서 정보 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm" style={{ color: 'var(--th-text-heading)' }}>
+                        {localeName(locale, dept)}
+                      </span>
+                      <span className="w-3 h-3 rounded-full inline-block" style={{ background: dept.color }}></span>
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: dept.color + '22', color: dept.color }}>
+                        {agentCountForDept} {tr('명', 'agents')}
+                      </span>
+                    </div>
+                    {dept.description && (
+                      <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--th-text-muted)' }}>
+                        {dept.description}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 부서 ID */}
+                  <code className="text-[10px] px-2 py-0.5 rounded opacity-50" style={{ background: 'var(--th-input-bg)' }}>
+                    {dept.id}
+                  </code>
+
+                  {/* 편집 버튼 */}
+                  <button
+                    onClick={() => openEditDept(dept)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all opacity-0 group-hover:opacity-100 hover:bg-white/10"
+                    style={{ color: 'var(--th-text-muted)' }}
+                  >
+                    {tr('편집', 'Edit')}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {deptOrder.length === 0 && (
+            <div className="text-center py-16" style={{ color: 'var(--th-text-muted)' }}>
+              <div className="text-3xl mb-2">🏢</div>
+              {tr('등록된 부서가 없습니다.', 'No departments found.')}
+            </div>
+          )}
         </div>
       )}
 

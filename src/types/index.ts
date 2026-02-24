@@ -83,11 +83,15 @@ export interface Task {
   hidden?: number;
 }
 
+export type AssignmentMode = 'auto' | 'manual';
+
 export interface Project {
   id: string;
   name: string;
   project_path: string;
   core_goal: string;
+  assignment_mode: AssignmentMode;
+  assigned_agent_ids?: string[];
   last_used_at: number | null;
   created_at: number;
   updated_at: number;

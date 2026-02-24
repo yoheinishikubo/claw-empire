@@ -1284,6 +1284,20 @@ try {
   db.exec("CREATE INDEX IF NOT EXISTS idx_task_creation_audits_completed ON task_creation_audits(completed, created_at DESC)");
 } catch { /* table missing or migration in progress */ }
 
+// 프로젝트별 직원 직접선택 기능: assignment_mode + project_agents 테이블
+try { db.exec("ALTER TABLE projects ADD COLUMN assignment_mode TEXT NOT NULL DEFAULT 'auto'"); } catch { /* already exists */ }
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_agents (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      created_at INTEGER DEFAULT (unixepoch()*1000),
+      PRIMARY KEY (project_id, agent_id)
+    )
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_project_agents_project ON project_agents(project_id)");
+} catch { /* already exists */ }
+
 // Migrate messages CHECK constraint to include 'directive'
 function migrateMessagesDirectiveType(): void {
   const row = db.prepare(`

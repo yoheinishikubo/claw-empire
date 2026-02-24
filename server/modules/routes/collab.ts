@@ -1037,8 +1037,18 @@ function handleMentionDelegation(
   }, ackDelay);
 }
 
-function findBestSubordinate(deptId: string, excludeId: string): AgentRow | null {
-  // Find subordinates in department, prefer: idle > break, higher role first
+function findBestSubordinate(deptId: string, excludeId: string, candidateAgentIds?: string[] | null): AgentRow | null {
+  // candidateAgentIds가 지정되면 해당 목록에서만 선택 (manual 모드)
+  if (candidateAgentIds && candidateAgentIds.length > 0) {
+    const placeholders = candidateAgentIds.map(() => "?").join(",");
+    const agents = db.prepare(
+      `SELECT * FROM agents WHERE id IN (${placeholders}) AND id != ? AND role != 'team_leader' ORDER BY
+         CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
+         CASE role WHEN 'senior' THEN 0 WHEN 'junior' THEN 1 WHEN 'intern' THEN 2 ELSE 3 END`
+    ).all(...candidateAgentIds, excludeId) as unknown as AgentRow[];
+    return agents[0] ?? null;
+  }
+  // 기존 로직: 부서 전체에서 선택
   const agents = db.prepare(
     `SELECT * FROM agents WHERE department_id = ? AND id != ? AND role != 'team_leader' ORDER BY
        CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
@@ -1854,7 +1864,15 @@ function handleTaskDelegation(
   // --- Step 1: Team leader acknowledges (1~2 sec) ---
   const ackDelay = 1000 + Math.random() * 1000;
   setTimeout(() => {
-    const subordinate = findBestSubordinate(leaderDeptId, teamLeader.id);
+    // 프로젝트 manual 모드 시 지정된 직원만 후보로 사용
+    let projectCandidateAgentIds: string[] | null = null;
+    if (options.projectId) {
+      const proj = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(options.projectId) as { assignment_mode?: string } | undefined;
+      if (proj?.assignment_mode === "manual") {
+        projectCandidateAgentIds = (db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?").all(options.projectId) as Array<{ agent_id: string }>).map(r => r.agent_id);
+      }
+    }
+    const subordinate = findBestSubordinate(leaderDeptId, teamLeader.id, projectCandidateAgentIds);
 
     const taskId = randomUUID();
     const t = nowMs();

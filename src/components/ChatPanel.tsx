@@ -1050,6 +1050,17 @@ export function ChatPanel({
                     <p className="text-xs font-semibold text-white">{selectedProject.name}</p>
                     <p className="mt-1 text-[11px] text-slate-400">{selectedProject.project_path}</p>
                     <p className="mt-1 text-[11px] text-slate-300">{selectedProject.core_goal}</p>
+                    {(selectedProject as any).assignment_mode === 'manual' && (
+                      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-violet-300">
+                        <span className="inline-block w-2 h-2 rounded-full bg-violet-400"></span>
+                        {tr(
+                          `직접 선택 모드 — 지정된 ${(selectedProject as any).assigned_agent_ids?.length ?? 0}명의 직원이 작업합니다`,
+                          `Manual mode — ${(selectedProject as any).assigned_agent_ids?.length ?? 0} assigned agents will work on this`,
+                          `手動モード — ${(selectedProject as any).assigned_agent_ids?.length ?? 0}名の指定エージェントが作業します`,
+                          `手动模式 — ${(selectedProject as any).assigned_agent_ids?.length ?? 0}名指定员工将执行此任务`,
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="rounded-lg border border-blue-700/40 bg-blue-900/20 p-3 text-[11px] text-blue-100">
                     <p className="font-medium">{tr('라운드 목표', 'Round Goal', 'ラウンド目標', '回合目标')}</p>
