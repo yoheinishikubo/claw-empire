@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import type { Agent, Task, Department, SubTask } from "../types";
 import * as api from "../api";
 import type { OAuthStatus, OAuthAccountInfo } from "../api";
+import { localeName } from "../i18n";
 import AgentAvatar from "./AgentAvatar";
 
 interface SubAgent {
@@ -337,14 +338,14 @@ export default function AgentDetail({
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white">
-                  {locale === "ko" ? agent.name_ko ?? agent.name : agent.name ?? agent.name_ko}
+                  {localeName(locale, agent)}
                 </h2>
                 <span className={`text-xs px-1.5 py-0.5 rounded ${statusCfg.bg} ${statusCfg.color}`}>
                   {statusLabel(statusCfg.label, t)}
                 </span>
               </div>
               <div className="text-sm text-slate-400 mt-0.5">
-                {department?.icon} {department ? (locale === "ko" ? department.name_ko : department.name) : ""} ·{" "}
+                {department?.icon} {department ? localeName(locale, department) : ""} ·{" "}
                 {roleLabel(agent.role, t)}
               </div>
               <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
@@ -622,7 +623,7 @@ export default function AgentDetail({
                                     className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium"
                                     style={{ backgroundColor: targetDept.color + '30', color: targetDept.color }}
                                   >
-                                    {targetDept.icon} {locale === "ko" ? targetDept.name_ko : targetDept.name}
+                                    {targetDept.icon} {localeName(locale, targetDept)}
                                   </span>
                                 )}
                                 {st.delegated_task_id && st.status !== 'done' && (

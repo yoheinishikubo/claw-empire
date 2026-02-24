@@ -2447,7 +2447,9 @@ app.post("/api/agents", (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const name_ko = typeof body.name_ko === "string" ? body.name_ko.trim() : "";
-  if (!name || !name_ko) return res.status(400).json({ error: "name_and_name_ko_required" });
+  const name_ja = typeof body.name_ja === "string" ? body.name_ja.trim() : "";
+  const name_zh = typeof body.name_zh === "string" ? body.name_zh.trim() : "";
+  if (!name) return res.status(400).json({ error: "name_required" });
 
   const department_id = typeof body.department_id === "string" ? body.department_id : null;
   const role = typeof body.role === "string" && ["team_leader", "senior", "junior", "intern"].includes(body.role) ? body.role : "junior";
@@ -2458,9 +2460,9 @@ app.post("/api/agents", (req, res) => {
 
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO agents (id, name, name_ko, department_id, role, cli_provider, avatar_emoji, sprite_number, personality)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, name, name_ko, department_id, role, cli_provider, avatar_emoji, sprite_number, personality);
+    `INSERT INTO agents (id, name, name_ko, name_ja, name_zh, department_id, role, cli_provider, avatar_emoji, sprite_number, personality)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, name, name_ko, name_ja, name_zh, department_id, role, cli_provider, avatar_emoji, sprite_number, personality);
 
   const created = db.prepare(`
     SELECT a.*, d.name AS department_name, d.name_ko AS department_name_ko, d.color AS department_color
@@ -2532,7 +2534,7 @@ app.patch("/api/agents/:id", (req, res) => {
   }
 
   const allowedFields = [
-    "name", "name_ko", "department_id", "role", "cli_provider",
+    "name", "name_ko", "name_ja", "name_zh", "department_id", "role", "cli_provider",
     "oauth_account_id", "api_provider_id", "api_model",
     "avatar_emoji", "sprite_number", "personality", "status", "current_task_id",
   ];

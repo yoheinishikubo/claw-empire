@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Department, Agent, CompanySettings } from "../types";
-import { useI18n } from "../i18n";
+import { useI18n, localeName } from "../i18n";
 
 type View = "office" | "agents" | "dashboard" | "tasks" | "skills" | "settings";
 
@@ -13,9 +13,9 @@ interface SidebarProps {
   connected: boolean;
 }
 
-const NAV_ITEMS: { view: View; icon: string }[] = [
+const NAV_ITEMS: { view: View; icon: string; sprite?: string }[] = [
   { view: "office", icon: "🏢" },
-  { view: "agents", icon: "👥" },
+  { view: "agents", icon: "👥", sprite: "/sprites/3-D-1.png" },
   { view: "skills", icon: "📚" },
   { view: "dashboard", icon: "📊" },
   { view: "tasks", icon: "📋" },
@@ -34,7 +34,6 @@ export default function Sidebar({
   const { t, locale } = useI18n();
   const workingCount = agents.filter((a) => a.status === "working").length;
   const totalAgents = agents.length;
-  const isKorean = locale.startsWith("ko");
 
   const tr = (ko: string, en: string, ja = en, zh = en) =>
     t({ ko, en, ja, zh });
@@ -95,7 +94,10 @@ export default function Sidebar({
                 : ""
             }`}
           >
-            <span className="text-base shrink-0">{item.icon}</span>
+            <span className="text-base shrink-0">{item.sprite
+              ? <img src={item.sprite} alt="" className="w-5 h-5 object-cover rounded-full" style={{ imageRendering: 'pixelated' }} />
+              : item.icon
+            }</span>
             {!collapsed && <span>{navLabels[item.view]}</span>}
           </button>
         ))}
@@ -122,7 +124,7 @@ export default function Sidebar({
               >
                 <span>{d.icon}</span>
                 <span className="flex-1 truncate">
-                  {isKorean ? d.name_ko || d.name : d.name || d.name_ko}
+                  {localeName(locale, d)}
                 </span>
                 <span
                   className={

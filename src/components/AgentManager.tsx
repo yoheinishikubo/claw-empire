@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Agent, Department, AgentRole, CliProvider } from '../types';
-import { useI18n } from '../i18n';
+import { useI18n, localeName } from '../i18n';
 import * as api from '../api';
 import AgentAvatar, { buildSpriteMap } from './AgentAvatar';
 
@@ -46,6 +46,8 @@ const STATUS_DOT: Record<string, string> = {
 interface FormData {
   name: string;
   name_ko: string;
+  name_ja: string;
+  name_zh: string;
   department_id: string;
   role: AgentRole;
   cli_provider: CliProvider;
@@ -55,7 +57,7 @@ interface FormData {
 }
 
 const BLANK: FormData = {
-  name: '', name_ko: '', department_id: '', role: 'junior',
+  name: '', name_ko: '', name_ja: '', name_zh: '', department_id: '', role: 'junior',
   cli_provider: 'claude', avatar_emoji: '🤖', sprite_number: null, personality: '',
 };
 
@@ -88,7 +90,8 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
     if (deptTab !== 'all' && a.department_id !== deptTab) return false;
     if (search) {
       const q = search.toLowerCase();
-      return a.name.toLowerCase().includes(q) || a.name_ko.toLowerCase().includes(q);
+      return a.name.toLowerCase().includes(q) || a.name_ko.toLowerCase().includes(q)
+        || (a.name_ja || '').toLowerCase().includes(q) || (a.name_zh || '').toLowerCase().includes(q);
     }
     return true;
   });
@@ -105,11 +108,14 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
 
   const openEdit = (agent: Agent) => {
     setModalAgent(agent);
+    // DB에 sprite_number가 없으면 buildSpriteMap에서 자동 할당된 번호 사용
+    const computed = agent.sprite_number ?? buildSpriteMap(agents).get(agent.id) ?? null;
     setForm({
       name: agent.name, name_ko: agent.name_ko,
+      name_ja: agent.name_ja || '', name_zh: agent.name_zh || '',
       department_id: agent.department_id || '',
       role: agent.role, cli_provider: agent.cli_provider,
-      avatar_emoji: agent.avatar_emoji, sprite_number: agent.sprite_number ?? null,
+      avatar_emoji: agent.avatar_emoji, sprite_number: computed,
       personality: agent.personality || '',
     });
     setShowModal(true);
@@ -118,11 +124,12 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
   const closeModal = () => { setShowModal(false); setModalAgent(null); };
 
   const handleSave = useCallback(async () => {
-    if (!form.name.trim() || !form.name_ko.trim()) return;
+    if (!form.name.trim()) return;
     setSaving(true);
     try {
       const payload = {
         name: form.name.trim(), name_ko: form.name_ko.trim(),
+        name_ja: form.name_ja.trim(), name_zh: form.name_zh.trim(),
         department_id: form.department_id || null,
         role: form.role, cli_provider: form.cli_provider,
         avatar_emoji: form.avatar_emoji || '🤖',
@@ -158,7 +165,11 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--th-text-heading)' }}>
-          👥 {tr('직원 관리', 'Agent Manager')}
+          <span className="relative inline-flex items-center" style={{ width: 30, height: 22 }}>
+            <img src="/sprites/8-D-1.png" alt="" className="absolute left-0 top-0 w-5 h-5 rounded-full object-cover" style={{ imageRendering: 'pixelated', opacity: 0.85 }} />
+            <img src="/sprites/3-D-1.png" alt="" className="absolute left-2.5 top-0.5 w-5 h-5 rounded-full object-cover" style={{ imageRendering: 'pixelated', zIndex: 1 }} />
+          </span>
+          {tr('직원 관리', 'Agent Manager')}
         </h2>
         <button
           onClick={openCreate}
@@ -171,7 +182,12 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: tr('전체 인원', 'Total'), value: agents.length, icon: '👥', accent: 'blue' },
+          { label: tr('전체 인원', 'Total'), value: agents.length, icon: (
+            <span className="relative inline-flex items-center" style={{ width: 22, height: 16 }}>
+              <img src="/sprites/8-D-1.png" alt="" className="absolute left-0 top-0 w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', opacity: 0.85 }} />
+              <img src="/sprites/3-D-1.png" alt="" className="absolute left-1.5 top-px w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', zIndex: 1 }} />
+            </span>
+          ) as React.ReactNode, accent: 'blue' },
           { label: tr('근무 중', 'Working'), value: workingCount, icon: '💼', accent: 'emerald' },
           { label: tr('부서', 'Departments'), value: departments.length, icon: '🏢', accent: 'violet' },
         ].map((s) => (
@@ -209,7 +225,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
               style={deptTab !== d.id ? { color: 'var(--th-text-muted)' } : undefined}
             >
               <span>{d.icon}</span>
-              <span className="hidden sm:inline">{isKo ? d.name_ko || d.name : d.name}</span>
+              <span className="hidden sm:inline">{localeName(locale, d)}</span>
               <span className="opacity-60">{c?.total ?? 0}</span>
             </button>
           );
@@ -240,6 +256,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
               agent={agent}
               spriteMap={spriteMap}
               isKo={isKo}
+              locale={locale}
               tr={tr}
               departments={departments}
               onEdit={() => openEdit(agent)}
@@ -257,6 +274,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
       {showModal && (
         <AgentFormModal
           isKo={isKo}
+          locale={locale}
           tr={tr}
           form={form}
           setForm={setForm}
@@ -273,10 +291,11 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
 
 /* ═══════════════════════════════════════ Agent Card ═══════════════════════════════════════ */
 
-function AgentCard({ agent, spriteMap, isKo, tr, departments, onEdit, confirmDeleteId, onDeleteClick, onDeleteConfirm, onDeleteCancel, saving }: {
+function AgentCard({ agent, spriteMap, isKo, locale, tr, departments, onEdit, confirmDeleteId, onDeleteClick, onDeleteConfirm, onDeleteCancel, saving }: {
   agent: Agent;
   spriteMap: Map<string, number>;
   isKo: boolean;
+  locale: string;
   tr: (ko: string, en: string) => string;
   departments: Department[];
   onEdit: () => void;
@@ -307,10 +326,14 @@ function AgentCard({ agent, spriteMap, isKo, tr, departments, onEdit, confirmDel
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-semibold text-sm truncate" style={{ color: 'var(--th-text-heading)' }}>
-              {isKo ? agent.name_ko : agent.name}
+              {localeName(locale, agent)}
             </span>
             <span className="text-[10px] shrink-0" style={{ color: 'var(--th-text-muted)' }}>
-              {isKo ? agent.name : agent.name_ko}
+              {(() => {
+                const primary = localeName(locale, agent);
+                const sub = locale === 'en' ? (agent.name_ko || '') : agent.name;
+                return primary !== sub ? sub : '';
+              })()}
             </span>
           </div>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -319,7 +342,7 @@ function AgentCard({ agent, spriteMap, isKo, tr, departments, onEdit, confirmDel
             </span>
             {dept && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-md" style={{ background: 'var(--th-bg-surface)', color: 'var(--th-text-muted)' }}>
-                {dept.icon} {isKo ? dept.name_ko || dept.name : dept.name}
+                {dept.icon} {localeName(locale, dept)}
               </span>
             )}
           </div>
@@ -363,8 +386,9 @@ function AgentCard({ agent, spriteMap, isKo, tr, departments, onEdit, confirmDel
 
 /* ═══════════════════════════════════════ Form Modal ═══════════════════════════════════════ */
 
-function AgentFormModal({ isKo, tr, form, setForm, departments, isEdit, saving, onSave, onClose }: {
+function AgentFormModal({ isKo, locale, tr, form, setForm, departments, isEdit, saving, onSave, onClose }: {
   isKo: boolean;
+  locale: string;
   tr: (ko: string, en: string) => string;
   form: FormData;
   setForm: (f: FormData) => void;
@@ -421,20 +445,74 @@ function AgentFormModal({ isKo, tr, form, setForm, departments, isEdit, saving, 
             <div className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--th-text-muted)' }}>
               {tr('기본 정보', 'Basic Info')}
             </div>
-            <div>
-              <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
-                {tr('영문 이름', 'Name')} <span className="text-red-400">*</span>
-              </label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="DORO" className={inputCls} style={inputStyle} />
+            {/* ── 스프라이트 얼굴 미리보기 + 위/아래 변경 ── */}
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center gap-1">
+                <button type="button"
+                  className="w-6 h-6 rounded flex items-center justify-center text-xs hover:bg-[var(--th-bg-surface-hover)] transition-colors"
+                  style={{ color: 'var(--th-text-muted)', border: '1px solid var(--th-input-border)' }}
+                  onClick={() => {
+                    const next = spriteNum >= 14 ? 1 : spriteNum + 1;
+                    setSpriteNum(next);
+                    setForm({ ...form, sprite_number: next });
+                  }}>▲</button>
+                <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-700 flex items-center justify-center flex-shrink-0"
+                  style={{ border: '2px solid var(--th-input-border)' }}>
+                  {spriteNum > 0
+                    ? <img src={`/sprites/${spriteNum}-D-1.png`} alt={`sprite ${spriteNum}`}
+                        className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                    : <span className="text-2xl">{form.avatar_emoji || '🤖'}</span>}
+                </div>
+                <button type="button"
+                  className="w-6 h-6 rounded flex items-center justify-center text-xs hover:bg-[var(--th-bg-surface-hover)] transition-colors"
+                  style={{ color: 'var(--th-text-muted)', border: '1px solid var(--th-input-border)' }}
+                  onClick={() => {
+                    const next = spriteNum <= 1 ? 14 : spriteNum - 1;
+                    setSpriteNum(next);
+                    setForm({ ...form, sprite_number: next });
+                  }}>▼</button>
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ color: 'var(--th-text-muted)', background: 'var(--th-bg-surface-hover)' }}>
+                  #{spriteNum || '—'}
+                </span>
+                <div className="mt-2">
+                  <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                    {tr('영문 이름', 'Name')} <span className="text-red-400">*</span>
+                  </label>
+                  <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="DORO" className={inputCls} style={inputStyle} />
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
-                {tr('한글 이름', 'Korean Name')} <span className="text-red-400">*</span>
-              </label>
-              <input type="text" value={form.name_ko} onChange={(e) => setForm({ ...form, name_ko: e.target.value })}
-                placeholder="도로롱" className={inputCls} style={inputStyle} />
-            </div>
+            {/* 로캘 기반 현지 이름 필드 */}
+            {locale.startsWith('ko') && (
+              <div>
+                <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                  {tr('한글 이름', 'Korean Name')}
+                </label>
+                <input type="text" value={form.name_ko} onChange={(e) => setForm({ ...form, name_ko: e.target.value })}
+                  placeholder="도로롱" className={inputCls} style={inputStyle} />
+              </div>
+            )}
+            {locale.startsWith('ja') && (
+              <div>
+                <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                  {t({ ko: '일본어 이름', en: 'Japanese Name', ja: '日本語名', zh: '日语名' })}
+                </label>
+                <input type="text" value={form.name_ja} onChange={(e) => setForm({ ...form, name_ja: e.target.value })}
+                  placeholder="ドロロン" className={inputCls} style={inputStyle} />
+              </div>
+            )}
+            {locale.startsWith('zh') && (
+              <div>
+                <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                  {t({ ko: '중국어 이름', en: 'Chinese Name', ja: '中国語名', zh: '中文名' })}
+                </label>
+                <input type="text" value={form.name_zh} onChange={(e) => setForm({ ...form, name_zh: e.target.value })}
+                  placeholder="多罗隆" className={inputCls} style={inputStyle} />
+              </div>
+            )}
             <div className="grid grid-cols-[72px_1fr] gap-2">
               <div>
                 <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
@@ -451,7 +529,7 @@ function AgentFormModal({ isKo, tr, form, setForm, departments, isEdit, saving, 
                   className={`${inputCls} cursor-pointer`} style={inputStyle}>
                   <option value="">{tr('— 미배정 —', '— Unassigned —')}</option>
                   {departments.map((d) => (
-                    <option key={d.id} value={d.id}>{d.icon} {isKo ? d.name_ko || d.name : d.name}</option>
+                    <option key={d.id} value={d.id}>{d.icon} {localeName(locale, d)}</option>
                   ))}
                 </select>
               </div>
@@ -625,7 +703,7 @@ function AgentFormModal({ isKo, tr, form, setForm, departments, isEdit, saving, 
 
         {/* Actions — full width */}
         <div className="flex gap-2 mt-5 pt-4" style={{ borderTop: '1px solid var(--th-card-border)' }}>
-          <button onClick={onSave} disabled={saving || !form.name.trim() || !form.name_ko.trim()}
+          <button onClick={onSave} disabled={saving || !form.name.trim()}
             className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white disabled:opacity-40 shadow-sm shadow-blue-600/20">
             {saving ? tr('처리 중...', 'Saving...') : isEdit ? tr('변경사항 저장', 'Save Changes') : tr('채용 확정', 'Confirm Hire')}
           </button>

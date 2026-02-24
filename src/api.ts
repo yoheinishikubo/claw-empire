@@ -314,7 +314,7 @@ export async function getMeetingPresence(): Promise<MeetingPresence[]> {
 
 export async function updateAgent(
   id: string,
-  data: Partial<Pick<Agent, 'name' | 'name_ko' | 'status' | 'current_task_id' | 'department_id' | 'role' | 'cli_provider' | 'oauth_account_id' | 'api_provider_id' | 'api_model' | 'avatar_emoji' | 'sprite_number' | 'personality'>>,
+  data: Partial<Pick<Agent, 'name' | 'name_ko' | 'name_ja' | 'name_zh' | 'status' | 'current_task_id' | 'department_id' | 'role' | 'cli_provider' | 'oauth_account_id' | 'api_provider_id' | 'api_model' | 'avatar_emoji' | 'sprite_number' | 'personality'>>,
 ): Promise<void> {
   await patch(`/api/agents/${id}`, data);
 }
@@ -322,6 +322,8 @@ export async function updateAgent(
 export async function createAgent(data: {
   name: string;
   name_ko: string;
+  name_ja?: string;
+  name_zh?: string;
   department_id: string | null;
   role: string;
   cli_provider: string;

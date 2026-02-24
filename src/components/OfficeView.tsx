@@ -14,7 +14,7 @@ import {
 import type { Department, Agent, Task, MeetingPresence, MeetingReviewDecision } from "../types";
 import type { CliStatusMap } from "../types";
 import { getCliStatus, getCliUsage, refreshCliUsage, type CliUsageEntry, type CliUsageWindow } from "../api";
-import { useI18n, type UiLanguage } from "../i18n";
+import { useI18n, localeName, type UiLanguage } from "../i18n";
 import { useTheme, type ThemeMode } from "../ThemeContext";
 import { buildSpriteMap } from "./AgentAvatar";
 
@@ -2147,7 +2147,7 @@ export default function OfficeView({
       signBg.on("pointerdown", () => cbRef.current.onSelectDepartment(dept));
       room.addChild(signBg);
       const signTxt = new Text({
-        text: `${dept.icon || "🏢"} ${activeLocale === "ko" ? (dept.name_ko || dept.name) : dept.name}`,
+        text: `${dept.icon || "🏢"} ${localeName(activeLocale, dept)}`,
         style: new TextStyle({ fontSize: 9, fill: 0xffffff, fontWeight: "bold", fontFamily: "system-ui, sans-serif", dropShadow: { alpha: 0.2, distance: 1, color: 0x000000 } }),
       });
       signTxt.anchor.set(0.5, 0.5);
@@ -2211,7 +2211,7 @@ export default function OfficeView({
 
         // ── Name tag (above character) ──
         const nt = new Text({
-          text: activeLocale === "ko" ? (agent.name_ko || agent.name) : agent.name,
+          text: localeName(activeLocale, agent),
           style: new TextStyle({ fontSize: 7, fill: 0x3a3a4a, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
         });
         nt.anchor.set(0.5, 0);
@@ -2652,7 +2652,7 @@ export default function OfficeView({
 
       // Small name tag
       const nameTag = new Text({
-        text: activeLocale === "ko" ? (agent.name_ko || agent.name) : agent.name,
+        text: localeName(activeLocale, agent),
         style: new TextStyle({ fontSize: 6, fill: 0x4a3a2a, fontFamily: "system-ui, sans-serif" }),
       });
       nameTag.anchor.set(0.5, 0);

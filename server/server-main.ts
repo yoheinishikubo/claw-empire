@@ -674,7 +674,9 @@ CREATE TABLE IF NOT EXISTS departments (
 CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  name_ko TEXT NOT NULL,
+  name_ko TEXT NOT NULL DEFAULT '',
+  name_ja TEXT NOT NULL DEFAULT '',
+  name_zh TEXT NOT NULL DEFAULT '',
   department_id TEXT REFERENCES departments(id),
   role TEXT NOT NULL CHECK(role IN ('team_leader','senior','junior','intern')),
   cli_provider TEXT CHECK(cli_provider IN ('claude','codex','gemini','opencode','copilot','antigravity','api')),
@@ -983,6 +985,8 @@ try { db.exec("ALTER TABLE agents ADD COLUMN oauth_account_id TEXT"); } catch { 
 try { db.exec("ALTER TABLE agents ADD COLUMN api_provider_id TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE agents ADD COLUMN api_model TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE agents ADD COLUMN sprite_number INTEGER"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE agents ADD COLUMN name_ja TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE agents ADD COLUMN name_zh TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
 // 기존 DB의 cli_provider CHECK 제약 확장 (SQLite는 ALTER CHECK 미지원이므로 새 행만 해당)
 try {
   const hasApiCheck = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='agents'").get() as any)?.sql?.includes("'api'");
@@ -991,7 +995,9 @@ try {
       CREATE TABLE IF NOT EXISTS agents_new (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        name_ko TEXT NOT NULL,
+        name_ko TEXT NOT NULL DEFAULT '',
+        name_ja TEXT NOT NULL DEFAULT '',
+        name_zh TEXT NOT NULL DEFAULT '',
         department_id TEXT REFERENCES departments(id),
         role TEXT NOT NULL CHECK(role IN ('team_leader','senior','junior','intern')),
         cli_provider TEXT CHECK(cli_provider IN ('claude','codex','gemini','opencode','copilot','antigravity','api')),
@@ -999,6 +1005,7 @@ try {
         api_provider_id TEXT,
         api_model TEXT,
         avatar_emoji TEXT NOT NULL DEFAULT '🤖',
+        sprite_number INTEGER,
         personality TEXT,
         status TEXT NOT NULL DEFAULT 'idle' CHECK(status IN ('idle','working','break','offline')),
         current_task_id TEXT,
@@ -1006,7 +1013,7 @@ try {
         stats_xp INTEGER DEFAULT 0,
         created_at INTEGER DEFAULT (unixepoch()*1000)
       );
-      INSERT INTO agents_new SELECT id, name, name_ko, department_id, role, cli_provider, oauth_account_id, NULL, NULL, avatar_emoji, personality, status, current_task_id, stats_tasks_done, stats_xp, created_at FROM agents;
+      INSERT INTO agents_new SELECT id, name, name_ko, '', '', department_id, role, cli_provider, oauth_account_id, NULL, NULL, avatar_emoji, NULL, personality, status, current_task_id, stats_tasks_done, stats_xp, created_at FROM agents;
       DROP TABLE agents;
       ALTER TABLE agents_new RENAME TO agents;
     `);

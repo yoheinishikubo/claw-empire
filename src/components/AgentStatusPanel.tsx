@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import type { Agent } from '../types';
 import type { ActiveAgentInfo, CliProcessInfo } from '../api';
 import type { UiLanguage } from '../i18n';
-import { pickLang } from '../i18n';
+import { pickLang, localeName } from '../i18n';
 import { getActiveAgents, getCliProcesses, killCliProcess, stopTask } from '../api';
 import AgentAvatar from './AgentAvatar';
 
@@ -312,8 +312,8 @@ export default function AgentStatusPanel({ agents, uiLanguage, onClose }: AgentS
             <div className="divide-y divide-slate-700/30">
               {activeAgents.map((ag) => {
                 const fullAgent = agents.find((a) => a.id === ag.id);
-                const agentName = uiLanguage === 'ko' ? (ag.name_ko || ag.name) : ag.name;
-                const deptName = uiLanguage === 'ko' ? (ag.dept_name_ko || ag.dept_name) : ag.dept_name;
+                const agentName = localeName(uiLanguage, ag);
+                const deptName = localeName(uiLanguage, { name: ag.dept_name, name_ko: ag.dept_name_ko });
                 const isKilling = ag.task_id ? killing.has(ag.task_id) : false;
                 const idleText = ag.idle_seconds !== null ? fmtElapsed(ag.idle_seconds) : '-';
                 const isIdle = ag.idle_seconds !== null && ag.idle_seconds > 300; // 5분 이상 idle

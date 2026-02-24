@@ -29,6 +29,18 @@ export function normalizeLanguage(value?: string | null): UiLanguage {
   return "en";
 }
 
+/** 로캘별 이름 반환. 해당 로캘 이름이 비어있으면 영문(name) fallback */
+export function localeName(
+  locale: UiLanguage | string,
+  obj: { name: string; name_ko?: string | null; name_ja?: string | null; name_zh?: string | null },
+): string {
+  const lang = (typeof locale === 'string' ? locale : 'en').slice(0, 2);
+  if (lang === 'ko') return obj.name_ko || obj.name;
+  if (lang === 'ja') return obj.name_ja || obj.name;
+  if (lang === 'zh') return obj.name_zh || obj.name;
+  return obj.name;
+}
+
 export function detectBrowserLanguage(): UiLanguage {
   if (typeof window === "undefined") return "en";
   const candidates = [

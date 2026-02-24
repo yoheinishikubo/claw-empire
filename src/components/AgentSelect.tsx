@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Agent, Department } from '../types';
 import AgentAvatar, { useSpriteMap } from './AgentAvatar';
-import { useI18n } from '../i18n';
+import { useI18n, localeName } from '../i18n';
 import type { LangText } from '../i18n';
 
 interface AgentSelectProps {
@@ -35,7 +35,6 @@ export default function AgentSelect({
   const spriteMap = useSpriteMap(agents);
   const { t, locale } = useI18n();
   const selected = agents.find((a) => a.id === value);
-  const isKorean = locale.startsWith('ko');
   const departmentById = useMemo(() => {
     const map = new Map<string, Department>();
     for (const dept of departments ?? []) {
@@ -51,8 +50,7 @@ export default function AgentSelect({
   const tr = (ko: string, en: string, ja = en, zh = en) =>
     t({ ko, en, ja, zh });
 
-  const getAgentName = (agent: Agent) =>
-    isKorean ? agent.name_ko || agent.name : agent.name || agent.name_ko;
+  const getAgentName = (agent: Agent) => localeName(locale, agent);
 
   const getRoleLabel = (role: string) => {
     const label = ROLE_LABELS[role];
@@ -62,7 +60,7 @@ export default function AgentSelect({
   const getDepartmentLabel = (agent: Agent) => {
     const dept = agent.department ?? departmentById.get(agent.department_id);
     if (!dept) return '';
-    return isKorean ? dept.name_ko || dept.name : dept.name || dept.name_ko;
+    return localeName(locale, dept);
   };
 
   const effectivePlaceholder =

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { CompanyStats, Agent, Task } from '../types';
+import { localeName } from '../i18n';
 import AgentAvatar from './AgentAvatar';
 
 interface DashboardProps {
@@ -270,10 +271,7 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
       if (!agent.department_id) continue;
       if (!deptMap.has(agent.department_id)) {
         deptMap.set(agent.department_id, {
-          name:
-            locale === 'ko'
-              ? agent.department?.name_ko ?? agent.department?.name ?? agent.department_id
-              : agent.department?.name ?? agent.department?.name_ko ?? agent.department_id,
+          name: agent.department ? localeName(locale, agent.department) : agent.department_id,
           icon: agent.department?.icon ?? '🏢',
           done: 0,
           total: 0,
@@ -304,11 +302,8 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
         const agent = agentMap.get(topAgent.id);
         return {
           id: topAgent.id,
-          name: locale === 'ko' ? agent?.name_ko ?? agent?.name ?? topAgent.name : agent?.name ?? agent?.name_ko ?? topAgent.name,
-          department:
-            locale === 'ko'
-              ? agent?.department?.name_ko ?? agent?.department?.name ?? ''
-              : agent?.department?.name ?? agent?.department?.name_ko ?? '',
+          name: agent ? localeName(locale, agent) : topAgent.name,
+          department: agent?.department ? localeName(locale, agent.department) : '',
           tasksDone: topAgent.stats_tasks_done,
           xp: topAgent.stats_xp,
         };
@@ -319,11 +314,8 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
       .slice(0, 5)
       .map((agent) => ({
         id: agent.id,
-        name: locale === 'ko' ? agent.name_ko ?? agent.name : agent.name ?? agent.name_ko,
-        department:
-          locale === 'ko'
-            ? agent.department?.name_ko ?? agent.department?.name ?? ''
-            : agent.department?.name ?? agent.department?.name_ko ?? '',
+        name: localeName(locale, agent),
+        department: agent.department ? localeName(locale, agent.department) : '',
         tasksDone: agent.stats_tasks_done,
         xp: agent.stats_xp,
       }));
@@ -824,7 +816,7 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
               return (
                 <div
                   key={agent.id}
-                  title={`${locale === 'ko' ? agent.name_ko ?? agent.name : agent.name ?? agent.name_ko} — ${
+                  title={`${localeName(locale, agent)} — ${
                     isWorking
                       ? t({ ko: '작업 중', en: 'Working', ja: '作業中', zh: '工作中' })
                       : t({ ko: '대기 중', en: 'Idle', ja: '待機中', zh: '空闲' })
@@ -853,7 +845,7 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
                     className="max-w-[52px] truncate text-center text-[9px] font-bold leading-tight"
                     style={{ color: isWorking ? 'var(--th-text-primary)' : 'var(--th-text-muted)' }}
                   >
-                    {locale === 'ko' ? agent.name_ko ?? agent.name : agent.name ?? agent.name_ko}
+                    {localeName(locale, agent)}
                   </span>
                 </div>
               );
@@ -920,7 +912,7 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
                     <p className="mt-0.5 flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--th-text-muted)' }}>
                       <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${statusInfo.dot}`} />
                       {assignedAgent
-                        ? (locale === 'ko' ? assignedAgent.name_ko : assignedAgent.name)
+                        ? localeName(locale, assignedAgent)
                         : t({ ko: '미배정', en: 'Unassigned', ja: '未割り当て', zh: '未分配' })}
                     </p>
                   </div>
