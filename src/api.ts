@@ -296,6 +296,22 @@ export async function getDepartment(id: string): Promise<{ department: Departmen
   return request(`/api/departments/${id}`);
 }
 
+export async function createDepartment(data: {
+  id: string; name: string; name_ko?: string; name_ja?: string; name_zh?: string;
+  icon?: string; color?: string; description?: string; prompt?: string;
+}): Promise<Department> {
+  const j = await request<{ department: Department }>('/api/departments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  return j.department;
+}
+
+export async function updateDepartment(id: string, data: Partial<Pick<Department, 'name' | 'name_ko' | 'name_ja' | 'name_zh' | 'icon' | 'color' | 'description' | 'prompt' | 'sort_order'>>): Promise<void> {
+  await patch(`/api/departments/${id}`, data);
+}
+
+export async function deleteDepartment(id: string): Promise<void> {
+  await del(`/api/departments/${id}`);
+}
+
 // Agents
 export async function getAgents(): Promise<Agent[]> {
   const j = await request<{ agents: Agent[] }>('/api/agents');

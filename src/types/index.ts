@@ -7,9 +7,12 @@ export interface Department {
   id: string;
   name: string;
   name_ko: string;
+  name_ja?: string | null;
+  name_zh?: string | null;
   icon: string;
   color: string;
   description: string | null;
+  prompt: string | null;
   sort_order: number;
   created_at: number;
   agent_count?: number;
@@ -27,7 +30,7 @@ export interface Agent {
   name_ko: string;
   name_ja?: string | null;
   name_zh?: string | null;
-  department_id: string;
+  department_id: string | null;
   department?: Department;
   role: AgentRole;
   cli_provider: CliProvider;

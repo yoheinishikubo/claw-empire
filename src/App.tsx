@@ -2204,7 +2204,7 @@ export default function App() {
               <AgentManager
                 agents={agents}
                 departments={departments}
-                onAgentsChange={() => api.getAgents().then(setAgents).catch(console.error)}
+                onAgentsChange={() => { api.getAgents().then(setAgents).catch(console.error); api.getDepartments().then(setDepartments).catch(console.error); }}
               />
             )}
 

@@ -58,7 +58,7 @@ export default function AgentSelect({
   };
 
   const getDepartmentLabel = (agent: Agent) => {
-    const dept = agent.department ?? departmentById.get(agent.department_id);
+    const dept = agent.department ?? (agent.department_id ? departmentById.get(agent.department_id) : undefined);
     if (!dept) return '';
     return localeName(locale, dept);
   };

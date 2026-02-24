@@ -43,6 +43,73 @@ const STATUS_DOT: Record<string, string> = {
   idle: 'bg-slate-500',
 };
 
+/* ═══════════════════════════════════════ Emoji Picker ═══════════════════════════════════════ */
+
+const EMOJI_GROUPS: { label: string; labelEn: string; emojis: string[] }[] = [
+  { label: '부서/업무', labelEn: 'Work', emojis: ['📊', '💻', '🎨', '🔍', '🛡️', '⚙️', '📁', '🏢', '📋', '📈', '💼', '🗂️', '📌', '🎯', '🔧', '🧪'] },
+  { label: '사람/표정', labelEn: 'People', emojis: ['🤖', '👤', '👥', '😊', '😎', '🤓', '🧑‍💻', '👨‍🔬', '👩‍🎨', '🧑‍🏫', '🦸', '🦊', '🐱', '🐶', '🐻', '🐼'] },
+  { label: '사물/기호', labelEn: 'Objects', emojis: ['💡', '🚀', '⚡', '🔥', '💎', '🏆', '🎵', '🎮', '📱', '💾', '🖥️', '📡', '🔑', '🛠️', '📦', '🧩'] },
+  { label: '자연/색상', labelEn: 'Nature', emojis: ['🌟', '⭐', '🌈', '🌊', '🌸', '🍀', '🌙', '☀️', '❄️', '🔵', '🟢', '🟡', '🔴', '🟣', '🟠', '⚪'] },
+];
+
+function EmojiPicker({ value, onChange, size = 'md' }: { value: string; onChange: (emoji: string) => void; size?: 'sm' | 'md' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // 외부 클릭 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const btnSize = size === 'sm' ? 'w-10 h-10 text-lg' : 'w-14 h-10 text-xl';
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`${btnSize} rounded-lg border flex items-center justify-center transition-all hover:scale-105 hover:shadow-md`}
+        style={{ background: 'var(--th-input-bg)', borderColor: 'var(--th-input-border)' }}
+      >
+        {value || '❓'}
+      </button>
+      {open && (
+        <div
+          className="absolute z-[60] top-full mt-1 left-0 rounded-xl shadow-2xl p-3 w-72"
+          style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)', backdropFilter: 'blur(20px)' }}
+        >
+          {EMOJI_GROUPS.map((g) => (
+            <div key={g.label} className="mb-2 last:mb-0">
+              <div className="text-[10px] font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--th-text-muted)' }}>
+                {g.label}
+              </div>
+              <div className="grid grid-cols-8 gap-0.5">
+                {g.emojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => { onChange(emoji); setOpen(false); }}
+                    className={`w-8 h-8 rounded-lg text-base flex items-center justify-center transition-all hover:scale-125 hover:bg-[var(--th-bg-surface-hover)] ${
+                      value === emoji ? 'ring-2 ring-blue-400 bg-blue-500/15' : ''
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface FormData {
   name: string;
   name_ko: string;
@@ -73,6 +140,10 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
   const [form, setForm] = useState<FormData>({ ...BLANK });
   const [saving, setSaving] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // 부서 관리 상태
+  const [showDeptModal, setShowDeptModal] = useState(false);
+  const [editDept, setEditDept] = useState<Department | null>(null);
 
   const spriteMap = buildSpriteMap(agents);
 
@@ -127,19 +198,25 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      const payload = {
+      const departmentId = form.department_id.trim();
+      const basePayload = {
         name: form.name.trim(), name_ko: form.name_ko.trim(),
         name_ja: form.name_ja.trim(), name_zh: form.name_zh.trim(),
-        department_id: form.department_id || null,
         role: form.role, cli_provider: form.cli_provider,
         avatar_emoji: form.avatar_emoji || '🤖',
         sprite_number: form.sprite_number,
         personality: form.personality.trim() || null,
       };
       if (modalAgent) {
-        await api.updateAgent(modalAgent.id, payload);
+        await api.updateAgent(modalAgent.id, {
+          ...basePayload,
+          department_id: departmentId || null,
+        });
       } else {
-        await api.createAgent(payload);
+        await api.createAgent({
+          ...basePayload,
+          department_id: departmentId || null,
+        });
       }
       onAgentsChange();
       closeModal();
@@ -158,6 +235,11 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
     finally { setSaving(false); }
   }, [modalAgent, onAgentsChange]);
 
+  // 부서 관리
+  const openCreateDept = () => { setEditDept(null); setShowDeptModal(true); };
+  const openEditDept = (dept: Department) => { setEditDept(dept); setShowDeptModal(true); };
+  const closeDeptModal = () => { setShowDeptModal(false); setEditDept(null); };
+
   const workingCount = agents.filter((a) => a.status === 'working').length;
 
   return (
@@ -171,12 +253,21 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
           </span>
           {tr('직원 관리', 'Agent Manager')}
         </h2>
-        <button
-          onClick={openCreate}
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-sm shadow-blue-600/20"
-        >
-          + {tr('신규 채용', 'Hire Agent')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openCreateDept}
+            className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:opacity-80 shadow-sm"
+            style={{ background: '#7c3aed', color: '#ffffff', boxShadow: '0 1px 3px rgba(124,58,237,0.3)' }}
+          >
+            + {tr('부서 추가', 'Add Dept')}
+          </button>
+          <button
+            onClick={openCreate}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-sm shadow-blue-600/20"
+          >
+            + {tr('신규 채용', 'Hire Agent')}
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -219,6 +310,8 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
             <button
               key={d.id}
               onClick={() => setDeptTab(d.id)}
+              onDoubleClick={(e) => { e.preventDefault(); openEditDept(d); }}
+              title={tr('더블클릭: 부서 편집', 'Double-click: edit dept')}
               className={`flex items-center gap-1 px-3 py-2 text-xs font-medium transition-colors ${
                 deptTab === d.id ? 'text-blue-400 border-b-2 border-blue-400' : 'hover:text-slate-200'
               }`}
@@ -270,7 +363,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
         </div>
       )}
 
-      {/* Modal */}
+      {/* Agent Modal */}
       {showModal && (
         <AgentFormModal
           isKo={isKo}
@@ -283,6 +376,18 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
           saving={saving}
           onSave={handleSave}
           onClose={closeModal}
+        />
+      )}
+
+      {/* Department Modal */}
+      {showDeptModal && (
+        <DepartmentFormModal
+          locale={locale}
+          tr={tr}
+          department={editDept}
+          departments={departments}
+          onSave={onAgentsChange}
+          onClose={closeDeptModal}
         />
       )}
     </div>
@@ -398,6 +503,7 @@ function AgentFormModal({ isKo, locale, tr, form, setForm, departments, isEdit, 
   onSave: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [spriteFile, setSpriteFile] = useState<File | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -518,8 +624,7 @@ function AgentFormModal({ isKo, locale, tr, form, setForm, departments, isEdit, 
                 <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
                   {tr('이모지', 'Emoji')}
                 </label>
-                <input type="text" value={form.avatar_emoji} onChange={(e) => setForm({ ...form, avatar_emoji: e.target.value })}
-                  className={`${inputCls} text-center text-lg`} style={inputStyle} />
+                <EmojiPicker value={form.avatar_emoji} onChange={(emoji) => setForm({ ...form, avatar_emoji: emoji })} />
               </div>
               <div>
                 <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
@@ -707,6 +812,274 @@ function AgentFormModal({ isKo, locale, tr, form, setForm, departments, isEdit, 
             className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white disabled:opacity-40 shadow-sm shadow-blue-600/20">
             {saving ? tr('처리 중...', 'Saving...') : isEdit ? tr('변경사항 저장', 'Save Changes') : tr('채용 확정', 'Confirm Hire')}
           </button>
+          <button onClick={onClose}
+            className="px-4 py-2.5 rounded-lg text-sm font-medium transition-all hover:bg-[var(--th-bg-surface-hover)]"
+            style={{ border: '1px solid var(--th-input-border)', color: 'var(--th-text-secondary)' }}>
+            {tr('취소', 'Cancel')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════ Department Form Modal ═══════════════════════════════════════ */
+
+const DEPT_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#f97316', '#ec4899', '#06b6d4', '#6b7280'];
+
+interface DeptForm {
+  id: string;
+  name: string;
+  name_ko: string;
+  name_ja: string;
+  name_zh: string;
+  icon: string;
+  color: string;
+  description: string;
+  prompt: string;
+}
+
+const DEPT_BLANK: DeptForm = { id: '', name: '', name_ko: '', name_ja: '', name_zh: '', icon: '📁', color: '#3b82f6', description: '', prompt: '' };
+
+function DepartmentFormModal({ locale, tr, department, departments, onSave, onClose }: {
+  locale: string;
+  tr: (ko: string, en: string) => string;
+  department: Department | null;
+  departments: Department[];
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const isEdit = !!department;
+  const [form, setForm] = useState<DeptForm>(() => {
+    if (department) {
+      return {
+        id: department.id,
+        name: department.name,
+        name_ko: department.name_ko || '',
+        name_ja: department.name_ja || '',
+        name_zh: department.name_zh || '',
+        icon: department.icon,
+        color: department.color,
+        description: department.description || '',
+        prompt: department.prompt || '',
+      };
+    }
+    return { ...DEPT_BLANK };
+  });
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // sort_order 기반 다음 순번 계산
+  const nextSortOrder = (() => {
+    const orders = departments.map((d) => d.sort_order).filter((n) => typeof n === 'number' && !isNaN(n));
+    return Math.max(0, ...orders) + 1;
+  })();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      if (isEdit) {
+        await api.updateDepartment(department!.id, {
+          name: form.name.trim(), name_ko: form.name_ko.trim(),
+          name_ja: form.name_ja.trim(), name_zh: form.name_zh.trim(),
+          icon: form.icon, color: form.color,
+          description: form.description.trim() || null,
+          prompt: form.prompt.trim() || null,
+        });
+      } else {
+        // name 기반 slug 생성, 비라틴 문자만인 경우 dept-N fallback
+        const slug = form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        let deptId = slug || `dept-${nextSortOrder}`;
+        // 기존 ID와 충돌 시 숫자 접미사 추가
+        const existingIds = new Set(departments.map((d) => d.id));
+        let suffix = 2;
+        while (existingIds.has(deptId)) { deptId = `${slug || 'dept'}-${suffix++}`; }
+        await api.createDepartment({
+          id: deptId, name: form.name.trim(), name_ko: form.name_ko.trim(),
+          name_ja: form.name_ja.trim(), name_zh: form.name_zh.trim(),
+          icon: form.icon, color: form.color,
+          description: form.description.trim() || undefined,
+          prompt: form.prompt.trim() || undefined,
+        });
+      }
+      onSave();
+      onClose();
+    } catch (e: any) {
+      console.error('Dept save failed:', e);
+      if (api.isApiRequestError(e) && e.code === 'department_id_exists') {
+        alert(tr('이미 존재하는 부서 ID입니다.', 'Department ID already exists.'));
+      } else if (api.isApiRequestError(e) && e.code === 'sort_order_conflict') {
+        alert(tr('부서 정렬 순서가 충돌합니다. 잠시 후 다시 시도해주세요.', 'Department sort order conflict. Please retry.'));
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    try {
+      await api.deleteDepartment(department!.id);
+      onSave();
+      onClose();
+    } catch (e: any) {
+      console.error('Dept delete failed:', e);
+      if (api.isApiRequestError(e) && e.code === 'department_has_agents') {
+        alert(tr('소속 직원이 있어 삭제할 수 없습니다.', 'Cannot delete: department has agents.'));
+      } else if (api.isApiRequestError(e) && e.code === 'department_has_tasks') {
+        alert(tr('연결된 업무(Task)가 있어 삭제할 수 없습니다.', 'Cannot delete: department has tasks.'));
+      } else if (api.isApiRequestError(e) && e.code === 'department_protected') {
+        alert(tr('기본 시스템 부서는 삭제할 수 없습니다.', 'Cannot delete: protected system department.'));
+      }
+    } finally { setSaving(false); }
+  };
+
+  const inputCls = "w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-colors";
+  const inputStyle = { background: 'var(--th-input-bg)', borderColor: 'var(--th-input-border)', color: 'var(--th-text-primary)' };
+
+  return (
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'var(--th-modal-overlay)' }}
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] overflow-y-auto"
+        style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)', backdropFilter: 'blur(20px)' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-bold flex items-center gap-2" style={{ color: 'var(--th-text-heading)' }}>
+            <span className="text-lg">{form.icon}</span>
+            {isEdit ? tr('부서 정보 수정', 'Edit Department') : tr('신규 부서 추가', 'Add Department')}
+          </h3>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--th-bg-surface-hover)] transition-colors"
+            style={{ color: 'var(--th-text-muted)' }}>✕</button>
+        </div>
+
+        <div className="space-y-4">
+          {/* 아이콘 + 영문이름 */}
+          <div className="flex items-start gap-3">
+            <div>
+              <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                {tr('아이콘', 'Icon')}
+              </label>
+              <EmojiPicker value={form.icon} onChange={(emoji) => setForm({ ...form, icon: emoji })} />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                {tr('영문 이름', 'Name')} <span className="text-red-400">*</span>
+              </label>
+              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Development" className={inputCls} style={inputStyle} />
+            </div>
+          </div>
+
+          {/* 색상 선택 */}
+          <div>
+            <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+              {tr('테마 색상', 'Theme Color')}
+            </label>
+            <div className="flex gap-2">
+              {DEPT_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setForm({ ...form, color: c })}
+                  className="w-7 h-7 rounded-full transition-all hover:scale-110"
+                  style={{
+                    background: c,
+                    outline: form.color === c ? `2px solid ${c}` : '2px solid transparent',
+                    outlineOffset: '3px',
+                  }} />
+              ))}
+            </div>
+          </div>
+
+          {/* 로캘 이름 */}
+          {locale.startsWith('ko') && (
+            <div>
+              <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                {tr('한글 이름', 'Korean Name')}
+              </label>
+              <input type="text" value={form.name_ko} onChange={(e) => setForm({ ...form, name_ko: e.target.value })}
+                placeholder="개발팀" className={inputCls} style={inputStyle} />
+            </div>
+          )}
+          {locale.startsWith('ja') && (
+            <div>
+              <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                {t({ ko: '일본어 이름', en: 'Japanese Name', ja: '日本語名', zh: '日语名' })}
+              </label>
+              <input type="text" value={form.name_ja} onChange={(e) => setForm({ ...form, name_ja: e.target.value })}
+                placeholder="開発チーム" className={inputCls} style={inputStyle} />
+            </div>
+          )}
+          {locale.startsWith('zh') && (
+            <div>
+              <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+                {t({ ko: '중국어 이름', en: 'Chinese Name', ja: '中国語名', zh: '中文名' })}
+              </label>
+              <input type="text" value={form.name_zh} onChange={(e) => setForm({ ...form, name_zh: e.target.value })}
+                placeholder="开发部" className={inputCls} style={inputStyle} />
+            </div>
+          )}
+
+          {/* 설명 */}
+          <div>
+            <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+              {tr('부서 설명', 'Description')}
+            </label>
+            <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder={tr('부서의 역할 간단 설명', 'Brief description of the department')}
+              className={inputCls} style={inputStyle} />
+          </div>
+
+          {/* 프롬프트 */}
+          <div>
+            <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--th-text-secondary)' }}>
+              {tr('부서 프롬프트', 'Department Prompt')}
+            </label>
+            <textarea value={form.prompt} onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+              rows={4} placeholder={tr('이 부서 소속 에이전트의 공통 시스템 프롬프트...', 'Shared system prompt for agents in this department...')}
+              className={`${inputCls} resize-none`} style={inputStyle} />
+            <p className="text-[10px] mt-1" style={{ color: 'var(--th-text-muted)' }}>
+              {tr('소속 에이전트의 작업 실행 시 공통으로 적용되는 시스템 프롬프트', 'Applied as shared system prompt when agents in this department execute tasks')}
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 mt-5 pt-4" style={{ borderTop: '1px solid var(--th-card-border)' }}>
+          <button onClick={handleSave} disabled={saving || !form.name.trim()}
+            className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white disabled:opacity-40 shadow-sm shadow-blue-600/20">
+            {saving ? tr('처리 중...', 'Saving...') : isEdit ? tr('변경사항 저장', 'Save Changes') : tr('부서 추가', 'Add Department')}
+          </button>
+          {isEdit && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <button onClick={handleDelete} disabled={saving}
+                  className="px-3 py-2.5 rounded-lg text-xs font-medium bg-red-600 hover:bg-red-500 text-white disabled:opacity-40 transition-colors">
+                  {tr('삭제 확인', 'Confirm')}
+                </button>
+                <button onClick={() => setConfirmDelete(false)}
+                  className="px-2 py-2.5 rounded-lg text-xs transition-colors" style={{ color: 'var(--th-text-muted)' }}>
+                  {tr('취소', 'No')}
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)}
+                className="px-3 py-2.5 rounded-lg text-sm font-medium transition-all hover:bg-red-500/15 hover:text-red-400"
+                style={{ border: '1px solid var(--th-input-border)', color: 'var(--th-text-muted)' }}>
+                {tr('삭제', 'Delete')}
+              </button>
+            )
+          )}
           <button onClick={onClose}
             className="px-4 py-2.5 rounded-lg text-sm font-medium transition-all hover:bg-[var(--th-bg-surface-hover)]"
             style={{ border: '1px solid var(--th-input-border)', color: 'var(--th-text-secondary)' }}>

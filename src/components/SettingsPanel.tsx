@@ -2140,7 +2140,7 @@ export default function SettingsPanel({
             .filter((g) => g.agents.length > 0);
           // 부서 미배정 에이전트
           const deptIds = new Set(apiAssignDepts.map((d) => d.id));
-          const unassigned = apiAssignAgents.filter((a) => !deptIds.has(a.department_id));
+          const unassigned = apiAssignAgents.filter((a) => !a.department_id || !deptIds.has(a.department_id));
           // 에이전트 행 렌더러
           const renderAgentRow = (agent: import("../types").Agent) => {
             const isAssigned = agent.cli_provider === "api"

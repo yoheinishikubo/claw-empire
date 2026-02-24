@@ -664,9 +664,12 @@ CREATE TABLE IF NOT EXISTS departments (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   name_ko TEXT NOT NULL,
+  name_ja TEXT NOT NULL DEFAULT '',
+  name_zh TEXT NOT NULL DEFAULT '',
   icon TEXT NOT NULL,
   color TEXT NOT NULL,
   description TEXT,
+  prompt TEXT,
   sort_order INTEGER NOT NULL DEFAULT 99,
   created_at INTEGER DEFAULT (unixepoch()*1000)
 );
@@ -987,6 +990,23 @@ try { db.exec("ALTER TABLE agents ADD COLUMN api_model TEXT"); } catch { /* alre
 try { db.exec("ALTER TABLE agents ADD COLUMN sprite_number INTEGER"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE agents ADD COLUMN name_ja TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE agents ADD COLUMN name_zh TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+// 부서 다국어 + 프롬프트 컬럼 추가
+try { db.exec("ALTER TABLE departments ADD COLUMN name_ja TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE departments ADD COLUMN name_zh TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE departments ADD COLUMN prompt TEXT"); } catch { /* already exists */ }
+// 기존 부서 다국어 이름 백필 (빈 값인 경우만)
+try {
+  db.exec(`
+    UPDATE departments SET name_ja = '企画チーム',              name_zh = '企划组'    WHERE id = 'planning' AND (name_ja = '' OR name_ja IS NULL);
+    UPDATE departments SET name_ja = '開発チーム',              name_zh = '开发组'    WHERE id = 'dev' AND (name_ja = '' OR name_ja IS NULL);
+    UPDATE departments SET name_ja = 'デザインチーム',          name_zh = '设计组'    WHERE id = 'design' AND (name_ja = '' OR name_ja IS NULL);
+    UPDATE departments SET name_ja = '品質管理チーム',          name_zh = '质量管理组' WHERE id = 'qa' AND (name_ja = '' OR name_ja IS NULL);
+    UPDATE departments SET name_ja = 'インフラセキュリティチーム', name_zh = '基础安全组' WHERE id = 'devsecops' AND (name_ja = '' OR name_ja IS NULL);
+    UPDATE departments SET name_ja = '運営チーム',              name_zh = '运营组'    WHERE id = 'operations' AND (name_ja = '' OR name_ja IS NULL);
+  `);
+} catch { /* already backfilled */ }
+// sort_order 중복 방지 UNIQUE 인덱스
+try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_sort_order ON departments(sort_order)"); } catch { /* already exists or duplicate data */ }
 // 기존 DB의 cli_provider CHECK 제약 확장 (SQLite는 ALTER CHECK 미지원이므로 새 행만 해당)
 try {
   const hasApiCheck = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='agents'").get() as any)?.sql?.includes("'api'");
@@ -1613,15 +1633,15 @@ const deptCount = (db.prepare("SELECT COUNT(*) as cnt FROM departments").get() a
 
 if (deptCount === 0) {
   const insertDept = db.prepare(
-    "INSERT INTO departments (id, name, name_ko, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO departments (id, name, name_ko, name_ja, name_zh, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
   );
   // Workflow order: 기획 → 개발 → 디자인 → QA → 인프라보안 → 운영
-  insertDept.run("planning",  "Planning",    "기획팀",     "📊", "#f59e0b", 1);
-  insertDept.run("dev",       "Development", "개발팀",     "💻", "#3b82f6", 2);
-  insertDept.run("design",    "Design",      "디자인팀",   "🎨", "#8b5cf6", 3);
-  insertDept.run("qa",        "QA/QC",       "품질관리팀", "🔍", "#ef4444", 4);
-  insertDept.run("devsecops", "DevSecOps",   "인프라보안팀","🛡️", "#f97316", 5);
-  insertDept.run("operations","Operations",  "운영팀",     "⚙️", "#10b981", 6);
+  insertDept.run("planning",   "Planning",    "기획팀",     "企画チーム",              "企划组",   "📊", "#f59e0b", 1);
+  insertDept.run("dev",        "Development", "개발팀",     "開発チーム",              "开发组",   "💻", "#3b82f6", 2);
+  insertDept.run("design",     "Design",      "디자인팀",   "デザインチーム",          "设计组",   "🎨", "#8b5cf6", 3);
+  insertDept.run("qa",         "QA/QC",       "품질관리팀", "品質管理チーム",          "质量管理组","🔍", "#ef4444", 4);
+  insertDept.run("devsecops",  "DevSecOps",   "인프라보안팀","インフラセキュリティチーム","基础安全组","🛡️", "#f97316", 5);
+  insertDept.run("operations", "Operations",  "운영팀",     "運営チーム",              "运营组",   "⚙️", "#10b981", 6);
   console.log("[Claw-Empire] Seeded default departments");
 }
 
