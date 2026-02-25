@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import type { Agent } from '../types';
 
 /** Map agent IDs to sprite numbers (stable order, same as OfficeView) */
@@ -34,6 +35,8 @@ interface AgentAvatarProps {
   size?: number;
   className?: string;
   rounded?: 'full' | 'xl' | '2xl';
+  imageFit?: 'cover' | 'contain';
+  imagePosition?: CSSProperties['objectPosition'];
 }
 
 /** Sprite-based avatar — pass either `agents` or `spriteMap` */
@@ -44,6 +47,8 @@ export default function AgentAvatar({
   size = 28,
   className = '',
   rounded = 'full',
+  imageFit = 'cover',
+  imagePosition = 'center',
 }: AgentAvatarProps) {
   const map = spriteMap ?? (agents ? buildSpriteMap(agents) : new Map());
   const spriteNum = agent ? map.get(agent.id) : undefined;
@@ -59,8 +64,8 @@ export default function AgentAvatar({
         <img
           src={`/sprites/${spriteNum}-D-1.png`}
           alt={agent?.name ?? ''}
-          className="w-full h-full object-cover"
-          style={{ imageRendering: 'pixelated' }}
+          className={`w-full h-full ${imageFit === 'contain' ? 'object-contain' : 'object-cover'}`}
+          style={{ imageRendering: 'pixelated', objectPosition: imagePosition }}
         />
       </div>
     );

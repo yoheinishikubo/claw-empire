@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, type DragEvent } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type DragEvent } from 'react';
 import type { Agent, Department, AgentRole, CliProvider } from '../types';
 import { useI18n, localeName } from '../i18n';
 import * as api from '../api';
@@ -42,6 +42,38 @@ const STATUS_DOT: Record<string, string> = {
   offline: 'bg-red-400',
   idle: 'bg-slate-500',
 };
+
+const ICON_SPRITE_POOL = Array.from({ length: 13 }, (_, i) => i + 1);
+
+function pickRandomSpritePair(pool: number[]): [number, number] {
+  if (pool.length === 0) return [1, 2];
+  const first = pool[Math.floor(Math.random() * pool.length)] ?? 1;
+  if (pool.length === 1) return [first, first];
+  let second = first;
+  while (second === first) {
+    second = pool[Math.floor(Math.random() * pool.length)] ?? first;
+  }
+  return [first, second];
+}
+
+function StackedSpriteIcon({ sprites }: { sprites: [number, number] }) {
+  return (
+    <span className="relative inline-flex items-center" style={{ width: 22, height: 16 }}>
+      <img
+        src={`/sprites/${sprites[0]}-D-1.png`}
+        alt=""
+        className="absolute left-0 top-0 w-4 h-4 rounded-full object-cover"
+        style={{ imageRendering: 'pixelated', opacity: 0.85 }}
+      />
+      <img
+        src={`/sprites/${sprites[1]}-D-1.png`}
+        alt=""
+        className="absolute left-1.5 top-px w-4 h-4 rounded-full object-cover"
+        style={{ imageRendering: 'pixelated', zIndex: 1 }}
+      />
+    </span>
+  );
+}
 
 /* ═══════════════════════════════════════ Emoji Picker ═══════════════════════════════════════ */
 
@@ -165,6 +197,13 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
   }, [departments]);
 
   const spriteMap = buildSpriteMap(agents);
+  const randomIconSprites = useMemo(
+    () => ({
+      tab: pickRandomSpritePair(ICON_SPRITE_POOL),
+      total: pickRandomSpritePair(ICON_SPRITE_POOL),
+    }),
+    [],
+  );
 
   // 부서별 카운트
   const deptCounts = new Map<string, { total: number; working: number }>();
@@ -356,7 +395,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
       {/* 서브탭: 직원관리 / 부서관리 */}
       <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}>
         {([
-          { key: 'agents' as const, label: tr('직원관리', 'Agents'), icon: '👥' },
+          { key: 'agents' as const, label: tr('직원관리', 'Agents'), icon: <StackedSpriteIcon sprites={randomIconSprites.tab} /> },
           { key: 'departments' as const, label: tr('부서관리', 'Departments'), icon: '🏢' },
         ]).map((tab) => (
           <button
@@ -382,10 +421,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: tr('전체 인원', 'Total'), value: agents.length, icon: (
-                <span className="relative inline-flex items-center" style={{ width: 22, height: 16 }}>
-                  <img src="/sprites/8-D-1.png" alt="" className="absolute left-0 top-0 w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', opacity: 0.85 }} />
-                  <img src="/sprites/3-D-1.png" alt="" className="absolute left-1.5 top-px w-4 h-4 rounded-full object-cover" style={{ imageRendering: 'pixelated', zIndex: 1 }} />
-                </span>
+                <StackedSpriteIcon sprites={randomIconSprites.total} />
               ) as React.ReactNode, accent: 'blue' },
               { label: tr('근무 중', 'Working'), value: workingCount, icon: '💼', accent: 'emerald' },
               { label: tr('부서', 'Departments'), value: departments.length, icon: '🏢', accent: 'violet' },

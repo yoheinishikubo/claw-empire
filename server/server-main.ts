@@ -1775,17 +1775,42 @@ if (agentCount === 0) {
   // UNIQUE 인덱스 일시 제거 → 값 갱신 → 인덱스 재생성 (충돌 방지)
   try { db.exec("DROP INDEX IF EXISTS idx_departments_sort_order"); } catch { /* noop */ }
   const DEPT_ORDER: Record<string, number> = { planning: 1, dev: 2, design: 3, qa: 4, devsecops: 5, operations: 6 };
-  const updateOrder = db.prepare("UPDATE departments SET sort_order = ? WHERE id = ?");
-  for (const [id, order] of Object.entries(DEPT_ORDER)) {
-    updateOrder.run(order, id);
-  }
-  try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_sort_order ON departments(sort_order)"); } catch { /* duplicate data */ }
 
   const insertDeptIfMissing = db.prepare(
     "INSERT OR IGNORE INTO departments (id, name, name_ko, icon, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)"
   );
   insertDeptIfMissing.run("qa", "QA/QC", "품질관리팀", "🔍", "#ef4444", 4);
   insertDeptIfMissing.run("devsecops", "DevSecOps", "인프라보안팀", "🛡️", "#f97316", 5);
+
+  const updateOrder = db.prepare("UPDATE departments SET sort_order = ? WHERE id = ?");
+  for (const [id, order] of Object.entries(DEPT_ORDER)) {
+    updateOrder.run(order, id);
+  }
+
+  const allDepartments = db.prepare(
+    "SELECT id, sort_order FROM departments ORDER BY sort_order ASC, id ASC"
+  ).all() as Array<{ id: string; sort_order: number }>;
+  const existingDeptIds = new Set(allDepartments.map((row) => row.id));
+  const usedOrders = new Set<number>();
+  for (const [id, order] of Object.entries(DEPT_ORDER)) {
+    if (!existingDeptIds.has(id)) continue;
+    usedOrders.add(order);
+  }
+
+  let nextOrder = 1;
+  for (const row of allDepartments) {
+    if (Object.prototype.hasOwnProperty.call(DEPT_ORDER, row.id)) continue;
+    while (usedOrders.has(nextOrder)) nextOrder += 1;
+    updateOrder.run(nextOrder, row.id);
+    usedOrders.add(nextOrder);
+    nextOrder += 1;
+  }
+
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_sort_order ON departments(sort_order)");
+  } catch (err) {
+    console.warn("[Claw-Empire] Failed to recreate idx_departments_sort_order:", err);
+  }
 
   const insertAgentIfMissing = db.prepare(
     `INSERT OR IGNORE INTO agents (id, name, name_ko, department_id, role, cli_provider, avatar_emoji, personality)
@@ -1811,8 +1836,16 @@ if (agentCount === 0) {
   let added = 0;
   for (const [name, nameKo, dept, role, provider, emoji, personality] of newAgents) {
     if (!existingNames.has(name)) {
-      insertAgentIfMissing.run(randomUUID(), name, nameKo, dept, role, provider, emoji, personality);
-      added++;
+      if (!existingDeptIds.has(dept)) {
+        console.warn(`[Claw-Empire] Skip adding agent "${name}": missing department "${dept}"`);
+        continue;
+      }
+      try {
+        insertAgentIfMissing.run(randomUUID(), name, nameKo, dept, role, provider, emoji, personality);
+        added++;
+      } catch (err) {
+        console.warn(`[Claw-Empire] Skip adding agent "${name}":`, err);
+      }
     }
   }
   if (added > 0) console.log(`[Claw-Empire] Added ${added} new agents`);

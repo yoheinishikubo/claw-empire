@@ -2796,33 +2796,54 @@ app.post("/api/sprites/register", async (req, res) => {
 });
 
 app.post("/api/agents", (req, res) => {
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  const name_ko = typeof body.name_ko === "string" ? body.name_ko.trim() : "";
-  const name_ja = typeof body.name_ja === "string" ? body.name_ja.trim() : "";
-  const name_zh = typeof body.name_zh === "string" ? body.name_zh.trim() : "";
-  if (!name) return res.status(400).json({ error: "name_required" });
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const name_ko = typeof body.name_ko === "string" ? body.name_ko.trim() : "";
+    const name_ja = typeof body.name_ja === "string" ? body.name_ja.trim() : "";
+    const name_zh = typeof body.name_zh === "string" ? body.name_zh.trim() : "";
+    if (!name) return res.status(400).json({ error: "name_required" });
 
-  const department_id = typeof body.department_id === "string" ? body.department_id : null;
-  const role = typeof body.role === "string" && ["team_leader", "senior", "junior", "intern"].includes(body.role) ? body.role : "junior";
-  const cli_provider = typeof body.cli_provider === "string" && ["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(body.cli_provider) ? body.cli_provider : "claude";
-  const avatar_emoji = typeof body.avatar_emoji === "string" && body.avatar_emoji.trim() ? body.avatar_emoji.trim() : "🤖";
-  const sprite_number = typeof body.sprite_number === "number" && body.sprite_number > 0 ? body.sprite_number : null;
-  const personality = typeof body.personality === "string" ? body.personality.trim() || null : null;
+    if (body.department_id !== undefined && body.department_id !== null && typeof body.department_id !== "string") {
+      return res.status(400).json({ error: "invalid_department_id" });
+    }
+    const department_id = typeof body.department_id === "string" ? body.department_id.trim() || null : null;
+    if (department_id) {
+      const deptExists = db.prepare("SELECT id FROM departments WHERE id = ?").get(department_id) as { id: string } | undefined;
+      if (!deptExists) return res.status(400).json({ error: "department_not_found" });
+    }
 
-  const id = randomUUID();
-  db.prepare(
-    `INSERT INTO agents (id, name, name_ko, name_ja, name_zh, department_id, role, cli_provider, avatar_emoji, sprite_number, personality)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, name, name_ko, name_ja, name_zh, department_id, role, cli_provider, avatar_emoji, sprite_number, personality);
+    const role = typeof body.role === "string" && ["team_leader", "senior", "junior", "intern"].includes(body.role) ? body.role : "junior";
+    const cli_provider = typeof body.cli_provider === "string" && ["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(body.cli_provider) ? body.cli_provider : "claude";
+    const avatar_emoji = typeof body.avatar_emoji === "string" && body.avatar_emoji.trim() ? body.avatar_emoji.trim() : "🤖";
+    const sprite_number = typeof body.sprite_number === "number" && body.sprite_number > 0 ? body.sprite_number : null;
+    const personality = typeof body.personality === "string" ? body.personality.trim() || null : null;
 
-  const created = db.prepare(`
-    SELECT a.*, d.name AS department_name, d.name_ko AS department_name_ko, d.color AS department_color
-    FROM agents a LEFT JOIN departments d ON a.department_id = d.id
-    WHERE a.id = ?
-  `).get(id);
-  broadcast("agent_created", created);
-  res.status(201).json({ ok: true, agent: created });
+    const id = randomUUID();
+    try {
+      db.prepare(
+        `INSERT INTO agents (id, name, name_ko, name_ja, name_zh, department_id, role, cli_provider, avatar_emoji, sprite_number, personality)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(id, name, name_ko, name_ja, name_zh, department_id, role, cli_provider, avatar_emoji, sprite_number, personality);
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      if (msg.includes("FOREIGN KEY constraint failed")) {
+        return res.status(400).json({ error: "department_not_found" });
+      }
+      throw err;
+    }
+
+    const created = db.prepare(`
+      SELECT a.*, d.name AS department_name, d.name_ko AS department_name_ko, d.color AS department_color
+      FROM agents a LEFT JOIN departments d ON a.department_id = d.id
+      WHERE a.id = ?
+    `).get(id);
+    broadcast("agent_created", created);
+    res.status(201).json({ ok: true, agent: created });
+  } catch (err) {
+    console.error("[agents] POST failed:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
 });
 
 app.delete("/api/agents/:id", (req, res) => {

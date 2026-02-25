@@ -1737,6 +1737,7 @@ export default function SkillsLibrary({ agents }: SkillsLibraryProps) {
                           agents={agents}
                           size={40}
                           rounded="xl"
+                          imagePosition="center top"
                         />
                         <span className="classroom-student-notebook">📓</span>
                         <span className="classroom-student-pencil">✏️</span>
