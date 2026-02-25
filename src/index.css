@@ -650,6 +650,14 @@ pre,
   background-color: #047857 !important;
   color: #fff !important;
 }
+[data-theme="light"] .bg-violet-600 {
+  background-color: #7c3aed !important;
+  color: #fff !important;
+}
+[data-theme="light"] .bg-purple-600 {
+  background-color: #7c3aed !important;
+  color: #fff !important;
+}
 
 /* ── Modal overlay ── */
 [data-theme="light"] .bg-black\/50,
@@ -662,13 +670,17 @@ pre,
 [data-theme="light"] .bg-blue-600 .text-white,
 [data-theme="light"] .bg-red-600 .text-white,
 [data-theme="light"] .bg-emerald-600 .text-white,
-[data-theme="light"] .bg-emerald-700 .text-white {
+[data-theme="light"] .bg-emerald-700 .text-white,
+[data-theme="light"] .bg-violet-600 .text-white,
+[data-theme="light"] .bg-purple-600 .text-white {
   color: #ffffff !important;
 }
 [data-theme="light"] .bg-blue-600.text-white,
 [data-theme="light"] .bg-red-600.text-white,
 [data-theme="light"] .bg-emerald-600.text-white,
-[data-theme="light"] .bg-emerald-700.text-white {
+[data-theme="light"] .bg-emerald-700.text-white,
+[data-theme="light"] .bg-violet-600.text-white,
+[data-theme="light"] .bg-purple-600.text-white {
   color: #ffffff !important;
 }
 

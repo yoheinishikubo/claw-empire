@@ -128,6 +128,7 @@ export function useProjectPickerState({
       setPathSuggestions([]);
       setMissingPathPrompt(null);
       setManualPathPickerOpen(false);
+      setNativePickerUnsupported(false);
       setSubmitWithoutProjectPromptOpen(false);
     }
   }, [createNewProjectMode, setSubmitWithoutProjectPromptOpen]);
@@ -296,6 +297,7 @@ export function useProjectPickerState({
   }, [setFormFeedback]);
 
   const handlePickNativePath = useCallback(async () => {
+    setNativePickerUnsupported(false);
     setNativePathPicking(true);
     try {
       const picked = await pickProjectPathNative();
@@ -321,6 +323,8 @@ export function useProjectPickerState({
           (err.code === "native_picker_unavailable" || err.code === "native_picker_failed")
         ) {
           setNativePickerUnsupported(true);
+          setManualPathPickerOpen(true);
+          await loadManualPathEntries(newProjectPath.trim() || undefined);
           setFormFeedback({ tone: "info", message });
         } else {
           setFormFeedback({ tone: "error", message });
@@ -329,7 +333,7 @@ export function useProjectPickerState({
     } finally {
       setNativePathPicking(false);
     }
-  }, [resolvePathHelperErrorMessage, unsupportedPathApiMessage, setFormFeedback]);
+  }, [loadManualPathEntries, newProjectPath, resolvePathHelperErrorMessage, unsupportedPathApiMessage, setFormFeedback]);
 
   const handleSelectPathSuggestion = useCallback((candidate: string) => {
     setNewProjectPath(candidate);

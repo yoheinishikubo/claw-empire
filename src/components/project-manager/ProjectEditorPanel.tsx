@@ -175,8 +175,9 @@ export default function ProjectEditorPanel({
             </button>
             <button
               type="button"
-              disabled={nativePathPicking || nativePickerUnsupported}
+              disabled={nativePathPicking}
               onClick={async () => {
+                setNativePickerUnsupported(false);
                 setNativePathPicking(true);
                 try {
                   const picked = await pickProjectPathNative();
@@ -202,6 +203,8 @@ export default function ProjectEditorPanel({
                       (err.code === "native_picker_unavailable" || err.code === "native_picker_failed")
                     ) {
                       setNativePickerUnsupported(true);
+                      setManualPathPickerOpen(true);
+                      await loadManualPathEntries(projectPath.trim() || undefined);
                       setFormFeedback({ tone: "info", message });
                     } else {
                       setFormFeedback({ tone: "error", message });

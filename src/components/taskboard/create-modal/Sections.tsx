@@ -315,7 +315,7 @@ export function ProjectSection({
             </button>
             <button
               type="button"
-              disabled={nativePathPicking || nativePickerUnsupported}
+              disabled={nativePathPicking}
               onClick={onPickNativePath}
               className="rounded-md border border-slate-600 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             >

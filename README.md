@@ -68,24 +68,15 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ## Latest Release (v1.2.0)
 
-- **Agent + Department management complete** - Hire/edit/delete agents and create/edit/delete departments from the UI, including multilingual profile fields and department sort-order management.
-- **Manual project assignment flow** - Projects support `assignment_mode: manual` with explicit assignee selection, meeting participant filtering, and delegation constrained to assigned candidates.
-- **Manual assignment safeguards strengthened** - On project save, the UI now warns if no agents are selected or only team leaders are selected, and shows selection summary (total/leaders/subordinates) before continuing.
-- **Project API guardrails for `agent_ids`** - `POST/PATCH /api/projects` now validate both type and existence of agent IDs; invalid payloads are rejected with explicit error fields.
-- **Delegation fallback auditability** - In manual mode, when no eligible subordinate exists in assigned candidates, the system records explicit fallback logs and sends a safeguard notice to CEO before team-leader direct execution.
-- **Sprite registration safety** - `POST /api/sprites/register` now blocks duplicate sprite-number file collisions with `409 sprite_number_exists`.
-- **Portable sprite generation pipeline** - The sprite generation script now resolves output path relative to repository and auto-creates `public/sprites`.
-- **Custom skill upload system** - Upload `.md` skill files directly through the Skills Library UI, name the skill, select CLI representatives to train, and manage custom skills with a classroom training animation. Backend CRUD: `POST/GET /api/skills/custom`, `DELETE /api/skills/custom/:skillName`.
-- **Department sort_order migration safety** - `server-main.ts` now drops and re-creates the UNIQUE index around sort_order seed updates to avoid constraint violations.
-- **CI E2E coverage + stability uplift** - Added `tests/e2e/ci-coverage-gap.spec.ts` for critical gap coverage (task lifecycle, CRUD smoke, settings/stats, decision inbox, WebSocket) and stabilized CI runs with transient API retry handling and deterministic Playwright settings.
-- **Server type-debt cleanup (`@ts-nocheck` removal)** - Removed `@ts-nocheck` debt in server runtime modules through stricter shared typing and modular helper split, preserving existing runtime behavior.
-- **Repository formatting standardization** - Added Prettier baseline (`.prettierrc.json`, `.prettierignore`), introduced `format`/`format:check` scripts, and enforced formatting in CI.
+- **Product features** - Completed Agent/Department CRUD, manual project assignment flow, delegation safeguards, and custom skill upload workflow.
+- **Code modularization** - Split oversized frontend/backend modules into feature folders (`src/components/*`, `server/modules/routes/*`, `server/modules/workflow/*`) while preserving runtime behavior.
+- **Type safety hardening** - Removed server `@ts-nocheck` usage and tightened shared/runtime typing boundaries.
+- **Formatting standardization** - Added Prettier baseline (`.prettierrc.json`, `.prettierignore`), `format`/`format:check` scripts, and CI format enforcement.
+- **Test expansion + CI stability** - Added `tests/e2e/ci-coverage-gap.spec.ts`, expanded frontend/backend unit tests (`src/api`, `useWebSocket`, `usePolling`, `i18n`, `auth`, `hub`, `runtime`, `gateway`), and stabilized Playwright CI settings.
 
 - Full notes: [`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
 
 ---
-
-
 
 ## Screenshots
 
@@ -179,46 +170,46 @@ Usage path: **Chat window > Report Request button**, then enter your request.
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Pixel-Art Office** | Animated office view with agents walking, working, and attending meetings across 6 departments |
-| **Kanban Task Board** | Full task lifecycle — Inbox, Planned, Collaborating, In Progress, Review, Done — with drag-and-drop |
-| **CEO Chat & Directives** | Direct communication with team leaders; `$` directives support meeting choice plus project path/context routing (`project_path`, `project_context`) |
-| **Multi-Provider Support** | Claude Code, Codex CLI, Gemini CLI, OpenCode, Antigravity — all from one dashboard |
-| **External API Providers** | Connect agents to external LLM APIs (OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, custom) via Settings > API tab |
-| **OAuth Integration** | GitHub & Google OAuth with AES-encrypted token storage in local SQLite |
-| **Real-time WebSocket** | Live status updates, activity feed, and agent state synchronization |
-| **Active Agent Control** | Active-agent monitor with process/activity/idle metadata and direct kill action for stuck tasks |
-| **Task Report System** | Completion popup, report history, team report drilldown, and planning-lead consolidated archive |
-| **Agent Management** | Hire, edit, and delete agents with multilingual names, role/department/provider selection, and personality fields |
-| **Agent Ranking & XP** | Agents earn XP for completed tasks; ranking board tracks top performers |
-| **Skills Library** | 600+ categorized skills (Frontend, Backend, Design, AI, DevOps, Security, etc.) with custom skill upload support |
-| **Meeting System** | Planned and ad-hoc meetings with AI-generated minutes and multi-round review |
-| **Git Worktree Isolation** | Each agent works in isolated git branches, merged only on CEO approval |
-| **Multi-Language UI** | English, Korean, Japanese, Chinese — auto-detected or manually set |
-| **Messenger Integration** | Telegram, Discord, Slack and more — send `$` CEO directives and receive task updates via OpenClaw gateway |
-| **PowerPoint Export** | Generate presentation slides from meeting minutes and reports |
-| **Connectivity QA Scripts** | Built-in `test:comm:*` scripts for CLI/OAuth/API communication validation with retry and evidence logs |
-| **In-App Update Notice** | Checks GitHub latest release and shows a top banner with OS-specific `git pull` guidance when a newer version is available |
-| **Department Management** | Planning, Development, Design, QA/QC, DevSecOps, Operations — with dedicated management tab for arrow/drag-and-drop sort order editing |
-| **Manual Agent Assignment** | Assign specific agents to projects; meetings/delegation respect manual selection, with pre-save safeguards for no-agent or leader-only selections |
-| **Sprite Registration Safety** | Prevents duplicate sprite-number file overwrite by rejecting conflicting uploads with explicit `409 sprite_number_exists` responses |
-| **Custom Skill Upload** | Upload `.md` skill files through the UI to train CLI representatives with custom skills, complete with classroom training animation and management interface |
+| Feature                        | Description                                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Pixel-Art Office**           | Animated office view with agents walking, working, and attending meetings across 6 departments                                                               |
+| **Kanban Task Board**          | Full task lifecycle — Inbox, Planned, Collaborating, In Progress, Review, Done — with drag-and-drop                                                          |
+| **CEO Chat & Directives**      | Direct communication with team leaders; `$` directives support meeting choice plus project path/context routing (`project_path`, `project_context`)          |
+| **Multi-Provider Support**     | Claude Code, Codex CLI, Gemini CLI, OpenCode, Antigravity — all from one dashboard                                                                           |
+| **External API Providers**     | Connect agents to external LLM APIs (OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, custom) via Settings > API tab                 |
+| **OAuth Integration**          | GitHub & Google OAuth with AES-encrypted token storage in local SQLite                                                                                       |
+| **Real-time WebSocket**        | Live status updates, activity feed, and agent state synchronization                                                                                          |
+| **Active Agent Control**       | Active-agent monitor with process/activity/idle metadata and direct kill action for stuck tasks                                                              |
+| **Task Report System**         | Completion popup, report history, team report drilldown, and planning-lead consolidated archive                                                              |
+| **Agent Management**           | Hire, edit, and delete agents with multilingual names, role/department/provider selection, and personality fields                                            |
+| **Agent Ranking & XP**         | Agents earn XP for completed tasks; ranking board tracks top performers                                                                                      |
+| **Skills Library**             | 600+ categorized skills (Frontend, Backend, Design, AI, DevOps, Security, etc.) with custom skill upload support                                             |
+| **Meeting System**             | Planned and ad-hoc meetings with AI-generated minutes and multi-round review                                                                                 |
+| **Git Worktree Isolation**     | Each agent works in isolated git branches, merged only on CEO approval                                                                                       |
+| **Multi-Language UI**          | English, Korean, Japanese, Chinese — auto-detected or manually set                                                                                           |
+| **Messenger Integration**      | Telegram, Discord, Slack and more — send `$` CEO directives and receive task updates via OpenClaw gateway                                                    |
+| **PowerPoint Export**          | Generate presentation slides from meeting minutes and reports                                                                                                |
+| **Connectivity QA Scripts**    | Built-in `test:comm:*` scripts for CLI/OAuth/API communication validation with retry and evidence logs                                                       |
+| **In-App Update Notice**       | Checks GitHub latest release and shows a top banner with OS-specific `git pull` guidance when a newer version is available                                   |
+| **Department Management**      | Planning, Development, Design, QA/QC, DevSecOps, Operations — with dedicated management tab for arrow/drag-and-drop sort order editing                       |
+| **Manual Agent Assignment**    | Assign specific agents to projects; meetings/delegation respect manual selection, with pre-save safeguards for no-agent or leader-only selections            |
+| **Sprite Registration Safety** | Prevents duplicate sprite-number file overwrite by rejecting conflicting uploads with explicit `409 sprite_number_exists` responses                          |
+| **Custom Skill Upload**        | Upload `.md` skill files through the UI to train CLI representatives with custom skills, complete with classroom training animation and management interface |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
-| **Pixel Art Engine** | PixiJS 8 |
-| **Backend** | Express 5 + SQLite (zero-config embedded DB) |
-| **Real-time** | WebSocket (ws) |
-| **Validation** | Zod 4 |
-| **Icons** | Lucide React |
-| **Routing** | React Router 7 |
-| **Export** | PptxGenJS (PowerPoint generation) |
+| Layer                | Technology                                          |
+| -------------------- | --------------------------------------------------- |
+| **Frontend**         | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
+| **Pixel Art Engine** | PixiJS 8                                            |
+| **Backend**          | Express 5 + SQLite (zero-config embedded DB)        |
+| **Real-time**        | WebSocket (ws)                                      |
+| **Validation**       | Zod 4                                               |
+| **Icons**            | Lucide React                                        |
+| **Routing**          | React Router 7                                      |
+| **Export**           | PptxGenJS (PowerPoint generation)                   |
 
 <a id="ai-installation-guide">
 ## AI Installation Guide
@@ -316,6 +307,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 ```
 
 Expected:
+
 - `200` when `INBOX_WEBHOOK_SECRET` is configured and `x-inbox-secret` matches.
 - `401` when the header is missing/mismatched.
 - `503` when `INBOX_WEBHOOK_SECRET` is not configured on the server.
@@ -326,24 +318,24 @@ Expected:
 
 ### Prerequisites
 
-| Tool | Version | Install |
-|------|---------|---------|
-| **Node.js** | >= 22 | [nodejs.org](https://nodejs.org/) |
-| **pnpm** | latest | `corepack enable` (built into Node.js) |
-| **Git** | any | [git-scm.com](https://git-scm.com/) |
+| Tool        | Version | Install                                |
+| ----------- | ------- | -------------------------------------- |
+| **Node.js** | >= 22   | [nodejs.org](https://nodejs.org/)      |
+| **pnpm**    | latest  | `corepack enable` (built into Node.js) |
+| **Git**     | any     | [git-scm.com](https://git-scm.com/)    |
 
 ### One-Click Setup (Recommended)
 
-| Platform | Command |
-|----------|---------|
-| **macOS / Linux** | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh` |
+| Platform                 | Command                                                                                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh`                                    |
 | **Windows (PowerShell)** | `git clone https://github.com/GreenSheep01201/claw-empire.git; cd claw-empire; powershell -ExecutionPolicy Bypass -File .\install.ps1` |
 
 If the repo is already cloned:
 
-| Platform | Command |
-|----------|---------|
-| **macOS / Linux** | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh` |
+| Platform                 | Command                                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh`                                      |
 | **Windows (PowerShell)** | `git submodule update --init --recursive; powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
 
 ### OpenClaw `.env` Requirements (for `/api/inbox`)
@@ -358,6 +350,7 @@ Initial install via `bash install.sh` / `install.ps1` already goes through these
 For existing clones that only run `git pull`, `pnpm dev*` / `pnpm start*` now auto-apply this once when needed and then persist `CLAW_MIGRATION_V1_0_5_DONE=1` to prevent repeated execution.
 
 `/api/inbox` requires server-side `INBOX_WEBHOOK_SECRET` plus an `x-inbox-secret` header that exactly matches it.
+
 - Missing/mismatched header -> `401`
 - Missing server config (`INBOX_WEBHOOK_SECRET`) -> `503`
 
@@ -429,10 +422,10 @@ pnpm dev:local
 
 Open your browser:
 
-| URL | Description |
-|-----|-------------|
-| `http://127.0.0.1:8800` | Frontend (Vite dev server) |
-| `http://127.0.0.1:8790/healthz` | API health check |
+| URL                             | Description                |
+| ------------------------------- | -------------------------- |
+| `http://127.0.0.1:8800`         | Frontend (Vite dev server) |
+| `http://127.0.0.1:8790/healthz` | API health check           |
 
 ### AGENTS.md Setup
 
@@ -454,6 +447,7 @@ pnpm setup -- --port 8790
 ```
 
 <a id="openclaw-integration"></a>
+
 ### OpenClaw Integration Setup (Telegram/Discord/Slack)
 
 `install.sh` / `install.ps1` (or `scripts/openclaw-setup.*`) will auto-detect and write `OPENCLAW_CONFIG` when possible.
@@ -463,10 +457,10 @@ Recommended `.env` format: absolute path for `OPENCLAW_CONFIG` (unquoted preferr
 
 Default config paths:
 
-| OS | Path |
-|----|------|
-| **macOS / Linux** | `~/.openclaw/openclaw.json` |
-| **Windows** | `%USERPROFILE%\.openclaw\openclaw.json` |
+| OS                | Path                                    |
+| ----------------- | --------------------------------------- |
+| **macOS / Linux** | `~/.openclaw/openclaw.json`             |
+| **Windows**       | `%USERPROFILE%\.openclaw\openclaw.json` |
 
 Manual commands:
 
@@ -487,6 +481,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 <a id="dollar-command-logic"></a>
+
 ### `$` Command -> OpenClaw Chat Delegation Logic
 
 When a chat message starts with `$`, Claw-Empire handles it as a CEO directive:
@@ -524,39 +519,39 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 Copy `.env.example` to `.env`. All secrets stay local — never commit `.env`.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `OAUTH_ENCRYPTION_SECRET` | **Yes** | Encrypts OAuth tokens in SQLite |
-| `PORT` | No | Server port (default: `8790`) |
-| `HOST` | No | Bind address (default: `127.0.0.1`) |
-| `API_AUTH_TOKEN` | Recommended | Bearer token for non-loopback API/WebSocket access |
-| `INBOX_WEBHOOK_SECRET` | **Yes for `/api/inbox`** | Shared secret required in `x-inbox-secret` header |
-| `OPENCLAW_CONFIG` | Recommended for OpenClaw | Absolute path to `openclaw.json` used for gateway target discovery/chat relay |
-| `DB_PATH` | No | SQLite database path (default: `./claw-empire.sqlite`) |
-| `LOGS_DIR` | No | Log directory (default: `./logs`) |
-| `OAUTH_GITHUB_CLIENT_ID` | No | GitHub OAuth App client ID |
-| `OAUTH_GITHUB_CLIENT_SECRET` | No | GitHub OAuth App client secret |
-| `OAUTH_GOOGLE_CLIENT_ID` | No | Google OAuth client ID |
-| `OAUTH_GOOGLE_CLIENT_SECRET` | No | Google OAuth client secret |
-| `OPENAI_API_KEY` | No | OpenAI API key (for Codex) |
-| `UPDATE_CHECK_ENABLED` | No | Enable in-app update check banner (`1` default, set `0` to disable) |
-| `UPDATE_CHECK_REPO` | No | GitHub repo slug used for update checks (default: `GreenSheep01201/claw-empire`) |
-| `UPDATE_CHECK_TTL_MS` | No | Update-check cache TTL in milliseconds (default: `1800000`) |
-| `UPDATE_CHECK_TIMEOUT_MS` | No | GitHub request timeout in milliseconds (default: `4000`) |
-| `AUTO_UPDATE_ENABLED` | No | Default auto-update value when `settings.autoUpdateEnabled` is missing (`0` default) |
-| `AUTO_UPDATE_CHANNEL` | No | Allowed update channel: `patch` (default), `minor`, `all` |
-| `AUTO_UPDATE_IDLE_ONLY` | No | Apply only when no `in_progress` tasks/active CLI processes (`1` default) |
-| `AUTO_UPDATE_CHECK_INTERVAL_MS` | No | Auto-update check interval in milliseconds (default follows `UPDATE_CHECK_TTL_MS`) |
-| `AUTO_UPDATE_INITIAL_DELAY_MS` | No | Delay before first auto-update check after startup (default `60000`, min `60000`) |
-| `AUTO_UPDATE_TARGET_BRANCH` | No | Branch name used for branch guard and `git fetch/pull` target (default `main`) |
-| `AUTO_UPDATE_GIT_FETCH_TIMEOUT_MS` | No | Timeout for `git fetch` during update apply (default `120000`) |
-| `AUTO_UPDATE_GIT_PULL_TIMEOUT_MS` | No | Timeout for `git pull --ff-only` during update apply (default `180000`) |
-| `AUTO_UPDATE_INSTALL_TIMEOUT_MS` | No | Timeout for `pnpm install --frozen-lockfile` during update apply (default `300000`) |
-| `AUTO_UPDATE_COMMAND_OUTPUT_MAX_CHARS` | No | Max in-memory capture size per stdout/stderr stream before tail-trimming (default `200000`) |
-| `AUTO_UPDATE_TOTAL_TIMEOUT_MS` | No | Global timeout cap for one apply run (default `900000`) |
-| `AUTO_UPDATE_RESTART_MODE` | No | Restart policy after auto-apply: `notify` (default), `exit`, `command` |
-| `AUTO_UPDATE_EXIT_DELAY_MS` | No | Delay before process exit in `exit` mode (default `10000`, min `1200`) |
-| `AUTO_UPDATE_RESTART_COMMAND` | No | Executable + args used when restart mode is `command` (shell metacharacters + direct shell launchers rejected; runs with server permissions) |
+| Variable                               | Required                 | Description                                                                                                                                  |
+| -------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OAUTH_ENCRYPTION_SECRET`              | **Yes**                  | Encrypts OAuth tokens in SQLite                                                                                                              |
+| `PORT`                                 | No                       | Server port (default: `8790`)                                                                                                                |
+| `HOST`                                 | No                       | Bind address (default: `127.0.0.1`)                                                                                                          |
+| `API_AUTH_TOKEN`                       | Recommended              | Bearer token for non-loopback API/WebSocket access                                                                                           |
+| `INBOX_WEBHOOK_SECRET`                 | **Yes for `/api/inbox`** | Shared secret required in `x-inbox-secret` header                                                                                            |
+| `OPENCLAW_CONFIG`                      | Recommended for OpenClaw | Absolute path to `openclaw.json` used for gateway target discovery/chat relay                                                                |
+| `DB_PATH`                              | No                       | SQLite database path (default: `./claw-empire.sqlite`)                                                                                       |
+| `LOGS_DIR`                             | No                       | Log directory (default: `./logs`)                                                                                                            |
+| `OAUTH_GITHUB_CLIENT_ID`               | No                       | GitHub OAuth App client ID                                                                                                                   |
+| `OAUTH_GITHUB_CLIENT_SECRET`           | No                       | GitHub OAuth App client secret                                                                                                               |
+| `OAUTH_GOOGLE_CLIENT_ID`               | No                       | Google OAuth client ID                                                                                                                       |
+| `OAUTH_GOOGLE_CLIENT_SECRET`           | No                       | Google OAuth client secret                                                                                                                   |
+| `OPENAI_API_KEY`                       | No                       | OpenAI API key (for Codex)                                                                                                                   |
+| `UPDATE_CHECK_ENABLED`                 | No                       | Enable in-app update check banner (`1` default, set `0` to disable)                                                                          |
+| `UPDATE_CHECK_REPO`                    | No                       | GitHub repo slug used for update checks (default: `GreenSheep01201/claw-empire`)                                                             |
+| `UPDATE_CHECK_TTL_MS`                  | No                       | Update-check cache TTL in milliseconds (default: `1800000`)                                                                                  |
+| `UPDATE_CHECK_TIMEOUT_MS`              | No                       | GitHub request timeout in milliseconds (default: `4000`)                                                                                     |
+| `AUTO_UPDATE_ENABLED`                  | No                       | Default auto-update value when `settings.autoUpdateEnabled` is missing (`0` default)                                                         |
+| `AUTO_UPDATE_CHANNEL`                  | No                       | Allowed update channel: `patch` (default), `minor`, `all`                                                                                    |
+| `AUTO_UPDATE_IDLE_ONLY`                | No                       | Apply only when no `in_progress` tasks/active CLI processes (`1` default)                                                                    |
+| `AUTO_UPDATE_CHECK_INTERVAL_MS`        | No                       | Auto-update check interval in milliseconds (default follows `UPDATE_CHECK_TTL_MS`)                                                           |
+| `AUTO_UPDATE_INITIAL_DELAY_MS`         | No                       | Delay before first auto-update check after startup (default `60000`, min `60000`)                                                            |
+| `AUTO_UPDATE_TARGET_BRANCH`            | No                       | Branch name used for branch guard and `git fetch/pull` target (default `main`)                                                               |
+| `AUTO_UPDATE_GIT_FETCH_TIMEOUT_MS`     | No                       | Timeout for `git fetch` during update apply (default `120000`)                                                                               |
+| `AUTO_UPDATE_GIT_PULL_TIMEOUT_MS`      | No                       | Timeout for `git pull --ff-only` during update apply (default `180000`)                                                                      |
+| `AUTO_UPDATE_INSTALL_TIMEOUT_MS`       | No                       | Timeout for `pnpm install --frozen-lockfile` during update apply (default `300000`)                                                          |
+| `AUTO_UPDATE_COMMAND_OUTPUT_MAX_CHARS` | No                       | Max in-memory capture size per stdout/stderr stream before tail-trimming (default `200000`)                                                  |
+| `AUTO_UPDATE_TOTAL_TIMEOUT_MS`         | No                       | Global timeout cap for one apply run (default `900000`)                                                                                      |
+| `AUTO_UPDATE_RESTART_MODE`             | No                       | Restart policy after auto-apply: `notify` (default), `exit`, `command`                                                                       |
+| `AUTO_UPDATE_EXIT_DELAY_MS`            | No                       | Delay before process exit in `exit` mode (default `10000`, min `1200`)                                                                       |
+| `AUTO_UPDATE_RESTART_COMMAND`          | No                       | Executable + args used when restart mode is `command` (shell metacharacters + direct shell launchers rejected; runs with server permissions) |
 
 When `API_AUTH_TOKEN` is enabled, remote browser clients enter it at runtime. The token is stored only in `sessionStorage` and is not embedded in Vite build artifacts.
 For `OPENCLAW_CONFIG`, absolute path is recommended. In `v1.0.5`, quoted values and leading `~` are normalized automatically.
@@ -648,6 +643,7 @@ Use only a plain executable + fixed args format (no shell/interpreter wrappers, 
 ---
 
 <a id="cli-provider-setup"></a>
+
 ## Provider Setup (CLI / OAuth / API)
 
 Claw-Empire supports three provider paths:
@@ -658,12 +654,12 @@ Claw-Empire supports three provider paths:
 
 For CLI mode, install at least one:
 
-| Provider | Install | Auth |
-|----------|---------|------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude` (follow prompts) |
-| [Codex CLI](https://github.com/openai/codex) | `npm i -g @openai/codex` | Set `OPENAI_API_KEY` in `.env` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm i -g @google/gemini-cli` | OAuth via Settings panel |
-| [OpenCode](https://github.com/opencode-ai/opencode) | `npm i -g opencode` | Provider-specific |
+| Provider                                                      | Install                              | Auth                           |
+| ------------------------------------------------------------- | ------------------------------------ | ------------------------------ |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude` (follow prompts)      |
+| [Codex CLI](https://github.com/openai/codex)                  | `npm i -g @openai/codex`             | Set `OPENAI_API_KEY` in `.env` |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm i -g @google/gemini-cli`        | OAuth via Settings panel       |
+| [OpenCode](https://github.com/opencode-ai/opencode)           | `npm i -g opencode`                  | Provider-specific              |
 
 Configure providers and models in the **Settings > CLI Tools** panel within the app.
 
@@ -746,6 +742,6 @@ Full policy: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 **Built with pixels and passion.**
 
-*Claw-Empire — Where AI agents come to work.*
+_Claw-Empire — Where AI agents come to work._
 
 </div>

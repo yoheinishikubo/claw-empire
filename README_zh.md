@@ -68,26 +68,11 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ## 最新发布 (v1.2.0)
 
-- **员工管理（CRUD）** — 可在员工管理 UI 中直接招聘、编辑、删除员工。支持多语言姓名（英/韩/日/中）、部门/职级/提供商选择、精灵编号、性格设定。工作中的员工禁止删除。
-- **部门 CRUD** — 可创建、编辑、删除部门。支持 ID 校验、多语言名称、图标、颜色、描述和系统提示词。
-- **部门管理选项卡** — 在员工管理中新增子选项卡（`员工管理 | 部门管理`）。可通过箭头按钮调整排序并批量保存。
-- **部门排序支持拖拽** — 部门排序除箭头按钮外，新增拖拽排序方式。
-- **新增像素角色精灵（#13）** — 新增像素风角色（#13），包含全方向精灵集和生成管线。
-- **项目员工手动指派** — 项目新增 `自动分配/手动选择` 模式。手动模式下可通过带有精灵头像的多选 UI 指定特定员工。
-- **会议参与者过滤** — 手动选择模式下，仅规划组长 + 被指派员工所在部门的组长参加启动/评审会议。
-- **任务委派手动模式** — `findBestSubordinate` 在手动模式下仅从指定员工池 + 当前组长所属部门范围内选取候选人。
-- **项目管理移动端适配** — 移动端采用列表/详情切换模式，含返回按钮。
-- **Bug 修复** — 修复项目保存时的 500 错误，修复 `/api/departments/reorder` 保存路由冲突，修复亮色模式下错误提示可读性，并改善员工管理弹窗/表情选择器滚动体验。
-- **手动分配安全机制强化** — 项目保存时若未选择员工或仅选择了组长，弹出警告弹窗并显示选择摘要（总计/组长/下属成员），需确认后方可保存。
-- **项目 API `agent_ids` 校验** — `POST/PATCH /api/projects` 现在校验 agent_ids 的类型和存在性，无效 ID 将被明确错误拒绝。
-- **委派回退审计** — 手动模式下指定员工中无可执行的下属成员时，系统记录日志并向 CEO 发送安全通知后由组长直接执行。
-- **精灵注册冲突防护** — `POST /api/sprites/register` 在目标精灵文件已存在时返回 `409 sprite_number_exists`。
-- **便携精灵生成** — 精灵生成脚本改用仓库相对路径输出并自动创建 `public/sprites` 目录。
-- **自定义技能上传** — 可通过技能库 UI 直接上传 `.md` 技能文件并选择 CLI 代表进行培训。配有黑板教室动画和自定义技能管理界面。后端：`POST/GET /api/skills/custom`、`DELETE /api/skills/custom/:skillName`。
-- **部门 sort_order 迁移安全性** — 重建 UNIQUE 索引以避免迁移期间的约束冲突。
-- **CI E2E 覆盖与稳定性增强** — 新增 `tests/e2e/ci-coverage-gap.spec.ts` 覆盖关键缺口场景（任务全生命周期、CRUD 冒烟、设置/统计、决策收件箱、WebSocket），并通过临时 API 错误重试与确定性 Playwright 配置提升 CI 稳定性。
-- **服务器类型债务清理（移除 `@ts-nocheck`）** — 通过强化共享类型与拆分辅助模块，移除服务器运行时模块中的 `@ts-nocheck`，并保持既有行为不变。
-- **仓库格式标准化** — 引入 Prettier 基线（`.prettierrc.json`、`.prettierignore`），新增 `format`/`format:check` 脚本，并在 CI 中强制执行格式检查。
+- **功能更新** — 完成员工/部门 CRUD、项目手动分配、委派安全机制与自定义技能上传等核心能力。
+- **代码模块化** — 将大型前后端代码拆分到功能目录（`src/components/*`、`server/modules/routes/*`、`server/modules/workflow/*`），提升可维护性与评审可读性。
+- **类型债务治理** — 移除服务器运行时 `@ts-nocheck`，强化共享类型与运行时类型边界，在不改变既有行为的前提下提高类型安全。
+- **格式规范落地** — 新增 Prettier 基线（`.prettierrc.json`、`.prettierignore`）、`format`/`format:check` 脚本，并在 CI 执行格式校验。
+- **测试代码扩展 + CI 稳定化** — 新增 `tests/e2e/ci-coverage-gap.spec.ts`，补齐前后端单元测试（`src/api`、`useWebSocket`、`usePolling`、`i18n`、`auth`、`hub`、`runtime`、`gateway`），并稳定 Playwright CI 参数。
 
 - 详细说明：[`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
 
@@ -183,46 +168,46 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ## 功能特性
 
-| 功能 | 描述 |
-|------|------|
-| **像素风格办公室** | 动态办公室视图，代理可在 6 个部门之间行走、工作和参加会议 |
-| **看板任务面板** | 完整任务生命周期 — 收件箱、已计划、协作中、进行中、审阅中、已完成 — 支持拖拽操作 |
-| **CEO 聊天与指令** | 与团队负责人直接沟通；`$` 指令支持会议选择与项目路径/上下文路由（`project_path`、`project_context`） |
-| **多提供商支持** | Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity — 统一仪表板管理 |
-| **外部 API 提供商** | 通过设置 > API 选项卡将代理连接到外部 LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、自定义端点） |
-| **OAuth 集成** | GitHub 与 Google OAuth，AES 加密令牌本地存储于 SQLite |
-| **实时 WebSocket** | 实时状态更新、活动动态及代理状态同步 |
-| **活跃代理控制** | 查看工作中代理的进程/活动/空闲元数据，并可对卡住任务执行强制停止 |
-| **任务报告系统** | 完成报告弹窗、历史列表、团队报告详情与规划负责人最终汇总归档 |
-| **员工管理** | 员工招聘、编辑、删除，支持多语言姓名、部门/职级/提供商选择及性格设定 |
-| **代理排名与经验值** | 代理完成任务可获得经验值，排行榜追踪顶尖表现者 |
-| **技能库** | 600+ 分类技能（前端、后端、设计、AI、DevOps、安全等），支持自定义技能上传 |
-| **会议系统** | 支持计划内及临时会议，AI 生成纪要并支持多轮审阅 |
-| **Git Worktree 隔离** | 每个代理在独立的 git 分支中工作，仅在 CEO 批准后合并 |
-| **多语言界面** | 英语、韩语、日语、中文 — 自动检测或手动设置 |
-| **即时通讯集成** | Telegram、Discord、Slack 等 — 通过 OpenClaw gateway 发送 `$` CEO 指令并接收任务更新 |
-| **PowerPoint 导出** | 从会议纪要和报告生成演示文稿幻灯片 |
-| **通信 QA 脚本** | 内置 `test:comm:*` 脚本，可带重试与证据日志验证 CLI/OAuth/API 连通性 |
-| **应用内更新提示** | 检查 GitHub 最新发布，发现新版本时在顶部显示含 OS 区分 `git pull` 指引和发布说明链接的横幅 |
-| **部门管理** | 规划、开发、设计、QA/QC、DevSecOps、运营 — 专用管理选项卡支持箭头/拖拽排序编辑 |
-| **员工手动指派** | 为项目指定特定员工后，会议和任务委派仅针对指定员工运行 |
-| **精灵注册安全防护** | 通过 `409 sprite_number_exists` 响应防止重复精灵编号文件覆盖 |
-| **自定义技能上传** | 通过 UI 上传 `.md` 技能文件为 CLI 代表培训自定义技能，配有黑板教室动画和管理界面 |
+| 功能                  | 描述                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **像素风格办公室**    | 动态办公室视图，代理可在 6 个部门之间行走、工作和参加会议                                                                            |
+| **看板任务面板**      | 完整任务生命周期 — 收件箱、已计划、协作中、进行中、审阅中、已完成 — 支持拖拽操作                                                     |
+| **CEO 聊天与指令**    | 与团队负责人直接沟通；`$` 指令支持会议选择与项目路径/上下文路由（`project_path`、`project_context`）                                 |
+| **多提供商支持**      | Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity — 统一仪表板管理                                                           |
+| **外部 API 提供商**   | 通过设置 > API 选项卡将代理连接到外部 LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、自定义端点） |
+| **OAuth 集成**        | GitHub 与 Google OAuth，AES 加密令牌本地存储于 SQLite                                                                                |
+| **实时 WebSocket**    | 实时状态更新、活动动态及代理状态同步                                                                                                 |
+| **活跃代理控制**      | 查看工作中代理的进程/活动/空闲元数据，并可对卡住任务执行强制停止                                                                     |
+| **任务报告系统**      | 完成报告弹窗、历史列表、团队报告详情与规划负责人最终汇总归档                                                                         |
+| **员工管理**          | 员工招聘、编辑、删除，支持多语言姓名、部门/职级/提供商选择及性格设定                                                                 |
+| **代理排名与经验值**  | 代理完成任务可获得经验值，排行榜追踪顶尖表现者                                                                                       |
+| **技能库**            | 600+ 分类技能（前端、后端、设计、AI、DevOps、安全等），支持自定义技能上传                                                            |
+| **会议系统**          | 支持计划内及临时会议，AI 生成纪要并支持多轮审阅                                                                                      |
+| **Git Worktree 隔离** | 每个代理在独立的 git 分支中工作，仅在 CEO 批准后合并                                                                                 |
+| **多语言界面**        | 英语、韩语、日语、中文 — 自动检测或手动设置                                                                                          |
+| **即时通讯集成**      | Telegram、Discord、Slack 等 — 通过 OpenClaw gateway 发送 `$` CEO 指令并接收任务更新                                                  |
+| **PowerPoint 导出**   | 从会议纪要和报告生成演示文稿幻灯片                                                                                                   |
+| **通信 QA 脚本**      | 内置 `test:comm:*` 脚本，可带重试与证据日志验证 CLI/OAuth/API 连通性                                                                 |
+| **应用内更新提示**    | 检查 GitHub 最新发布，发现新版本时在顶部显示含 OS 区分 `git pull` 指引和发布说明链接的横幅                                           |
+| **部门管理**          | 规划、开发、设计、QA/QC、DevSecOps、运营 — 专用管理选项卡支持箭头/拖拽排序编辑                                                       |
+| **员工手动指派**      | 为项目指定特定员工后，会议和任务委派仅针对指定员工运行                                                                               |
+| **精灵注册安全防护**  | 通过 `409 sprite_number_exists` 响应防止重复精灵编号文件覆盖                                                                         |
+| **自定义技能上传**    | 通过 UI 上传 `.md` 技能文件为 CLI 代表培训自定义技能，配有黑板教室动画和管理界面                                                     |
 
 ---
 
 ## 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| **前端** | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
-| **像素艺术引擎** | PixiJS 8 |
-| **后端** | Express 5 + SQLite（零配置嵌入式数据库） |
-| **实时通信** | WebSocket (ws) |
-| **数据校验** | Zod 4 |
-| **图标** | Lucide React |
-| **路由** | React Router 7 |
-| **导出** | PptxGenJS（PowerPoint 生成） |
+| 层级             | 技术                                                |
+| ---------------- | --------------------------------------------------- |
+| **前端**         | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
+| **像素艺术引擎** | PixiJS 8                                            |
+| **后端**         | Express 5 + SQLite（零配置嵌入式数据库）            |
+| **实时通信**     | WebSocket (ws)                                      |
+| **数据校验**     | Zod 4                                               |
+| **图标**         | Lucide React                                        |
+| **路由**         | React Router 7                                      |
+| **导出**         | PptxGenJS（PowerPoint 生成）                        |
 
 <a id="ai-installation-guide">
 ## AI 安装指南
@@ -320,6 +305,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 ```
 
 期望结果：
+
 - 服务器已配置 `INBOX_WEBHOOK_SECRET` 且 `x-inbox-secret` 匹配时返回 `200`
 - 头缺失或不匹配时返回 `401`
 - 服务器未配置 `INBOX_WEBHOOK_SECRET` 时返回 `503`
@@ -330,24 +316,24 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 ### 环境要求
 
-| 工具 | 版本 | 安装方式 |
-|------|------|---------|
-| **Node.js** | >= 22 | [nodejs.org](https://nodejs.org/) |
-| **pnpm** | 最新版 | `corepack enable`（Node.js 内置） |
-| **Git** | 任意版本 | [git-scm.com](https://git-scm.com/) |
+| 工具        | 版本     | 安装方式                            |
+| ----------- | -------- | ----------------------------------- |
+| **Node.js** | >= 22    | [nodejs.org](https://nodejs.org/)   |
+| **pnpm**    | 最新版   | `corepack enable`（Node.js 内置）   |
+| **Git**     | 任意版本 | [git-scm.com](https://git-scm.com/) |
 
 ### 一键安装（推荐）
 
-| 平台 | 命令 |
-|------|------|
-| **macOS / Linux** | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh` |
+| 平台                     | 命令                                                                                                                                   |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh`                                    |
 | **Windows (PowerShell)** | `git clone https://github.com/GreenSheep01201/claw-empire.git; cd claw-empire; powershell -ExecutionPolicy Bypass -File .\install.ps1` |
 
 如果仓库已克隆：
 
-| 平台 | 命令 |
-|------|------|
-| **macOS / Linux** | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh` |
+| 平台                     | 命令                                                                                                             |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh`                                      |
 | **Windows (PowerShell)** | `git submodule update --init --recursive; powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
 
 ### OpenClaw `.env` 必填项（使用 `/api/inbox` 时）
@@ -362,6 +348,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 对于已克隆仓库仅执行 `git pull` 的场景，`pnpm dev*` / `pnpm start*` 首次运行也会按需自动修复一次，并写入 `CLAW_MIGRATION_V1_0_5_DONE=1` 防止重复执行。
 
 `/api/inbox` 要求服务端 `INBOX_WEBHOOK_SECRET` 与 `x-inbox-secret` 头完全一致。
+
 - 头缺失/不匹配 -> `401`
 - 服务端配置缺失（`INBOX_WEBHOOK_SECRET`） -> `503`
 
@@ -451,6 +438,7 @@ pnpm setup -- --port 8790
 ```
 
 <a id="openclaw-integration"></a>
+
 ### OpenClaw 集成设置（Telegram/Discord/Slack）
 
 `install.sh` / `install.ps1`（或 `scripts/openclaw-setup.*`）会在可用时自动检测并写入 `OPENCLAW_CONFIG` 到 `.env`。
@@ -460,10 +448,10 @@ pnpm setup -- --port 8790
 
 默认路径：
 
-| OS | 路径 |
-|----|------|
-| **macOS / Linux** | `~/.openclaw/openclaw.json` |
-| **Windows** | `%USERPROFILE%\.openclaw\openclaw.json` |
+| OS                | 路径                                    |
+| ----------------- | --------------------------------------- |
+| **macOS / Linux** | `~/.openclaw/openclaw.json`             |
+| **Windows**       | `%USERPROFILE%\.openclaw\openclaw.json` |
 
 手动命令：
 
@@ -484,6 +472,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 <a id="dollar-command-logic"></a>
+
 ### `$` 命令的 OpenClaw 聊天委托逻辑
 
 当聊天消息以 `$` 开头时，Claw-Empire 会将其作为 CEO 指令处理：
@@ -517,10 +506,10 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 在浏览器中打开：
 
-| URL | 描述 |
-|-----|------|
-| `http://127.0.0.1:8800` | 前端（Vite 开发服务器） |
-| `http://127.0.0.1:8790/healthz` | API 健康检查 |
+| URL                             | 描述                    |
+| ------------------------------- | ----------------------- |
+| `http://127.0.0.1:8800`         | 前端（Vite 开发服务器） |
+| `http://127.0.0.1:8790/healthz` | API 健康检查            |
 
 ---
 
@@ -528,26 +517,26 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 将 `.env.example` 复制为 `.env`。所有密钥均保存在本地，切勿提交 `.env` 文件。
 
-| 变量 | 是否必填 | 描述 |
-|------|---------|------|
-| `OAUTH_ENCRYPTION_SECRET` | **必填** | 用于加密 SQLite 中的 OAuth 令牌 |
-| `PORT` | 否 | 服务器端口（默认：`8790`） |
-| `HOST` | 否 | 绑定地址（默认：`127.0.0.1`） |
-| `API_AUTH_TOKEN` | 推荐 | 非 loopback API/WebSocket 访问使用的 Bearer 令牌 |
-| `INBOX_WEBHOOK_SECRET` | **使用 `/api/inbox` 时必填** | 必须与 `x-inbox-secret` 请求头一致的共享密钥 |
-| `OPENCLAW_CONFIG` | 使用 OpenClaw 时推荐 | 网关目标发现/聊天转发使用的 `openclaw.json` 绝对路径 |
-| `DB_PATH` | 否 | SQLite 数据库路径（默认：`./claw-empire.sqlite`） |
-| `LOGS_DIR` | 否 | 日志目录（默认：`./logs`） |
-| `OAUTH_GITHUB_CLIENT_ID` | 否 | GitHub OAuth 应用客户端 ID |
-| `OAUTH_GITHUB_CLIENT_SECRET` | 否 | GitHub OAuth 应用客户端密钥 |
-| `OAUTH_GOOGLE_CLIENT_ID` | 否 | Google OAuth 客户端 ID |
-| `OAUTH_GOOGLE_CLIENT_SECRET` | 否 | Google OAuth 客户端密钥 |
-| `OPENAI_API_KEY` | 否 | OpenAI API 密钥（用于 Codex） |
-| `UPDATE_CHECK_ENABLED` | 否 | 启用应用内更新检查横幅（默认 `1`，设为 `0` 可关闭） |
-| `UPDATE_CHECK_REPO` | 否 | 更新检查使用的 GitHub 仓库标识（默认：`GreenSheep01201/claw-empire`） |
-| `UPDATE_CHECK_TTL_MS` | 否 | 更新检查缓存 TTL（毫秒，默认：`1800000`） |
-| `UPDATE_CHECK_TIMEOUT_MS` | 否 | GitHub 请求超时（毫秒，默认：`4000`） |
-| `AUTO_UPDATE_ENABLED` | 否 | 当 `settings.autoUpdateEnabled` 缺失时使用的自动更新默认值（默认 `0`） |
+| 变量                         | 是否必填                     | 描述                                                                   |
+| ---------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| `OAUTH_ENCRYPTION_SECRET`    | **必填**                     | 用于加密 SQLite 中的 OAuth 令牌                                        |
+| `PORT`                       | 否                           | 服务器端口（默认：`8790`）                                             |
+| `HOST`                       | 否                           | 绑定地址（默认：`127.0.0.1`）                                          |
+| `API_AUTH_TOKEN`             | 推荐                         | 非 loopback API/WebSocket 访问使用的 Bearer 令牌                       |
+| `INBOX_WEBHOOK_SECRET`       | **使用 `/api/inbox` 时必填** | 必须与 `x-inbox-secret` 请求头一致的共享密钥                           |
+| `OPENCLAW_CONFIG`            | 使用 OpenClaw 时推荐         | 网关目标发现/聊天转发使用的 `openclaw.json` 绝对路径                   |
+| `DB_PATH`                    | 否                           | SQLite 数据库路径（默认：`./claw-empire.sqlite`）                      |
+| `LOGS_DIR`                   | 否                           | 日志目录（默认：`./logs`）                                             |
+| `OAUTH_GITHUB_CLIENT_ID`     | 否                           | GitHub OAuth 应用客户端 ID                                             |
+| `OAUTH_GITHUB_CLIENT_SECRET` | 否                           | GitHub OAuth 应用客户端密钥                                            |
+| `OAUTH_GOOGLE_CLIENT_ID`     | 否                           | Google OAuth 客户端 ID                                                 |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | 否                           | Google OAuth 客户端密钥                                                |
+| `OPENAI_API_KEY`             | 否                           | OpenAI API 密钥（用于 Codex）                                          |
+| `UPDATE_CHECK_ENABLED`       | 否                           | 启用应用内更新检查横幅（默认 `1`，设为 `0` 可关闭）                    |
+| `UPDATE_CHECK_REPO`          | 否                           | 更新检查使用的 GitHub 仓库标识（默认：`GreenSheep01201/claw-empire`）  |
+| `UPDATE_CHECK_TTL_MS`        | 否                           | 更新检查缓存 TTL（毫秒，默认：`1800000`）                              |
+| `UPDATE_CHECK_TIMEOUT_MS`    | 否                           | GitHub 请求超时（毫秒，默认：`4000`）                                  |
+| `AUTO_UPDATE_ENABLED`        | 否                           | 当 `settings.autoUpdateEnabled` 缺失时使用的自动更新默认值（默认 `0`） |
 
 启用 `API_AUTH_TOKEN` 后，远程浏览器客户端会在运行时输入令牌。该令牌仅保存在 `sessionStorage`，不会嵌入 Vite 构建产物。
 `OPENCLAW_CONFIG` 建议使用绝对路径；在 `v1.0.5` 中，外层引号和前导 `~` 也会自动规范化。
@@ -617,6 +606,7 @@ QA_API_AUTH_TOKEN="<API_AUTH_TOKEN>" pnpm run test:qa:project-path
 ---
 
 <a id="cli-提供商配置"></a>
+
 ## 提供商配置（CLI / OAuth / API）
 
 Claw-Empire 支持三种提供商接入路径：
@@ -627,12 +617,12 @@ Claw-Empire 支持三种提供商接入路径：
 
 若使用 CLI 模式，请至少安装其中一款：
 
-| 提供商 | 安装方式 | 认证 |
-|--------|---------|------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude`（按提示操作） |
-| [Codex CLI](https://github.com/openai/codex) | `npm i -g @openai/codex` | 在 `.env` 中设置 `OPENAI_API_KEY` |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm i -g @google/gemini-cli` | 通过设置面板进行 OAuth 认证 |
-| [OpenCode](https://github.com/opencode-ai/opencode) | `npm i -g opencode` | 按提供商要求配置 |
+| 提供商                                                        | 安装方式                             | 认证                              |
+| ------------------------------------------------------------- | ------------------------------------ | --------------------------------- |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude`（按提示操作）            |
+| [Codex CLI](https://github.com/openai/codex)                  | `npm i -g @openai/codex`             | 在 `.env` 中设置 `OPENAI_API_KEY` |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm i -g @google/gemini-cli`        | 通过设置面板进行 OAuth 认证       |
+| [OpenCode](https://github.com/opencode-ai/opencode)           | `npm i -g opencode`                  | 按提供商要求配置                  |
 
 在应用内的 **设置 > CLI 工具** 面板中配置提供商和模型。
 
@@ -715,6 +705,6 @@ Claw-Empire 在设计上充分考虑了安全性：
 
 **以像素为笔，以热情为墨。**
 
-*Claw-Empire — AI 代理的工作天地。*
+_Claw-Empire — AI 代理的工作天地。_
 
 </div>

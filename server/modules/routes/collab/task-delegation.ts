@@ -56,6 +56,8 @@ interface TaskDelegationDeps {
       leaderName: string;
       lang: Lang;
       taskId: string;
+      projectId?: string | null;
+      projectCandidateAgentIds?: string[] | null;
     },
     onComplete?: () => void,
   ) => void;
@@ -283,7 +285,18 @@ export function createTaskDelegationHandler(deps: TaskDelegationDeps) {
         startCrossDeptCooperation(
           mentionedDepts,
           0,
-          { teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId },
+          {
+            teamLeader,
+            taskTitle,
+            ceoMessage,
+            leaderDeptId,
+            leaderDeptName,
+            leaderName,
+            lang,
+            taskId,
+            projectId: selectedProject.id,
+            projectCandidateAgentIds,
+          },
           () => {
             if (isTaskWorkflowInterrupted(taskId)) return;
             notifyCeo(
@@ -334,6 +347,8 @@ export function createTaskDelegationHandler(deps: TaskDelegationDeps) {
             leaderName,
             lang,
             taskId,
+            projectId: selectedProject.id,
+            projectCandidateAgentIds,
           });
         }, crossDelay);
       };

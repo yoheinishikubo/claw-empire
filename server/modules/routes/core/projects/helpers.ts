@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 
 type NormalizeTextField = (value: unknown) => string | null;
 
@@ -302,13 +302,190 @@ export function createProjectRouteHelpers({ db, normalizeTextField }: CreateProj
     return pickDefaultBrowseRoot() || process.cwd();
   }
 
-  function execFileText(cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string }> {
+  function execFileText(
+    cmd: string,
+    args: string[],
+    timeoutMs: number,
+    windowsHide = true,
+  ): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
-      execFile(cmd, args, { timeout: timeoutMs, windowsHide: true }, (err, stdout, stderr) => {
-        if (err) return reject(err);
+      execFile(cmd, args, { timeout: timeoutMs, windowsHide }, (err, stdout, stderr) => {
+        if (err) {
+          (err as Error & { stderr?: string }).stderr = String(stderr ?? "");
+          return reject(err);
+        }
         resolve({ stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
       });
     });
+  }
+
+
+  // spawn 기반 프로세스 실행 (GUI 다이얼로그 호환용)
+  interface SpawnGuiResult {
+    code: number | null;
+    stdout: string;
+    stderr: string;
+  }
+  function spawnForGui(
+    cmd: string,
+    args: string[],
+    timeoutMs: number,
+  ): Promise<SpawnGuiResult> & { pid: number | undefined } {
+    let pid: number | undefined;
+    const promise = new Promise<SpawnGuiResult>((resolve, reject) => {
+      const child = spawn(cmd, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: false,
+      });
+      pid = child.pid;
+      let stdout = "";
+      let stderr = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      const timer = setTimeout(() => {
+        try {
+          child.kill();
+        } catch {
+          // ignore
+        }
+        reject(new Error("timeout"));
+      }, timeoutMs);
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        resolve({ code, stdout, stderr });
+      });
+    }) as Promise<SpawnGuiResult> & { pid: number | undefined };
+    promise.pid = pid;
+    return promise;
+  }
+
+  async function pickNativeDirectoryPathWindows(
+    timeoutMs: number,
+  ): Promise<{ path: string | null; cancelled: boolean; source: string }> {
+    const ts = `${process.pid}-${Date.now()}`;
+    const resultFile = path.join(os.tmpdir(), `claw-pick-result-${ts}.txt`);
+    const escapedResultFile = resultFile.replace(/\\/g, "\\\\");
+
+    // Shell.Application COM → WinForms 로딩 불필요, 즉시 다이얼로그 표시
+    // BIF_RETURNONLYFSDIRS(1) + BIF_NEWDIALOGSTYLE(64) = 65
+    const psCommand = [
+      "$shell = New-Object -ComObject Shell.Application;",
+      "$folder = $shell.BrowseForFolder(0, 'Select project folder for Claw-Empire', 65, 0);",
+      `if ($folder -ne $null) { [System.IO.File]::WriteAllText('${escapedResultFile}', $folder.Self.Path) }`,
+    ].join(" ");
+
+    try {
+      const { code, stderr } = await spawnForGui(
+        "powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-Command", psCommand],
+        timeoutMs,
+      );
+      if (code !== 0) {
+        throw new Error(`powershell exited with code ${code}: ${stderr.substring(0, 300)}`);
+      }
+      try {
+        const value = fs.readFileSync(resultFile, "utf8").trim();
+        return { path: value || null, cancelled: !value, source: "powershell" };
+      } catch {
+        return { path: null, cancelled: true, source: "powershell" };
+      }
+    } finally {
+      try {
+        fs.unlinkSync(resultFile);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  async function pickNativeDirectoryPathWindowsVbs(
+    timeoutMs: number,
+  ): Promise<{ path: string | null; cancelled: boolean; source: string }> {
+    const ts = `${process.pid}-${Date.now()}`;
+    const resultFile = path.join(os.tmpdir(), `claw-pick-result-${ts}.txt`);
+    const scriptFile = path.join(os.tmpdir(), `claw-pick-${ts}.vbs`);
+
+    const vbsScript = [
+      "On Error Resume Next",
+      "Dim shell, folder, fso",
+      'Set shell = CreateObject("Shell.Application")',
+      "If Err.Number <> 0 Then WScript.Quit 1",
+      'Set folder = shell.BrowseForFolder(0, "Select project folder for Claw-Empire", 65, 0)',
+      "If Not folder Is Nothing Then",
+      '  Set fso = CreateObject("Scripting.FileSystemObject")',
+      `  Set f = fso.CreateTextFile("${resultFile.replace(/\\/g, "\\\\")}", True)`,
+      "  f.Write folder.Self.Path",
+      "  f.Close",
+      "End If",
+    ].join("\r\n");
+
+    // BrowseForFolder는 동기 차단이므로 별도 helper가 다이얼로그를 포그라운드로 올림
+    const activatorFile = path.join(os.tmpdir(), `claw-pick-activate-${ts}.vbs`);
+    const activatorScript = [
+      "WScript.Sleep 400",
+      'Set sh = CreateObject("WScript.Shell")',
+      // wscript PID로 해당 프로세스의 윈도우를 포그라운드로 올림
+      "sh.AppActivate CLng(WScript.Arguments(0))",
+      "WScript.Sleep 300",
+      "sh.AppActivate CLng(WScript.Arguments(0))",
+    ].join("\r\n");
+
+    fs.writeFileSync(scriptFile, vbsScript, "utf8");
+    fs.writeFileSync(activatorFile, activatorScript, "utf8");
+    try {
+      // 메인 다이얼로그 프로세스
+      const mainPromise = spawnForGui("wscript.exe", [scriptFile], timeoutMs);
+      const mainPid = mainPromise.pid;
+
+      // helper: 400ms 후 메인 프로세스(wscript)의 윈도우를 포그라운드로 올림
+      const activatorChild = spawn(
+        "wscript.exe",
+        [activatorFile, String(mainPid ?? 0)],
+        { stdio: "ignore", windowsHide: true },
+      );
+
+      const { code: vbsCode, stderr: vbsStderr } = await mainPromise;
+
+      try {
+        activatorChild.kill();
+      } catch {
+        // ignore
+      }
+
+      if (vbsCode !== 0 && vbsCode !== null) {
+        throw new Error(`wscript exited with code ${vbsCode}: ${vbsStderr.substring(0, 300)}`);
+      }
+      try {
+        const value = fs.readFileSync(resultFile, "utf8").trim();
+        return { path: value || null, cancelled: !value, source: "wscript" };
+      } catch {
+        return { path: null, cancelled: true, source: "wscript" };
+      }
+    } finally {
+      try {
+        fs.unlinkSync(scriptFile);
+      } catch {
+        // ignore
+      }
+      try {
+        fs.unlinkSync(resultFile);
+      } catch {
+        // ignore
+      }
+      try {
+        fs.unlinkSync(activatorFile);
+      } catch {
+        // ignore
+      }
+    }
   }
 
   async function pickNativeDirectoryPath(): Promise<{ path: string | null; cancelled: boolean; source: string }> {
@@ -323,22 +500,21 @@ export function createProjectRouteHelpers({ db, normalizeTextField }: CreateProj
     }
 
     if (process.platform === "win32") {
-      const psScript = [
-        "Add-Type -AssemblyName System.Windows.Forms | Out-Null;",
-        "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog;",
-        "$dialog.Description = 'Select project folder for Claw-Empire';",
-        "$dialog.UseDescriptionForTitle = $true;",
-        "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.SelectedPath) }",
-      ].join(" ");
-      const { stdout } = await execFileText(
-        "powershell.exe",
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript],
-        timeoutMs,
-      );
-      const value = stdout.trim();
-      return { path: value || null, cancelled: !value, source: "powershell" };
+      // wscript.exe + VBS → 즉시 시작 (PowerShell은 시작이 느려 폴백으로만 사용)
+      try {
+        return await pickNativeDirectoryPathWindowsVbs(timeoutMs);
+      } catch (vbsErr) {
+        try {
+          return await pickNativeDirectoryPathWindows(timeoutMs);
+        } catch (psErr) {
+          const vbsMsg = vbsErr instanceof Error ? vbsErr.message : String(vbsErr);
+          const psMsg = psErr instanceof Error ? psErr.message : String(psErr);
+          throw new Error(`windows_picker_failed: wscript=${vbsMsg}; powershell=${psMsg}`);
+        }
+      }
     }
 
+    // Linux: zenity → kdialog 폴백
     try {
       const { stdout } = await execFileText(
         "zenity",

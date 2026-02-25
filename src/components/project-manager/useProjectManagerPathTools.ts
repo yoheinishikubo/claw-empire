@@ -114,7 +114,7 @@ export function useProjectManagerPathTools({
           : [];
         return formatAllowedRootsMessage(allowedRoots);
       }
-      if (err.code === "native_picker_unavailable") {
+      if (err.code === "native_picker_unavailable" || err.code === "native_picker_failed") {
         return nativePickerUnavailableMessage;
       }
       if (err.code === "project_path_not_directory") {
@@ -151,6 +151,8 @@ export function useProjectManagerPathTools({
     setManualPathEntries([]);
     setManualPathTruncated(false);
     setManualPathError(null);
+    setPathApiUnsupported(false);
+    setNativePickerUnsupported(false);
     setFormFeedback(null);
   }, []);
 

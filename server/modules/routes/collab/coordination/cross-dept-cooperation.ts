@@ -12,6 +12,8 @@ interface CrossDeptContext {
   leaderName: string;
   lang: Lang;
   taskId: string;
+  projectId?: string | null;
+  projectCandidateAgentIds?: string[] | null;
 }
 type CrossDeptCooperationDeps = any;
 
@@ -51,6 +53,50 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
     startProgressTimer,
   } = deps;
 
+  function getProjectCandidateAgentIds(projectId: string | null | undefined): string[] | null {
+    const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
+    if (!normalizedProjectId) return null;
+
+    const project = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(normalizedProjectId) as
+      | { assignment_mode?: string }
+      | undefined;
+    if (project?.assignment_mode !== "manual") return null;
+
+    return (
+      db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?").all(normalizedProjectId) as Array<{
+        agent_id: string;
+      }>
+    ).map((row) => row.agent_id);
+  }
+
+  function pickManualPoolAgent(
+    candidateAgentIds: string[],
+    preferredDeptId?: string | null,
+    excludeIds: string[] = [],
+  ): AgentRow | null {
+    const candidateIds = [...new Set(candidateAgentIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
+    if (candidateIds.length === 0) return null;
+
+    const excludedIds = [...new Set(excludeIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
+    const idPlaceholders = candidateIds.map(() => "?").join(",");
+    const params: unknown[] = [...candidateIds];
+
+    const deptClause = preferredDeptId ? "AND department_id = ?" : "";
+    if (preferredDeptId) params.push(preferredDeptId);
+
+    const excludeClause = excludedIds.length > 0 ? `AND id NOT IN (${excludedIds.map(() => "?").join(",")})` : "";
+    if (excludedIds.length > 0) params.push(...excludedIds);
+
+    const agents = db
+      .prepare(
+        `SELECT * FROM agents WHERE id IN (${idPlaceholders}) ${deptClause} ${excludeClause} ORDER BY
+         CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
+         CASE role WHEN 'senior' THEN 0 WHEN 'junior' THEN 1 WHEN 'intern' THEN 2 WHEN 'team_leader' THEN 3 ELSE 4 END`,
+      )
+      .all(...params) as unknown as AgentRow[];
+    return agents[0] ?? null;
+  }
+
   function recoverCrossDeptQueueAfterMissingCallback(completedChildTaskId: string): void {
     const child = db.prepare("SELECT source_task_id FROM tasks WHERE id = ?").get(completedChildTaskId) as
       | { source_task_id: string | null }
@@ -60,7 +106,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
     const parent = db
       .prepare(
         `
-    SELECT id, title, description, department_id, status, assigned_agent_id, started_at
+    SELECT id, title, description, department_id, project_id, status, assigned_agent_id, started_at
     FROM tasks
     WHERE id = ?
   `,
@@ -71,6 +117,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
           title: string;
           description: string | null;
           department_id: string | null;
+          project_id: string | null;
           status: string;
           assigned_agent_id: string | null;
           started_at: number | null;
@@ -128,6 +175,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
     const leader = findTeamLeader(parent.department_id);
     if (!leader) return;
     const lang = resolveLang(parent.description ?? parent.title);
+    const projectCandidateAgentIds = getProjectCandidateAgentIds(parent.project_id);
 
     const delegateMainTask = () => {
       const current = db
@@ -136,8 +184,15 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
       if (!current || current.status !== "collaborating") return;
       if (current.assigned_agent_id || current.started_at) return;
 
-      const subordinate = findBestSubordinate(parent.department_id!, leader.id);
-      const assignee = subordinate ?? leader;
+      const subordinate = findBestSubordinate(parent.department_id!, leader.id, projectCandidateAgentIds);
+      const manualPoolFallback =
+        Array.isArray(projectCandidateAgentIds) && projectCandidateAgentIds.length > 0
+          ? pickManualPoolAgent(projectCandidateAgentIds, parent.department_id, [leader.id]) ||
+            pickManualPoolAgent(projectCandidateAgentIds, null, [leader.id])
+          : null;
+      const leaderAllowed =
+        !Array.isArray(projectCandidateAgentIds) || projectCandidateAgentIds.includes(leader.id);
+      const assignee = subordinate ?? (leaderAllowed ? leader : manualPoolFallback) ?? leader;
       const deptName = getDeptName(parent.department_id!);
       const t = nowMs();
       db.prepare("UPDATE tasks SET assigned_agent_id = ?, status = 'planned', updated_at = ? WHERE id = ?").run(
@@ -170,6 +225,8 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
       leaderName: getAgentDisplayName(leader, lang),
       lang,
       taskId: parent.id,
+      projectId: parent.project_id,
+      projectCandidateAgentIds,
     };
     const shouldResumeMainAfterAll = !parent.assigned_agent_id && !parent.started_at;
     startCrossDeptCooperation(deptIds, nextIndex, ctx, shouldResumeMainAfterAll ? delegateMainTask : undefined);
@@ -195,8 +252,38 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
     }
 
     const { teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId } = ctx;
+    const resolvedProjectId =
+      ctx.projectId ??
+      ((db.prepare("SELECT project_id FROM tasks WHERE id = ?").get(taskId) as { project_id: string | null } | undefined)
+        ?.project_id ?? null);
+    const projectCandidateAgentIds =
+      ctx.projectCandidateAgentIds !== undefined
+        ? ctx.projectCandidateAgentIds
+        : getProjectCandidateAgentIds(resolvedProjectId);
+    const nextCtx: CrossDeptContext =
+      ctx.projectId === resolvedProjectId && ctx.projectCandidateAgentIds === projectCandidateAgentIds
+        ? ctx
+        : {
+            ...ctx,
+            projectId: resolvedProjectId,
+            projectCandidateAgentIds,
+          };
+
     const crossDeptName = getDeptName(crossDeptId);
-    const crossLeaderName = lang === "ko" ? crossLeader.name_ko || crossLeader.name : crossLeader.name;
+    const manualScoped = Array.isArray(projectCandidateAgentIds);
+    const crossSub = manualScoped
+      ? findBestSubordinate(crossDeptId, crossLeader.id, projectCandidateAgentIds)
+      : findBestSubordinate(crossDeptId, crossLeader.id);
+    const crossLeaderAllowed = !manualScoped || projectCandidateAgentIds.includes(crossLeader.id);
+    const manualPoolFallback =
+      manualScoped && projectCandidateAgentIds.length > 0
+        ? pickManualPoolAgent(projectCandidateAgentIds, crossDeptId, [teamLeader.id]) ||
+          pickManualPoolAgent(projectCandidateAgentIds, null, [teamLeader.id]) ||
+          pickManualPoolAgent(projectCandidateAgentIds, crossDeptId) ||
+          pickManualPoolAgent(projectCandidateAgentIds, null)
+        : null;
+    const crossCoordinator = crossLeaderAllowed ? crossLeader : crossSub ?? manualPoolFallback ?? crossLeader;
+    const crossCoordinatorName = lang === "ko" ? crossCoordinator.name_ko || crossCoordinator.name : crossCoordinator.name;
 
     // Notify remaining queue
     if (deptIds.length > 1) {
@@ -220,46 +307,65 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
     const coopReq = pickL(
       l(
         [
-          `${crossLeaderName}님, 안녕하세요! 대표님 지시로 "${taskTitle}" 업무 진행 중인데, ${crossDeptName} 협조가 필요합니다. 도움 부탁드려요! 🤝`,
-          `${crossLeaderName}님! "${taskTitle}" 건으로 ${crossDeptName} 지원이 필요합니다. 시간 되시면 협의 부탁드립니다.`,
+          `${crossCoordinatorName}님, 안녕하세요! 대표님 지시로 "${taskTitle}" 업무 진행 중인데, ${crossDeptName} 협조가 필요합니다. 도움 부탁드려요! 🤝`,
+          `${crossCoordinatorName}님! "${taskTitle}" 건으로 ${crossDeptName} 지원이 필요합니다. 시간 되시면 협의 부탁드립니다.`,
         ],
         [
-          `Hi ${crossLeaderName}! We're working on "${taskTitle}" per CEO's directive and need ${crossDeptName}'s support. Could you help? 🤝`,
-          `${crossLeaderName}, we need ${crossDeptName}'s input on "${taskTitle}". Let's sync when you have a moment.`,
+          `Hi ${crossCoordinatorName}! We're working on "${taskTitle}" per CEO's directive and need ${crossDeptName}'s support. Could you help? 🤝`,
+          `${crossCoordinatorName}, we need ${crossDeptName}'s input on "${taskTitle}". Let's sync when you have a moment.`,
         ],
-        [`${crossLeaderName}さん、CEO指示の"${taskTitle}"で${crossDeptName}の協力が必要です。お願いします！🤝`],
-        [`${crossLeaderName}，CEO安排的"${taskTitle}"需要${crossDeptName}配合，麻烦协调一下！🤝`],
+        [`${crossCoordinatorName}さん、CEO指示の"${taskTitle}"で${crossDeptName}の協力が必要です。お願いします！🤝`],
+        [`${crossCoordinatorName}，CEO安排的"${taskTitle}"需要${crossDeptName}配合，麻烦协调一下！🤝`],
       ),
       lang,
     );
-    sendAgentMessage(teamLeader, coopReq, "chat", "agent", crossLeader.id, taskId);
+    sendAgentMessage(
+      teamLeader,
+      coopReq,
+      "chat",
+      "agent",
+      crossCoordinator.id === teamLeader.id ? null : crossCoordinator.id,
+      taskId,
+    );
 
     // Broadcast delivery animation event for UI
     broadcast("cross_dept_delivery", {
       from_agent_id: teamLeader.id,
-      to_agent_id: crossLeader.id,
+      to_agent_id: crossCoordinator.id,
       task_title: taskTitle,
     });
 
     // Cross-department leader acknowledges AND creates a real task
     const crossAckDelay = 1500 + Math.random() * 1000;
     setTimeout(() => {
-      const crossSub = findBestSubordinate(crossDeptId, crossLeader.id);
-      const crossSubName = crossSub ? (lang === "ko" ? crossSub.name_ko || crossSub.name : crossSub.name) : null;
+      const crossSubAtRun = manualScoped
+        ? findBestSubordinate(crossDeptId, crossLeader.id, projectCandidateAgentIds)
+        : findBestSubordinate(crossDeptId, crossLeader.id);
+      const manualPoolFallbackAtRun =
+        manualScoped && projectCandidateAgentIds.length > 0
+          ? pickManualPoolAgent(projectCandidateAgentIds, crossDeptId, [teamLeader.id]) ||
+            pickManualPoolAgent(projectCandidateAgentIds, null, [teamLeader.id]) ||
+            pickManualPoolAgent(projectCandidateAgentIds, crossDeptId) ||
+            pickManualPoolAgent(projectCandidateAgentIds, null)
+          : null;
+      const execAgent =
+        crossSubAtRun ?? (crossLeaderAllowed ? crossLeader : manualPoolFallbackAtRun) ?? crossCoordinator ?? crossLeader;
+      const execName = lang === "ko" ? execAgent.name_ko || execAgent.name : execAgent.name;
 
-      const crossAckMsg = crossSub
+      const crossAckMsg =
+        execAgent.id !== crossCoordinator.id
         ? pickL(
             l(
               [
-                `네, ${leaderName}님! 확인했습니다. ${crossSubName}에게 바로 배정하겠습니다 👍`,
-                `알겠습니다! ${crossSubName}가 지원하도록 하겠습니다. 진행 상황 공유드릴게요.`,
+                `네, ${leaderName}님! 확인했습니다. ${execName}에게 바로 배정하겠습니다 👍`,
+                `알겠습니다! ${execName}가 지원하도록 하겠습니다. 진행 상황 공유드릴게요.`,
               ],
               [
-                `Sure, ${leaderName}! I'll assign ${crossSubName} to support right away 👍`,
-                `Got it! ${crossSubName} will handle the ${crossDeptName} side. I'll keep you posted.`,
+                `Sure, ${leaderName}! I'll assign ${execName} to support right away 👍`,
+                `Got it! ${execName} will handle the ${crossDeptName} side. I'll keep you posted.`,
               ],
-              [`了解しました、${leaderName}さん！${crossSubName}を割り当てます 👍`],
-              [`好的，${leaderName}！安排${crossSubName}支援 👍`],
+              [`了解しました、${leaderName}さん！${execName}を割り当てます 👍`],
+              [`好的，${leaderName}！安排${execName}支援 👍`],
             ),
             lang,
           )
@@ -272,7 +378,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
             ),
             lang,
           );
-      sendAgentMessage(crossLeader, crossAckMsg, "chat", "agent", null, taskId);
+      sendAgentMessage(crossCoordinator, crossAckMsg, "chat", "agent", null, taskId);
 
       // Create actual task in the cross-department
       const crossTaskId = randomUUID();
@@ -315,8 +421,8 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
         trigger: "workflow.cross_dept_cooperation",
         triggerDetail: `from_dept=${leaderDeptId}; to_dept=${crossDeptId}`,
         actorType: "agent",
-        actorId: crossLeader.id,
-        actorName: crossLeader.name,
+        actorId: crossCoordinator.id,
+        actorName: crossCoordinator.name,
         body: {
           parent_task_id: taskId,
           ceo_message: ceoMessage,
@@ -339,8 +445,6 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
       }
 
       // Delegate to cross-dept subordinate and spawn CLI
-      const execAgent = crossSub || crossLeader;
-      const execName = lang === "ko" ? execAgent.name_ko || execAgent.name : execAgent.name;
       const ct2 = nowMs();
       db.prepare(
         "UPDATE tasks SET assigned_agent_id = ?, status = 'in_progress', started_at = ?, updated_at = ? WHERE id = ?",
@@ -349,7 +453,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
         crossTaskId,
         execAgent.id,
       );
-      appendTaskLog(crossTaskId, "system", `${crossLeaderName} → ${execName}`);
+      appendTaskLog(crossTaskId, "system", `${crossCoordinatorName} → ${execName}`);
 
       broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(crossTaskId));
       broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(execAgent.id));
@@ -359,7 +463,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
         crossDeptNextCallbacks.set(crossTaskId, () => {
           const nextDelay = 2000 + Math.random() * 1000;
           setTimeout(() => {
-            startCrossDeptCooperation(deptIds, index + 1, ctx, onAllDone);
+            startCrossDeptCooperation(deptIds, index + 1, nextCtx, onAllDone);
           }, nextDelay);
         });
       } else if (onAllDone) {

@@ -60,7 +60,7 @@ export function usePathHelperMessages(t: TFunction) {
           : [];
         return formatAllowedRootsMessage(allowedRoots);
       }
-      if (error.code === "native_picker_unavailable") {
+      if (error.code === "native_picker_unavailable" || error.code === "native_picker_failed") {
         return nativePickerUnavailableMessage;
       }
       if (error.code === "project_path_not_directory") {

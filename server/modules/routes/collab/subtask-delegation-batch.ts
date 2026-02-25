@@ -145,6 +145,51 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
     finalizeDelegatedSubtasks,
     buildSubtaskDelegationPrompt,
   } = deps;
+
+  function getProjectCandidateAgentIds(projectId: string | null | undefined): string[] | null {
+    const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
+    if (!normalizedProjectId) return null;
+
+    const project = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(normalizedProjectId) as
+      | { assignment_mode?: string }
+      | undefined;
+    if (project?.assignment_mode !== "manual") return null;
+
+    return (
+      db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?").all(normalizedProjectId) as Array<{
+        agent_id: string;
+      }>
+    ).map((row) => row.agent_id);
+  }
+
+  function pickManualPoolAgent(
+    candidateAgentIds: string[],
+    preferredDeptId?: string | null,
+    excludeIds: string[] = [],
+  ): AgentRow | null {
+    const candidateIds = [...new Set(candidateAgentIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
+    if (candidateIds.length === 0) return null;
+
+    const excludedIds = [...new Set(excludeIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
+    const idPlaceholders = candidateIds.map(() => "?").join(",");
+    const params: unknown[] = [...candidateIds];
+
+    const deptClause = preferredDeptId ? "AND department_id = ?" : "";
+    if (preferredDeptId) params.push(preferredDeptId);
+
+    const excludeClause = excludedIds.length > 0 ? `AND id NOT IN (${excludedIds.map(() => "?").join(",")})` : "";
+    if (excludedIds.length > 0) params.push(...excludedIds);
+
+    const agents = db
+      .prepare(
+        `SELECT * FROM agents WHERE id IN (${idPlaceholders}) ${deptClause} ${excludeClause} ORDER BY
+         CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
+         CASE role WHEN 'senior' THEN 0 WHEN 'junior' THEN 1 WHEN 'intern' THEN 2 WHEN 'team_leader' THEN 3 ELSE 4 END`,
+      )
+      .all(...params) as unknown as AgentRow[];
+    return agents[0] ?? null;
+  }
+
   function delegateSubtaskBatch(
     subtasks: SubtaskRow[],
     queueIndex: number,
@@ -170,6 +215,8 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
     const subtaskIds = subtasks.map((st) => st.id);
     const firstTitle = subtasks[0].title;
     const batchTitle = subtasks.length > 1 ? `${firstTitle} +${subtasks.length - 1}` : firstTitle;
+    const projectCandidateAgentIds = getProjectCandidateAgentIds(parentTask.project_id);
+    const manualScoped = Array.isArray(projectCandidateAgentIds);
 
     const crossLeader = findTeamLeader(targetDeptId);
     if (!crossLeader) {
@@ -187,10 +234,22 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
     }
 
     const originLeader = findTeamLeader(parentTask.department_id);
+    const crossSub = manualScoped
+      ? findBestSubordinate(targetDeptId, crossLeader.id, projectCandidateAgentIds)
+      : findBestSubordinate(targetDeptId, crossLeader.id);
+    const crossLeaderAllowed = !manualScoped || projectCandidateAgentIds.includes(crossLeader.id);
+    const manualPoolFallback =
+      manualScoped && projectCandidateAgentIds.length > 0
+        ? pickManualPoolAgent(projectCandidateAgentIds, targetDeptId, originLeader ? [originLeader.id] : []) ||
+          pickManualPoolAgent(projectCandidateAgentIds, null, originLeader ? [originLeader.id] : []) ||
+          pickManualPoolAgent(projectCandidateAgentIds, targetDeptId) ||
+          pickManualPoolAgent(projectCandidateAgentIds, null)
+        : null;
+    const crossCoordinator = crossLeaderAllowed ? crossLeader : crossSub ?? manualPoolFallback ?? crossLeader;
     const originLeaderName = originLeader
       ? getAgentDisplayName(originLeader, lang)
       : teamLeadFallbackLabel({ l, pickL }, lang);
-    const crossLeaderName = getAgentDisplayName(crossLeader, lang);
+    const crossCoordinatorName = getAgentDisplayName(crossCoordinator, lang);
 
     if (queueTotal > 1) {
       notifyCeo(
@@ -214,37 +273,47 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
           l,
           pickL,
           lang,
-          crossLeaderName,
+          crossLeaderName: crossCoordinatorName,
           parentTitle: parentTask.title,
           itemCount: subtasks.length,
           batchTitle,
         }),
         "chat",
         "agent",
-        crossLeader.id,
+        crossCoordinator.id === originLeader.id ? null : crossCoordinator.id,
         parentTask.id,
       );
     }
 
     broadcast("cross_dept_delivery", {
       from_agent_id: originLeader?.id || null,
-      to_agent_id: crossLeader.id,
+      to_agent_id: crossCoordinator.id,
       task_title: batchTitle,
     });
 
     const ackDelay = 1500 + Math.random() * 1000;
     setTimeout(() => {
-      const crossSub = findBestSubordinate(targetDeptId, crossLeader.id);
-      const execAgent = crossSub || crossLeader;
+      const crossSubAtRun = manualScoped
+        ? findBestSubordinate(targetDeptId, crossLeader.id, projectCandidateAgentIds)
+        : findBestSubordinate(targetDeptId, crossLeader.id);
+      const manualPoolFallbackAtRun =
+        manualScoped && projectCandidateAgentIds.length > 0
+          ? pickManualPoolAgent(projectCandidateAgentIds, targetDeptId, originLeader ? [originLeader.id] : []) ||
+            pickManualPoolAgent(projectCandidateAgentIds, null, originLeader ? [originLeader.id] : []) ||
+            pickManualPoolAgent(projectCandidateAgentIds, targetDeptId) ||
+            pickManualPoolAgent(projectCandidateAgentIds, null)
+          : null;
+      const execAgent =
+        crossSubAtRun ?? (crossLeaderAllowed ? crossLeader : manualPoolFallbackAtRun) ?? crossCoordinator ?? crossLeader;
       const execName = getAgentDisplayName(execAgent, lang);
 
       sendAgentMessage(
-        crossLeader,
+        crossCoordinator,
         buildCrossLeaderAckMessage({
           l,
           pickL,
           lang,
-          hasSubordinate: Boolean(crossSub),
+          hasSubordinate: execAgent.id !== crossCoordinator.id,
           originLeaderName,
           itemCount: subtasks.length,
           batchTitle,
@@ -295,8 +364,8 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
         trigger: "workflow.subtask_batch_delegation",
         triggerDetail: `parent_task=${parentTask.id}; subtasks=${subtasks.length}; target_dept=${targetDeptId}`,
         actorType: "agent",
-        actorId: crossLeader.id,
-        actorName: crossLeader.name,
+        actorId: crossCoordinator.id,
+        actorName: crossCoordinator.name,
         body: {
           parent_task_id: parentTask.id,
           subtask_ids: subtaskIds,
@@ -321,7 +390,7 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
         delegatedTaskId,
         execAgent.id,
       );
-      appendTaskLog(delegatedTaskId, "system", `${crossLeaderName} → ${execName}`);
+      appendTaskLog(delegatedTaskId, "system", `${crossCoordinatorName} → ${execName}`);
 
       broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(delegatedTaskId));
       broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(execAgent.id));

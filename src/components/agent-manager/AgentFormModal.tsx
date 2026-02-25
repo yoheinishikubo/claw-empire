@@ -340,7 +340,15 @@ export default function AgentFormModal({
               <span className="text-xs">
                 {tr("4방향 스프라이트 시트 업로드 (2x2 그리드)", "Upload 4-direction sprite sheet (2x2 grid)")}
               </span>
-              <span className="text-[10px]">{tr("앞 / 왼 / 뒤 / 오른 순서", "Front / Left / Back / Right order")}</span>
+              <span className="text-xs">{tr("앞 / 왼 / 뒤 / 오른 순서", "Front / Left / Back / Right order")}</span>
+              <span className="text-xs">
+                {t({
+                  ko: "(흰색배경)",
+                  en: "(White background)",
+                  ja: "（白背景）",
+                  zh: "（白色背景）",
+                })}
+              </span>
               <input
                 type="file"
                 accept="image/*"

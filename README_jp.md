@@ -68,26 +68,11 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ## 最新リリース (v1.2.0)
 
-- **社員管理（CRUD）** — エージェント管理UIから直接社員の採用・編集・削除が可能。多言語名（英/韓/日/中）、部署・役職・プロバイダー選択、スプライト番号、性格設定に対応。作業中の社員は削除不可。
-- **部署 CRUD** — 部署の作成・編集・削除が可能。ID検証、多言語名、アイコン、色、説明、システムプロンプト対応。
-- **部署管理タブ追加** — エージェント管理内にサブタブ（`社員管理 | 部署管理`）を追加。並び順を矢印ボタンで調整し一括保存可能。
-- **部署順序のドラッグ＆ドロップ対応** — 部署順序を矢印ボタンに加えてドラッグ＆ドロップでも変更可能。
-- **新規ピクセルキャラクタースプライト（#13）** — 新しいピクセルアートキャラクター（#13）を追加。全方向スプライトセットと生成パイプライン付き。
-- **プロジェクトへの社員手動割り当て** — プロジェクトに `自動割り当て/手動選択` モードを設定可能。手動モードではスプライトアバター付きマルチセレクトUIで任意の社員を指定。
-- **会議参加者フィルタリング** — 手動選択モードでは、キックオフ/レビュー会議に企画チームリーダー＋指定社員の部署リーダーのみが参加。
-- **タスク委任の手動モード対応** — `findBestSubordinate` が手動選択モードでは指定社員プール + 現在のチームリーダー部署の範囲内のみで候補を選定。
-- **プロジェクト管理のモバイル対応** — モバイルではリスト/詳細のトグル切替方式に。戻るボタン付き。
-- **バグ修正** — プロジェクト保存時の500エラー修正、`/api/departments/reorder` 保存ルーティング競合修正、ライトモードのエラーメッセージ可読性修正、社員管理モーダル/絵文字ピッカーのスクロール改善。
-- **手動割り当てセーフガード強化** — プロジェクト保存時に社員未選択/チームリーダーのみ選択の場合、警告モーダルを表示。選択サマリー（合計/リーダー/サブ担当）を確認後に保存可能。
-- **プロジェクトAPI `agent_ids` 検証** — `POST/PATCH /api/projects` で agent_ids の型・存在を検証し、無効なIDは明示的エラーで拒否。
-- **委任フォールバック監査** — 手動モードで指定社員に実行可能なサブ担当がいない場合、システムログとCEO通知を記録してからチームリーダーが直接実行。
-- **スプライト登録衝突防止** — `POST /api/sprites/register` で既存スプライト番号ファイルがある場合 `409 sprite_number_exists` で拒否。
-- **ポータブルスプライト生成** — スプライト生成スクリプトがリポジトリ相対パスで出力し、`public/sprites` を自動作成。
-- **カスタムスキルアップロード** — スキルライブラリUIから `.md` スキルファイルを直接アップロードしてCLI代表に学習させる機能。黒板教室アニメーションとカスタムスキル管理インターフェース付き。バックエンド: `POST/GET /api/skills/custom`、`DELETE /api/skills/custom/:skillName`。
-- **部署sort_orderマイグレーション安全性** — UNIQUEインデックスを再作成してマイグレーション中の制約違反を防止。
-- **CI E2Eカバレッジ + 安定化強化** — 主要ギャップシナリオ（タスクライフサイクル、CRUDスモーク、設定/統計、Decision Inbox、WebSocket）を `tests/e2e/ci-coverage-gap.spec.ts` に追加し、一時的なAPIエラーの再試行と決定的なPlaywright設定でCI実行を安定化。
-- **サーバー型負債の整理（`@ts-nocheck`除去）** — サーバーランタイムモジュールの `@ts-nocheck` を、共通型の強化とヘルパーモジュール分割で除去し、既存動作を維持。
-- **リポジトリ全体のフォーマット標準化** — Prettier基準（`.prettierrc.json`, `.prettierignore`）を導入し、`format`/`format:check` スクリプトとCIフォーマット検証を追加。
+- **機能アップデート** — 社員/部署CRUD、プロジェクト手動アサイン、委任セーフガード、カスタムスキルアップロードを本格対応。
+- **コードのモジュール化** — 大型化したフロント/バックエンドを機能別フォルダ（`src/components/*`, `server/modules/routes/*`, `server/modules/workflow/*`）へ分割し、保守性とレビュー性を向上。
+- **型負債の解消** — サーバーランタイムの `@ts-nocheck` を除去し、共通型・実行時型の境界を強化して既存動作を維持。
+- **フォーマット標準化** — Prettier 基準（`.prettierrc.json`, `.prettierignore`）と `format`/`format:check` を導入し、CIでフォーマット検証を実施。
+- **テスト拡張 + CI安定化** — `tests/e2e/ci-coverage-gap.spec.ts` を追加し、フロント/バックエンド単体テスト（`src/api`, `useWebSocket`, `usePolling`, `i18n`, `auth`, `hub`, `runtime`, `gateway`）を強化。Playwright CI設定も安定化。
 
 - 詳細: [`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
 
@@ -183,46 +168,46 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ## 機能一覧
 
-| 機能 | 説明 |
-|------|------|
-| **ピクセルアートオフィス** | 6つの部署でエージェントが歩き回り、作業し、会議に参加するアニメーション付きオフィスビュー |
-| **カンバンタスクボード** | 受信箱、計画中、協議中、進行中、レビュー中、完了 — ドラッグ＆ドロップ対応の完全なタスクライフサイクル管理 |
+| 機能                            | 説明                                                                                                                                         |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ピクセルアートオフィス**      | 6つの部署でエージェントが歩き回り、作業し、会議に参加するアニメーション付きオフィスビュー                                                    |
+| **カンバンタスクボード**        | 受信箱、計画中、協議中、進行中、レビュー中、完了 — ドラッグ＆ドロップ対応の完全なタスクライフサイクル管理                                    |
 | **CEOチャット＆ディレクティブ** | チームリーダーへの直接コミュニケーション；`$` ディレクティブで会議選択と作業パス/コンテキスト（`project_path`、`project_context`）を指定可能 |
-| **マルチプロバイダー対応** | Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity — すべて一つのダッシュボードから管理 |
-| **外部APIプロバイダー** | 設定 > APIタブからエージェントを外部LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、カスタム）に接続 |
-| **OAuth連携** | ローカルSQLiteへのAES暗号化トークンストレージによるGitHub・Google OAuth |
-| **リアルタイムWebSocket** | ライブステータス更新、アクティビティフィード、エージェント状態のリアルタイム同期 |
-| **アクティブエージェント制御** | 作業中エージェントのプロセス/活動/アイドル情報を可視化し、スタックしたタスクを強制停止 |
-| **タスクレポートシステム** | 完了ポップアップ、レポート履歴、チーム別詳細、企画リード統合アーカイブ |
-| **社員管理** | 社員の採用・編集・削除、多言語名、部署・役職・プロバイダー選択および性格設定に対応 |
-| **エージェントランキング＆XP** | タスク完了でXPを獲得するエージェント；上位パフォーマーを追跡するランキングボード |
-| **スキルライブラリ** | Frontend、Backend、Design、AI、DevOps、Securityなど600以上のカテゴリ別スキル、カスタムスキルアップロード対応 |
-| **ミーティングシステム** | 予定・臨時ミーティング対応；AIによる議事録自動生成と複数ラウンドレビュー機能 |
-| **Git Worktree分離** | 各エージェントは独立したgitブランチで作業し、CEO承認後にのみマージ |
-| **多言語UI** | 英語、韓国語、日本語、中国語 — 自動検出または手動設定 |
-| **メッセンジャー連携** | Telegram、Discord、Slack等 — OpenClawゲートウェイ経由で `$` CEOディレクティブ送信＆タスク更新受信 |
-| **PowerPointエクスポート** | 議事録やレポートからプレゼンテーションスライドを自動生成 |
-| **通信QAスクリプト** | `test:comm:*` スクリプトでCLI/OAuth/API疎通を再試行・証跡ログ付きで検証 |
-| **インアプリ更新通知** | GitHub 最新リリースを確認し、新バージョンがある場合にOS別 `git pull` 手順とリリースノートリンクを上部バナー表示 |
-| **部署管理** | 企画、開発、デザイン、QA/QC、DevSecOps、オペレーション — 専用管理タブで矢印/ドラッグ＆ドロップ並び順編集が可能 |
-| **社員手動割り当て** | プロジェクトに特定社員を指定すると、会議やタスク委任で指定社員のみを対象に運用 |
-| **スプライト登録安全装置** | 重複スプライト番号ファイルの上書きを `409 sprite_number_exists` レスポンスで防止 |
-| **カスタムスキルアップロード** | UIから `.md` スキルファイルをアップロードしてCLI代表にカスタムスキルを学習させる。黒板教室アニメーションと管理画面付き |
+| **マルチプロバイダー対応**      | Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity — すべて一つのダッシュボードから管理                                               |
+| **外部APIプロバイダー**         | 設定 > APIタブからエージェントを外部LLM API（OpenAI、Anthropic、Google、Ollama、OpenRouter、Together、Groq、Cerebras、カスタム）に接続       |
+| **OAuth連携**                   | ローカルSQLiteへのAES暗号化トークンストレージによるGitHub・Google OAuth                                                                      |
+| **リアルタイムWebSocket**       | ライブステータス更新、アクティビティフィード、エージェント状態のリアルタイム同期                                                             |
+| **アクティブエージェント制御**  | 作業中エージェントのプロセス/活動/アイドル情報を可視化し、スタックしたタスクを強制停止                                                       |
+| **タスクレポートシステム**      | 完了ポップアップ、レポート履歴、チーム別詳細、企画リード統合アーカイブ                                                                       |
+| **社員管理**                    | 社員の採用・編集・削除、多言語名、部署・役職・プロバイダー選択および性格設定に対応                                                           |
+| **エージェントランキング＆XP**  | タスク完了でXPを獲得するエージェント；上位パフォーマーを追跡するランキングボード                                                             |
+| **スキルライブラリ**            | Frontend、Backend、Design、AI、DevOps、Securityなど600以上のカテゴリ別スキル、カスタムスキルアップロード対応                                 |
+| **ミーティングシステム**        | 予定・臨時ミーティング対応；AIによる議事録自動生成と複数ラウンドレビュー機能                                                                 |
+| **Git Worktree分離**            | 各エージェントは独立したgitブランチで作業し、CEO承認後にのみマージ                                                                           |
+| **多言語UI**                    | 英語、韓国語、日本語、中国語 — 自動検出または手動設定                                                                                        |
+| **メッセンジャー連携**          | Telegram、Discord、Slack等 — OpenClawゲートウェイ経由で `$` CEOディレクティブ送信＆タスク更新受信                                            |
+| **PowerPointエクスポート**      | 議事録やレポートからプレゼンテーションスライドを自動生成                                                                                     |
+| **通信QAスクリプト**            | `test:comm:*` スクリプトでCLI/OAuth/API疎通を再試行・証跡ログ付きで検証                                                                      |
+| **インアプリ更新通知**          | GitHub 最新リリースを確認し、新バージョンがある場合にOS別 `git pull` 手順とリリースノートリンクを上部バナー表示                              |
+| **部署管理**                    | 企画、開発、デザイン、QA/QC、DevSecOps、オペレーション — 専用管理タブで矢印/ドラッグ＆ドロップ並び順編集が可能                               |
+| **社員手動割り当て**            | プロジェクトに特定社員を指定すると、会議やタスク委任で指定社員のみを対象に運用                                                               |
+| **スプライト登録安全装置**      | 重複スプライト番号ファイルの上書きを `409 sprite_number_exists` レスポンスで防止                                                             |
+| **カスタムスキルアップロード**  | UIから `.md` スキルファイルをアップロードしてCLI代表にカスタムスキルを学習させる。黒板教室アニメーションと管理画面付き                       |
 
 ---
 
 ## 技術スタック
 
-| レイヤー | 技術 |
-|---------|------|
-| **フロントエンド** | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
-| **ピクセルアートエンジン** | PixiJS 8 |
-| **バックエンド** | Express 5 + SQLite（設定不要の組み込みDB） |
-| **リアルタイム通信** | WebSocket (ws) |
-| **バリデーション** | Zod 4 |
-| **アイコン** | Lucide React |
-| **ルーティング** | React Router 7 |
-| **エクスポート** | PptxGenJS（PowerPoint生成） |
+| レイヤー                   | 技術                                                |
+| -------------------------- | --------------------------------------------------- |
+| **フロントエンド**         | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
+| **ピクセルアートエンジン** | PixiJS 8                                            |
+| **バックエンド**           | Express 5 + SQLite（設定不要の組み込みDB）          |
+| **リアルタイム通信**       | WebSocket (ws)                                      |
+| **バリデーション**         | Zod 4                                               |
+| **アイコン**               | Lucide React                                        |
+| **ルーティング**           | React Router 7                                      |
+| **エクスポート**           | PptxGenJS（PowerPoint生成）                         |
 
 <a id="ai-installation-guide">
 ## AIインストールガイド
@@ -320,6 +305,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 ```
 
 期待値:
+
 - サーバーに `INBOX_WEBHOOK_SECRET` が設定され、`x-inbox-secret` が一致する場合は `200`
 - ヘッダー欠落/不一致の場合は `401`
 - サーバー側 `INBOX_WEBHOOK_SECRET` 未設定の場合は `503`
@@ -330,24 +316,24 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 ### 前提条件
 
-| ツール | バージョン | インストール |
-|--------|-----------|-------------|
-| **Node.js** | >= 22 | [nodejs.org](https://nodejs.org/) |
-| **pnpm** | 最新版 | `corepack enable`（Node.js組み込み） |
-| **Git** | 任意 | [git-scm.com](https://git-scm.com/) |
+| ツール      | バージョン | インストール                         |
+| ----------- | ---------- | ------------------------------------ |
+| **Node.js** | >= 22      | [nodejs.org](https://nodejs.org/)    |
+| **pnpm**    | 最新版     | `corepack enable`（Node.js組み込み） |
+| **Git**     | 任意       | [git-scm.com](https://git-scm.com/)  |
 
 ### ワンクリックセットアップ（推奨）
 
-| プラットフォーム | コマンド |
-|------------------|----------|
-| **macOS / Linux** | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh` |
+| プラットフォーム         | コマンド                                                                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh`                                    |
 | **Windows (PowerShell)** | `git clone https://github.com/GreenSheep01201/claw-empire.git; cd claw-empire; powershell -ExecutionPolicy Bypass -File .\install.ps1` |
 
 既にクローン済みの場合:
 
-| プラットフォーム | コマンド |
-|------------------|----------|
-| **macOS / Linux** | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh` |
+| プラットフォーム         | コマンド                                                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh`                                      |
 | **Windows (PowerShell)** | `git submodule update --init --recursive; powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
 
 ### OpenClaw `.env` 必須設定（`/api/inbox` 利用時）
@@ -362,6 +348,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 既存クローンで `git pull` のみ実施した場合も、`pnpm dev*` / `pnpm start*` 初回実行時に必要条件で1回自動補正し、以後の再実行防止として `CLAW_MIGRATION_V1_0_5_DONE=1` を保存します。
 
 `/api/inbox` はサーバー側 `INBOX_WEBHOOK_SECRET` と `x-inbox-secret` ヘッダーの完全一致が必要です。
+
 - ヘッダー欠落/不一致 -> `401`
 - サーバー設定欠落（`INBOX_WEBHOOK_SECRET`） -> `503`
 
@@ -451,6 +438,7 @@ pnpm setup -- --port 8790
 ```
 
 <a id="openclaw-integration"></a>
+
 ### OpenClaw連携セットアップ（Telegram/Discord/Slack）
 
 `install.sh` / `install.ps1`（または `scripts/openclaw-setup.*`）は、可能な場合に `OPENCLAW_CONFIG` を自動検出して `.env` に設定します。
@@ -460,10 +448,10 @@ pnpm setup -- --port 8790
 
 デフォルトパス:
 
-| OS | パス |
-|----|------|
-| **macOS / Linux** | `~/.openclaw/openclaw.json` |
-| **Windows** | `%USERPROFILE%\.openclaw\openclaw.json` |
+| OS                | パス                                    |
+| ----------------- | --------------------------------------- |
+| **macOS / Linux** | `~/.openclaw/openclaw.json`             |
+| **Windows**       | `%USERPROFILE%\.openclaw\openclaw.json` |
 
 手動実行:
 
@@ -484,6 +472,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 <a id="dollar-command-logic"></a>
+
 ### `$` コマンドによるOpenClawチャット依頼ロジック
 
 チャットメッセージが `$` で始まる場合、Claw-EmpireはCEOディレクティブとして扱います。
@@ -517,10 +506,10 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 ブラウザで開く：
 
-| URL | 説明 |
-|-----|------|
-| `http://127.0.0.1:8800` | フロントエンド（Vite開発サーバー） |
-| `http://127.0.0.1:8790/healthz` | APIヘルスチェック |
+| URL                             | 説明                               |
+| ------------------------------- | ---------------------------------- |
+| `http://127.0.0.1:8800`         | フロントエンド（Vite開発サーバー） |
+| `http://127.0.0.1:8790/healthz` | APIヘルスチェック                  |
 
 ---
 
@@ -528,26 +517,26 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 `.env.example` を `.env` にコピーしてください。すべてのシークレットはローカルに保管されます — `.env` はコミットしないでください。
 
-| 変数 | 必須 | 説明 |
-|------|------|------|
-| `OAUTH_ENCRYPTION_SECRET` | **必須** | SQLite内のOAuthトークンを暗号化 |
-| `PORT` | 任意 | サーバーポート（デフォルト: `8790`） |
-| `HOST` | 任意 | バインドアドレス（デフォルト: `127.0.0.1`） |
-| `API_AUTH_TOKEN` | 推奨 | ループバック以外のAPI/WebSocketアクセス向けBearerトークン |
-| `INBOX_WEBHOOK_SECRET` | **`/api/inbox` 利用時必須** | `x-inbox-secret` ヘッダーと一致させる共有シークレット |
-| `OPENCLAW_CONFIG` | OpenClaw利用時推奨 | ゲートウェイターゲット検出/チャット連携で使う `openclaw.json` の絶対パス |
-| `DB_PATH` | 任意 | SQLiteデータベースパス（デフォルト: `./claw-empire.sqlite`） |
-| `LOGS_DIR` | 任意 | ログディレクトリ（デフォルト: `./logs`） |
-| `OAUTH_GITHUB_CLIENT_ID` | 任意 | GitHub OAuth Appクライアント ID |
-| `OAUTH_GITHUB_CLIENT_SECRET` | 任意 | GitHub OAuth Appクライアントシークレット |
-| `OAUTH_GOOGLE_CLIENT_ID` | 任意 | Google OAuthクライアントID |
-| `OAUTH_GOOGLE_CLIENT_SECRET` | 任意 | Google OAuthクライアントシークレット |
-| `OPENAI_API_KEY` | 任意 | OpenAI APIキー（Codex用） |
-| `UPDATE_CHECK_ENABLED` | 任意 | インアプリ更新確認バナーを有効化（デフォルト `1`、`0` で無効） |
-| `UPDATE_CHECK_REPO` | 任意 | 更新確認に使う GitHub リポジトリスラッグ（デフォルト: `GreenSheep01201/claw-empire`） |
-| `UPDATE_CHECK_TTL_MS` | 任意 | 更新確認キャッシュ TTL（ミリ秒、デフォルト: `1800000`） |
-| `UPDATE_CHECK_TIMEOUT_MS` | 任意 | GitHub リクエストタイムアウト（ミリ秒、デフォルト: `4000`） |
-| `AUTO_UPDATE_ENABLED` | 任意 | `settings.autoUpdateEnabled` が未設定時に使う自動更新の既定値（デフォルト `0`） |
+| 変数                         | 必須                        | 説明                                                                                  |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------------------------- |
+| `OAUTH_ENCRYPTION_SECRET`    | **必須**                    | SQLite内のOAuthトークンを暗号化                                                       |
+| `PORT`                       | 任意                        | サーバーポート（デフォルト: `8790`）                                                  |
+| `HOST`                       | 任意                        | バインドアドレス（デフォルト: `127.0.0.1`）                                           |
+| `API_AUTH_TOKEN`             | 推奨                        | ループバック以外のAPI/WebSocketアクセス向けBearerトークン                             |
+| `INBOX_WEBHOOK_SECRET`       | **`/api/inbox` 利用時必須** | `x-inbox-secret` ヘッダーと一致させる共有シークレット                                 |
+| `OPENCLAW_CONFIG`            | OpenClaw利用時推奨          | ゲートウェイターゲット検出/チャット連携で使う `openclaw.json` の絶対パス              |
+| `DB_PATH`                    | 任意                        | SQLiteデータベースパス（デフォルト: `./claw-empire.sqlite`）                          |
+| `LOGS_DIR`                   | 任意                        | ログディレクトリ（デフォルト: `./logs`）                                              |
+| `OAUTH_GITHUB_CLIENT_ID`     | 任意                        | GitHub OAuth Appクライアント ID                                                       |
+| `OAUTH_GITHUB_CLIENT_SECRET` | 任意                        | GitHub OAuth Appクライアントシークレット                                              |
+| `OAUTH_GOOGLE_CLIENT_ID`     | 任意                        | Google OAuthクライアントID                                                            |
+| `OAUTH_GOOGLE_CLIENT_SECRET` | 任意                        | Google OAuthクライアントシークレット                                                  |
+| `OPENAI_API_KEY`             | 任意                        | OpenAI APIキー（Codex用）                                                             |
+| `UPDATE_CHECK_ENABLED`       | 任意                        | インアプリ更新確認バナーを有効化（デフォルト `1`、`0` で無効）                        |
+| `UPDATE_CHECK_REPO`          | 任意                        | 更新確認に使う GitHub リポジトリスラッグ（デフォルト: `GreenSheep01201/claw-empire`） |
+| `UPDATE_CHECK_TTL_MS`        | 任意                        | 更新確認キャッシュ TTL（ミリ秒、デフォルト: `1800000`）                               |
+| `UPDATE_CHECK_TIMEOUT_MS`    | 任意                        | GitHub リクエストタイムアウト（ミリ秒、デフォルト: `4000`）                           |
+| `AUTO_UPDATE_ENABLED`        | 任意                        | `settings.autoUpdateEnabled` が未設定時に使う自動更新の既定値（デフォルト `0`）       |
 
 `API_AUTH_TOKEN` を有効化した場合、リモートブラウザクライアントは実行時にトークンを入力します。トークンは `sessionStorage` のみに保存され、Viteビルド成果物には埋め込まれません。
 `OPENCLAW_CONFIG` は絶対パス推奨で、`v1.0.5` では引用符/先頭 `~` も自動正規化されます。
@@ -617,6 +606,7 @@ GitHub により新しいリリースが公開されると、Claw-Empire は UI 
 ---
 
 <a id="cliプロバイダーの設定"></a>
+
 ## プロバイダー設定（CLI / OAuth / API）
 
 Claw-Empireは次の3種類のプロバイダー接続に対応しています：
@@ -627,12 +617,12 @@ Claw-Empireは次の3種類のプロバイダー接続に対応しています�
 
 CLIモードを利用する場合は、少なくとも一つをインストールしてください：
 
-| プロバイダー | インストール | 認証 |
-|-------------|------------|------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude`（プロンプトに従う） |
-| [Codex CLI](https://github.com/openai/codex) | `npm i -g @openai/codex` | `.env`に`OPENAI_API_KEY`を設定 |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm i -g @google/gemini-cli` | 設定パネルからOAuth認証 |
-| [OpenCode](https://github.com/opencode-ai/opencode) | `npm i -g opencode` | プロバイダー固有の設定 |
+| プロバイダー                                                  | インストール                         | 認証                           |
+| ------------------------------------------------------------- | ------------------------------------ | ------------------------------ |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude`（プロンプトに従う）   |
+| [Codex CLI](https://github.com/openai/codex)                  | `npm i -g @openai/codex`             | `.env`に`OPENAI_API_KEY`を設定 |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm i -g @google/gemini-cli`        | 設定パネルからOAuth認証        |
+| [OpenCode](https://github.com/opencode-ai/opencode)           | `npm i -g opencode`                  | プロバイダー固有の設定         |
 
 アプリ内の **Settings > CLI Tools** パネルでプロバイダーとモデルを設定してください。
 
@@ -715,6 +705,6 @@ Claw-Empireはセキュリティを重視した設計になっています：
 
 **ピクセルと情熱で作られています。**
 
-*Claw-Empire — AIエージェントたちが働く場所。*
+_Claw-Empire — AIエージェントたちが働く場所。_
 
 </div>

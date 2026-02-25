@@ -68,26 +68,11 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 
 ## 최신 릴리즈 (v1.2.0)
 
-- **직원관리 (CRUD)** — 직원관리 UI에서 직접 직원을 채용·수정·삭제할 수 있습니다. 다국어 이름(한/영/일/중), 부서·직급·프로바이더 선택, 스프라이트 번호, 성격 설정 지원. 작업 중인 직원은 삭제 방지.
-- **부서 CRUD** — 부서를 생성·수정·삭제할 수 있습니다. ID 검증, 다국어 이름, 아이콘, 색상, 설명, 시스템 프롬프트 필드 지원.
-- **부서관리 탭 추가** — 직원관리 내 서브탭(`직원관리 | 부서관리`)을 추가했습니다. 부서 목록에서 순번을 화살표 버튼으로 조정하고 일괄 저장할 수 있습니다.
-- **부서 순번 드래그앤드롭 지원** — 부서 순번을 화살표 버튼뿐 아니라 드래그앤드롭으로도 변경할 수 있습니다.
-- **신규 픽셀 캐릭터 스프라이트(#13)** — 새로운 픽셀 아트 캐릭터(#13)가 추가되었습니다. 전방향 스프라이트 세트와 생성 파이프라인 포함.
-- **프로젝트 직원 직접선택** — 프로젝트에 `자동할당/직접선택` 모드를 설정할 수 있습니다. 직접선택 모드에서는 스프라이트 아바타 아이콘이 포함된 멀티셀렉트 체크박스 UI로 원하는 직원을 지정합니다.
-- **회의 참석자 필터링** — 직접선택 모드 프로젝트에서는 킥오프/리뷰 회의에 기획팀장 + 지정 직원의 부서 팀장만 참석합니다.
-- **업무 할당 수동 모드** — `findBestSubordinate`가 직접선택 모드에서는 지정된 직원 풀 + 현재 팀장 부서 범위에서만 후보를 선정합니다.
-- **프로젝트 관리 모바일 반응형** — 모바일에서는 목록/상세 토글 방식으로 전환됩니다. 뒤로가기 버튼 포함.
-- **버그 수정** — 프로젝트 저장 시 500 에러 수정, `/api/departments/reorder` 저장 라우팅 충돌 수정, 라이트 모드 에러 메시지 가독성 수정, 직원관리 모달/이모지 선택기 스크롤 개선.
-- **수동 배정 안전장치 강화** — 프로젝트 저장 시 직원 미선택/팀장만 선택된 경우 경고 모달이 표시되며, 선택 요약(총/팀장/하위 직원)을 확인 후 저장 가능.
-- **프로젝트 API `agent_ids` 검증** — `POST/PATCH /api/projects`에서 agent_ids의 타입 및 존재 여부를 검증하여 잘못된 ID는 명시적 오류로 거부.
-- **위임 폴백 감사** — 수동 모드에서 지정 직원 중 실행 가능한 하위 직원이 없을 때, 시스템 로그와 CEO 알림을 남긴 후 팀장이 직접 수행.
-- **스프라이트 등록 충돌 방지** — `POST /api/sprites/register`에서 기존 스프라이트 번호 파일이 있으면 `409 sprite_number_exists`로 거부.
-- **포터블 스프라이트 생성** — 스프라이트 생성 스크립트가 저장소 기준 상대경로로 출력하며, `public/sprites` 디렉토리를 자동 생성.
-- **커스텀 스킬 업로드** — 스킬 라이브러리 UI에서 `.md` 스킬 파일을 직접 업로드하여 CLI 대표자에게 학습 가능. 칠판 교실 애니메이션과 커스텀 스킬 관리 인터페이스 포함. 백엔드: `POST/GET /api/skills/custom`, `DELETE /api/skills/custom/:skillName`.
-- **부서 sort_order 마이그레이션 안전성** — UNIQUE 인덱스를 재생성하여 마이그레이션 중 제약 조건 충돌 방지.
-- **CI E2E 커버리지 + 안정화 강화** — 핵심 갭 시나리오(작업 라이프사이클, CRUD 스모크, 설정/통계, 의사결정 인박스, WebSocket)를 `tests/e2e/ci-coverage-gap.spec.ts`로 추가하고, 일시적 API 오류 재시도 및 결정적 Playwright 설정으로 CI 실행 안정성을 높였습니다.
-- **서버 타입 부채 정리 (`@ts-nocheck` 제거)** — 서버 런타임 모듈의 `@ts-nocheck`를 공유 타입 강화와 헬퍼 모듈 분리로 제거하면서 기존 동작을 보전했습니다.
-- **저장소 포맷 표준화** — Prettier 기준(`.prettierrc.json`, `.prettierignore`)을 도입하고 `format`/`format:check` 스크립트 및 CI 포맷 검증을 추가했습니다.
+- **기능 업데이트** — 직원/부서 CRUD, 프로젝트 수동 배정, 위임 안전장치, 커스텀 스킬 업로드를 포함한 주요 운영 기능을 완성했습니다.
+- **코드 모듈화** — 대형 프론트/백엔드 파일을 기능 폴더(`src/components/*`, `server/modules/routes/*`, `server/modules/workflow/*`) 중심으로 분해해 유지보수성과 리뷰 가독성을 높였습니다.
+- **타입 부채 해소** — 서버 런타임의 `@ts-nocheck`를 제거하고 공통 타입 경계를 강화해 기존 동작 보전 + 타입 안정성을 확보했습니다.
+- **포맷 표준화** — Prettier 기준(`.prettierrc.json`, `.prettierignore`)과 `format`/`format:check` 스크립트를 추가하고 CI에서 포맷 검증을 수행합니다.
+- **테스트 코드 확장 + CI 안정화** — `tests/e2e/ci-coverage-gap.spec.ts`를 추가하고, 프론트/백엔드 단위 테스트(`src/api`, `useWebSocket`, `usePolling`, `i18n`, `auth`, `hub`, `runtime`, `gateway`)를 보강했으며 Playwright CI 설정을 안정화했습니다.
 
 - 상세 문서: [`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
 
@@ -160,6 +145,7 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 <td width="50%">
 
 **PPT 생성 예시** — 보고 요청 기반 PPT 생성 결과 화면 예시
+
 <p align="center">
   <img src="Sample_Img/PPT_Gen0.png" alt="PPT Generation Example 0" width="49%" />
   <img src="Sample_Img/PPT_Gen1.png" alt="PPT Generation Example 1" width="49%" />
@@ -182,46 +168,46 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 
 ## 주요 기능
 
-| 기능 | 설명 |
-|------|------|
-| **픽셀 아트 오피스** | 6개 부서에 걸쳐 에이전트들이 이동, 업무, 회의를 진행하는 애니메이션 오피스 뷰 |
-| **칸반 태스크 보드** | Inbox, Planned, Collaborating, In Progress, Review, Done — 드래그 앤 드롭이 가능한 완전한 태스크 생애주기 관리 |
-| **CEO 채팅 & 디렉티브** | 팀 리더와의 직접 소통; `$` 디렉티브에서 회의 여부와 작업 경로/컨텍스트(`project_path`, `project_context`) 기반 지시 지원 |
-| **멀티 프로바이더 지원** | Claude Code, Codex CLI, Gemini CLI, OpenCode, Antigravity — 하나의 대시보드에서 모두 관리 |
-| **외부 API 프로바이더** | 설정 > API 탭에서 에이전트를 외부 LLM API(OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, 커스텀)에 연결 |
-| **OAuth 연동** | 로컬 SQLite에 AES 암호화된 토큰 저장을 사용하는 GitHub & Google OAuth |
-| **실시간 WebSocket** | 실시간 상태 업데이트, 활동 피드, 에이전트 상태 동기화 |
-| **활성 에이전트 제어** | 작업 중 에이전트 상태(프로세스/활동/유휴) 확인 및 멈춘 태스크 강제 중지 |
-| **작업 보고서 시스템** | 완료 팝업, 보고서 이력, 팀별 보고 드릴다운, 기획팀장 최종 취합 아카이브 |
-| **직원관리** | 직원 채용·수정·삭제, 다국어 이름, 부서·직급·프로바이더 선택 및 성격 설정 지원 |
-| **에이전트 랭킹 & XP** | 완료된 태스크로 XP를 획득하는 에이전트; 랭킹 보드에서 상위 성과자 추적 |
-| **스킬 라이브러리** | 카테고리별로 정리된 600개 이상의 스킬 (Frontend, Backend, Design, AI, DevOps, Security 등), 커스텀 스킬 업로드 지원 |
-| **회의 시스템** | AI 생성 회의록과 다중 라운드 검토가 포함된 계획 및 임시 회의 |
-| **Git Worktree 격리** | 각 에이전트는 독립된 git 브랜치에서 작업하며 CEO 승인 시에만 병합 |
-| **다국어 UI** | 한국어, 영어, 일본어, 중국어 — 자동 감지 또는 수동 설정 |
-| **메신저 연동** | Telegram, Discord, Slack 등 — OpenClaw 게이트웨이를 통해 `$` CEO 디렉티브 전송 및 태스크 업데이트 수신 |
-| **PowerPoint 내보내기** | 회의록과 보고서로부터 프레젠테이션 슬라이드 생성 |
-| **통신 QA 스크립트** | `test:comm:*` 스크립트로 CLI/OAuth/API 통신 상태를 재시도/증거 로그와 함께 검증 |
-| **인앱 업데이트 알림** | GitHub 최신 릴리즈를 확인해 새 버전이 있으면 상단 배너로 OS별 `git pull` 안내와 릴리즈 노트 링크 제공 |
-| **부서 관리** | 기획, 개발, 디자인, QA/QC, DevSecOps, 운영 — 전용 관리 탭에서 화살표/드래그앤드롭 순번 편집 가능 |
-| **직원 직접선택** | 프로젝트에 특정 직원을 지정하면 회의 및 업무 위임 시 해당 직원만 대상으로 운영 |
-| **스프라이트 등록 안전장치** | 중복 스프라이트 번호 파일 덮어쓰기 방지 (`409 sprite_number_exists` 응답) |
-| **커스텀 스킬 업로드** | UI에서 `.md` 스킬 파일을 업로드하여 CLI 대표자에게 커스텀 스킬을 학습시키며, 칠판 교실 애니메이션과 관리 인터페이스 제공 |
+| 기능                         | 설명                                                                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **픽셀 아트 오피스**         | 6개 부서에 걸쳐 에이전트들이 이동, 업무, 회의를 진행하는 애니메이션 오피스 뷰                                                     |
+| **칸반 태스크 보드**         | Inbox, Planned, Collaborating, In Progress, Review, Done — 드래그 앤 드롭이 가능한 완전한 태스크 생애주기 관리                    |
+| **CEO 채팅 & 디렉티브**      | 팀 리더와의 직접 소통; `$` 디렉티브에서 회의 여부와 작업 경로/컨텍스트(`project_path`, `project_context`) 기반 지시 지원          |
+| **멀티 프로바이더 지원**     | Claude Code, Codex CLI, Gemini CLI, OpenCode, Antigravity — 하나의 대시보드에서 모두 관리                                         |
+| **외부 API 프로바이더**      | 설정 > API 탭에서 에이전트를 외부 LLM API(OpenAI, Anthropic, Google, Ollama, OpenRouter, Together, Groq, Cerebras, 커스텀)에 연결 |
+| **OAuth 연동**               | 로컬 SQLite에 AES 암호화된 토큰 저장을 사용하는 GitHub & Google OAuth                                                             |
+| **실시간 WebSocket**         | 실시간 상태 업데이트, 활동 피드, 에이전트 상태 동기화                                                                             |
+| **활성 에이전트 제어**       | 작업 중 에이전트 상태(프로세스/활동/유휴) 확인 및 멈춘 태스크 강제 중지                                                           |
+| **작업 보고서 시스템**       | 완료 팝업, 보고서 이력, 팀별 보고 드릴다운, 기획팀장 최종 취합 아카이브                                                           |
+| **직원관리**                 | 직원 채용·수정·삭제, 다국어 이름, 부서·직급·프로바이더 선택 및 성격 설정 지원                                                     |
+| **에이전트 랭킹 & XP**       | 완료된 태스크로 XP를 획득하는 에이전트; 랭킹 보드에서 상위 성과자 추적                                                            |
+| **스킬 라이브러리**          | 카테고리별로 정리된 600개 이상의 스킬 (Frontend, Backend, Design, AI, DevOps, Security 등), 커스텀 스킬 업로드 지원               |
+| **회의 시스템**              | AI 생성 회의록과 다중 라운드 검토가 포함된 계획 및 임시 회의                                                                      |
+| **Git Worktree 격리**        | 각 에이전트는 독립된 git 브랜치에서 작업하며 CEO 승인 시에만 병합                                                                 |
+| **다국어 UI**                | 한국어, 영어, 일본어, 중국어 — 자동 감지 또는 수동 설정                                                                           |
+| **메신저 연동**              | Telegram, Discord, Slack 등 — OpenClaw 게이트웨이를 통해 `$` CEO 디렉티브 전송 및 태스크 업데이트 수신                            |
+| **PowerPoint 내보내기**      | 회의록과 보고서로부터 프레젠테이션 슬라이드 생성                                                                                  |
+| **통신 QA 스크립트**         | `test:comm:*` 스크립트로 CLI/OAuth/API 통신 상태를 재시도/증거 로그와 함께 검증                                                   |
+| **인앱 업데이트 알림**       | GitHub 최신 릴리즈를 확인해 새 버전이 있으면 상단 배너로 OS별 `git pull` 안내와 릴리즈 노트 링크 제공                             |
+| **부서 관리**                | 기획, 개발, 디자인, QA/QC, DevSecOps, 운영 — 전용 관리 탭에서 화살표/드래그앤드롭 순번 편집 가능                                  |
+| **직원 직접선택**            | 프로젝트에 특정 직원을 지정하면 회의 및 업무 위임 시 해당 직원만 대상으로 운영                                                    |
+| **스프라이트 등록 안전장치** | 중복 스프라이트 번호 파일 덮어쓰기 방지 (`409 sprite_number_exists` 응답)                                                         |
+| **커스텀 스킬 업로드**       | UI에서 `.md` 스킬 파일을 업로드하여 CLI 대표자에게 커스텀 스킬을 학습시키며, 칠판 교실 애니메이션과 관리 인터페이스 제공          |
 
 ---
 
 ## 기술 스택
 
-| 레이어 | 기술 |
-|--------|------|
-| **Frontend** | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
-| **픽셀 아트 엔진** | PixiJS 8 |
-| **Backend** | Express 5 + SQLite (설정 없는 내장 DB) |
-| **실시간 통신** | WebSocket (ws) |
-| **유효성 검사** | Zod 4 |
-| **아이콘** | Lucide React |
-| **라우팅** | React Router 7 |
-| **내보내기** | PptxGenJS (PowerPoint 생성) |
+| 레이어             | 기술                                                |
+| ------------------ | --------------------------------------------------- |
+| **Frontend**       | React 19 + Vite 7 + Tailwind CSS 4 + TypeScript 5.9 |
+| **픽셀 아트 엔진** | PixiJS 8                                            |
+| **Backend**        | Express 5 + SQLite (설정 없는 내장 DB)              |
+| **실시간 통신**    | WebSocket (ws)                                      |
+| **유효성 검사**    | Zod 4                                               |
+| **아이콘**         | Lucide React                                        |
+| **라우팅**         | React Router 7                                      |
+| **내보내기**       | PptxGenJS (PowerPoint 생성)                         |
 
 <a id="ai-installation-guide">
 ## AI 설치 가이드
@@ -319,6 +305,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 ```
 
 예상 응답:
+
 - 서버에 `INBOX_WEBHOOK_SECRET`이 설정되어 있고 `x-inbox-secret`이 일치하면 `200`
 - 헤더 누락/불일치 시 `401`
 - 서버에 `INBOX_WEBHOOK_SECRET`이 미설정이면 `503`
@@ -329,24 +316,24 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 ### 사전 요구사항
 
-| 도구 | 버전 | 설치 |
-|------|------|------|
-| **Node.js** | >= 22 | [nodejs.org](https://nodejs.org/) |
-| **pnpm** | 최신 | `corepack enable` (Node.js에 내장) |
-| **Git** | 무관 | [git-scm.com](https://git-scm.com/) |
+| 도구        | 버전  | 설치                                |
+| ----------- | ----- | ----------------------------------- |
+| **Node.js** | >= 22 | [nodejs.org](https://nodejs.org/)   |
+| **pnpm**    | 최신  | `corepack enable` (Node.js에 내장)  |
+| **Git**     | 무관  | [git-scm.com](https://git-scm.com/) |
 
 ### 원클릭 셋업 (권장)
 
-| 플랫폼 | 명령어 |
-|--------|--------|
-| **macOS / Linux** | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh` |
+| 플랫폼                   | 명령어                                                                                                                                 |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git clone https://github.com/GreenSheep01201/claw-empire.git && cd claw-empire && bash install.sh`                                    |
 | **Windows (PowerShell)** | `git clone https://github.com/GreenSheep01201/claw-empire.git; cd claw-empire; powershell -ExecutionPolicy Bypass -File .\install.ps1` |
 
 이미 클론되어 있다면:
 
-| 플랫폼 | 명령어 |
-|--------|--------|
-| **macOS / Linux** | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh` |
+| 플랫폼                   | 명령어                                                                                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **macOS / Linux**        | `git submodule update --init --recursive && bash scripts/openclaw-setup.sh`                                      |
 | **Windows (PowerShell)** | `git submodule update --init --recursive; powershell -ExecutionPolicy Bypass -File .\scripts\openclaw-setup.ps1` |
 
 ### OpenClaw `.env` 필수값 (`/api/inbox` 사용 시)
@@ -361,6 +348,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 이미 클론된 저장소에서 `git pull`만 한 경우에도 `pnpm dev*` / `pnpm start*` 최초 실행 시 필요 조건에서 1회 자동 보정되며, 이후 반복 실행을 막기 위해 `CLAW_MIGRATION_V1_0_5_DONE=1`이 저장됩니다.
 
 `/api/inbox`는 서버 측 `INBOX_WEBHOOK_SECRET` 설정과 `x-inbox-secret` 헤더의 정확한 일치가 필요합니다.
+
 - 헤더 누락/불일치 -> `401`
 - 서버 설정 누락(`INBOX_WEBHOOK_SECRET`) -> `503`
 
@@ -450,6 +438,7 @@ pnpm setup -- --port 8790
 ```
 
 <a id="openclaw-integration"></a>
+
 ### OpenClaw 연동 셋업 (Telegram/Discord/Slack)
 
 `install.sh` / `install.ps1` (또는 `scripts/openclaw-setup.*`)은 가능한 경우 `OPENCLAW_CONFIG`를 자동 감지하여 `.env`에 기록합니다.
@@ -459,10 +448,10 @@ pnpm setup -- --port 8790
 
 기본 경로:
 
-| OS | 경로 |
-|----|------|
-| **macOS / Linux** | `~/.openclaw/openclaw.json` |
-| **Windows** | `%USERPROFILE%\.openclaw\openclaw.json` |
+| OS                | 경로                                    |
+| ----------------- | --------------------------------------- |
+| **macOS / Linux** | `~/.openclaw/openclaw.json`             |
+| **Windows**       | `%USERPROFILE%\.openclaw\openclaw.json` |
 
 수동 실행:
 
@@ -483,6 +472,7 @@ curl -s http://127.0.0.1:8790/api/gateway/targets
 ```
 
 <a id="dollar-command-logic"></a>
+
 ### `$` 명령어 기반 OpenClaw 채팅 의뢰 로직
 
 채팅 메시지가 `$`로 시작하면 Claw-Empire는 CEO 디렉티브로 처리합니다.
@@ -516,10 +506,10 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 브라우저에서 접속:
 
-| URL | 설명 |
-|-----|------|
-| `http://127.0.0.1:8800` | Frontend (Vite 개발 서버) |
-| `http://127.0.0.1:8790/healthz` | API 헬스 체크 |
+| URL                             | 설명                      |
+| ------------------------------- | ------------------------- |
+| `http://127.0.0.1:8800`         | Frontend (Vite 개발 서버) |
+| `http://127.0.0.1:8790/healthz` | API 헬스 체크             |
 
 ---
 
@@ -527,39 +517,39 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 
 `.env.example`을 `.env`로 복사하세요. 모든 시크릿은 로컬에 저장됩니다 — `.env`는 절대 커밋하지 마세요.
 
-| 변수 | 필수 여부 | 설명 |
-|------|----------|------|
-| `OAUTH_ENCRYPTION_SECRET` | **필수** | SQLite의 OAuth 토큰 암호화에 사용 |
-| `PORT` | 선택 | 서버 포트 (기본값: `8790`) |
-| `HOST` | 선택 | 바인드 주소 (기본값: `127.0.0.1`) |
-| `API_AUTH_TOKEN` | 권장 | 루프백 외부 API/WebSocket 접근용 Bearer 토큰 |
-| `INBOX_WEBHOOK_SECRET` | **`/api/inbox` 사용 시 필수** | `x-inbox-secret` 헤더와 일치해야 하는 공유 시크릿 |
-| `OPENCLAW_CONFIG` | OpenClaw 사용 시 권장 | 게이트웨이 타깃 조회/채팅 릴레이에 사용하는 `openclaw.json` 절대경로 |
-| `DB_PATH` | 선택 | SQLite 데이터베이스 경로 (기본값: `./claw-empire.sqlite`) |
-| `LOGS_DIR` | 선택 | 로그 디렉토리 (기본값: `./logs`) |
-| `OAUTH_GITHUB_CLIENT_ID` | 선택 | GitHub OAuth 앱 클라이언트 ID |
-| `OAUTH_GITHUB_CLIENT_SECRET` | 선택 | GitHub OAuth 앱 클라이언트 시크릿 |
-| `OAUTH_GOOGLE_CLIENT_ID` | 선택 | Google OAuth 클라이언트 ID |
-| `OAUTH_GOOGLE_CLIENT_SECRET` | 선택 | Google OAuth 클라이언트 시크릿 |
-| `OPENAI_API_KEY` | 선택 | OpenAI API 키 (Codex용) |
-| `UPDATE_CHECK_ENABLED` | 선택 | 인앱 업데이트 확인 배너 활성화 (`1` 기본값, `0`이면 비활성화) |
-| `UPDATE_CHECK_REPO` | 선택 | 업데이트 확인에 사용할 GitHub 저장소 슬러그 (기본값: `GreenSheep01201/claw-empire`) |
-| `UPDATE_CHECK_TTL_MS` | 선택 | 업데이트 확인 캐시 TTL(밀리초) (기본값: `1800000`) |
-| `UPDATE_CHECK_TIMEOUT_MS` | 선택 | GitHub 요청 타임아웃(밀리초) (기본값: `4000`) |
-| `AUTO_UPDATE_ENABLED` | 선택 | `settings.autoUpdateEnabled`가 없을 때 사용할 자동 업데이트 기본값 (`0` 기본값) |
-| `AUTO_UPDATE_CHANNEL` | 선택 | 허용 업데이트 채널: `patch`(기본), `minor`, `all` |
-| `AUTO_UPDATE_IDLE_ONLY` | 선택 | `in_progress` 태스크/활성 CLI 프로세스가 없을 때만 적용 (`1` 기본값) |
-| `AUTO_UPDATE_CHECK_INTERVAL_MS` | 선택 | 자동 업데이트 확인 주기(밀리초) (기본값: `UPDATE_CHECK_TTL_MS` 따름) |
-| `AUTO_UPDATE_INITIAL_DELAY_MS` | 선택 | 서버 시작 후 첫 자동 업데이트 확인까지 대기 시간(밀리초) (기본값 `60000`, 최소 `60000`) |
-| `AUTO_UPDATE_TARGET_BRANCH` | 선택 | 브랜치 가드 및 `git fetch/pull` 대상으로 사용할 브랜치명 (기본값 `main`) |
-| `AUTO_UPDATE_GIT_FETCH_TIMEOUT_MS` | 선택 | 업데이트 적용 중 `git fetch` 타임아웃(밀리초) (기본값 `120000`) |
-| `AUTO_UPDATE_GIT_PULL_TIMEOUT_MS` | 선택 | 업데이트 적용 중 `git pull --ff-only` 타임아웃(밀리초) (기본값 `180000`) |
-| `AUTO_UPDATE_INSTALL_TIMEOUT_MS` | 선택 | 업데이트 적용 중 `pnpm install --frozen-lockfile` 타임아웃(밀리초) (기본값 `300000`) |
-| `AUTO_UPDATE_COMMAND_OUTPUT_MAX_CHARS` | 선택 | stdout/stderr 캡처 시 메모리에 유지할 최대 문자 수(초과분은 tail 유지, 기본값 `200000`) |
-| `AUTO_UPDATE_TOTAL_TIMEOUT_MS` | 선택 | 1회 업데이트 적용 전체 타임아웃 상한(밀리초) (기본값 `900000`) |
-| `AUTO_UPDATE_RESTART_MODE` | 선택 | 자동 적용 후 재시작 정책: `notify`(기본), `exit`, `command` |
-| `AUTO_UPDATE_EXIT_DELAY_MS` | 선택 | `exit` 모드에서 프로세스 종료 전 대기 시간(밀리초) (기본값 `10000`, 최소 `1200`) |
-| `AUTO_UPDATE_RESTART_COMMAND` | 선택 | 재시작 정책이 `command`일 때 실행할 실행파일+인자 형식 명령(셸 메타문자 + 셸 실행기 직접 호출 거부, 서버 권한 실행) |
+| 변수                                   | 필수 여부                     | 설명                                                                                                                |
+| -------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `OAUTH_ENCRYPTION_SECRET`              | **필수**                      | SQLite의 OAuth 토큰 암호화에 사용                                                                                   |
+| `PORT`                                 | 선택                          | 서버 포트 (기본값: `8790`)                                                                                          |
+| `HOST`                                 | 선택                          | 바인드 주소 (기본값: `127.0.0.1`)                                                                                   |
+| `API_AUTH_TOKEN`                       | 권장                          | 루프백 외부 API/WebSocket 접근용 Bearer 토큰                                                                        |
+| `INBOX_WEBHOOK_SECRET`                 | **`/api/inbox` 사용 시 필수** | `x-inbox-secret` 헤더와 일치해야 하는 공유 시크릿                                                                   |
+| `OPENCLAW_CONFIG`                      | OpenClaw 사용 시 권장         | 게이트웨이 타깃 조회/채팅 릴레이에 사용하는 `openclaw.json` 절대경로                                                |
+| `DB_PATH`                              | 선택                          | SQLite 데이터베이스 경로 (기본값: `./claw-empire.sqlite`)                                                           |
+| `LOGS_DIR`                             | 선택                          | 로그 디렉토리 (기본값: `./logs`)                                                                                    |
+| `OAUTH_GITHUB_CLIENT_ID`               | 선택                          | GitHub OAuth 앱 클라이언트 ID                                                                                       |
+| `OAUTH_GITHUB_CLIENT_SECRET`           | 선택                          | GitHub OAuth 앱 클라이언트 시크릿                                                                                   |
+| `OAUTH_GOOGLE_CLIENT_ID`               | 선택                          | Google OAuth 클라이언트 ID                                                                                          |
+| `OAUTH_GOOGLE_CLIENT_SECRET`           | 선택                          | Google OAuth 클라이언트 시크릿                                                                                      |
+| `OPENAI_API_KEY`                       | 선택                          | OpenAI API 키 (Codex용)                                                                                             |
+| `UPDATE_CHECK_ENABLED`                 | 선택                          | 인앱 업데이트 확인 배너 활성화 (`1` 기본값, `0`이면 비활성화)                                                       |
+| `UPDATE_CHECK_REPO`                    | 선택                          | 업데이트 확인에 사용할 GitHub 저장소 슬러그 (기본값: `GreenSheep01201/claw-empire`)                                 |
+| `UPDATE_CHECK_TTL_MS`                  | 선택                          | 업데이트 확인 캐시 TTL(밀리초) (기본값: `1800000`)                                                                  |
+| `UPDATE_CHECK_TIMEOUT_MS`              | 선택                          | GitHub 요청 타임아웃(밀리초) (기본값: `4000`)                                                                       |
+| `AUTO_UPDATE_ENABLED`                  | 선택                          | `settings.autoUpdateEnabled`가 없을 때 사용할 자동 업데이트 기본값 (`0` 기본값)                                     |
+| `AUTO_UPDATE_CHANNEL`                  | 선택                          | 허용 업데이트 채널: `patch`(기본), `minor`, `all`                                                                   |
+| `AUTO_UPDATE_IDLE_ONLY`                | 선택                          | `in_progress` 태스크/활성 CLI 프로세스가 없을 때만 적용 (`1` 기본값)                                                |
+| `AUTO_UPDATE_CHECK_INTERVAL_MS`        | 선택                          | 자동 업데이트 확인 주기(밀리초) (기본값: `UPDATE_CHECK_TTL_MS` 따름)                                                |
+| `AUTO_UPDATE_INITIAL_DELAY_MS`         | 선택                          | 서버 시작 후 첫 자동 업데이트 확인까지 대기 시간(밀리초) (기본값 `60000`, 최소 `60000`)                             |
+| `AUTO_UPDATE_TARGET_BRANCH`            | 선택                          | 브랜치 가드 및 `git fetch/pull` 대상으로 사용할 브랜치명 (기본값 `main`)                                            |
+| `AUTO_UPDATE_GIT_FETCH_TIMEOUT_MS`     | 선택                          | 업데이트 적용 중 `git fetch` 타임아웃(밀리초) (기본값 `120000`)                                                     |
+| `AUTO_UPDATE_GIT_PULL_TIMEOUT_MS`      | 선택                          | 업데이트 적용 중 `git pull --ff-only` 타임아웃(밀리초) (기본값 `180000`)                                            |
+| `AUTO_UPDATE_INSTALL_TIMEOUT_MS`       | 선택                          | 업데이트 적용 중 `pnpm install --frozen-lockfile` 타임아웃(밀리초) (기본값 `300000`)                                |
+| `AUTO_UPDATE_COMMAND_OUTPUT_MAX_CHARS` | 선택                          | stdout/stderr 캡처 시 메모리에 유지할 최대 문자 수(초과분은 tail 유지, 기본값 `200000`)                             |
+| `AUTO_UPDATE_TOTAL_TIMEOUT_MS`         | 선택                          | 1회 업데이트 적용 전체 타임아웃 상한(밀리초) (기본값 `900000`)                                                      |
+| `AUTO_UPDATE_RESTART_MODE`             | 선택                          | 자동 적용 후 재시작 정책: `notify`(기본), `exit`, `command`                                                         |
+| `AUTO_UPDATE_EXIT_DELAY_MS`            | 선택                          | `exit` 모드에서 프로세스 종료 전 대기 시간(밀리초) (기본값 `10000`, 최소 `1200`)                                    |
+| `AUTO_UPDATE_RESTART_COMMAND`          | 선택                          | 재시작 정책이 `command`일 때 실행할 실행파일+인자 형식 명령(셸 메타문자 + 셸 실행기 직접 호출 거부, 서버 권한 실행) |
 
 `API_AUTH_TOKEN`을 활성화하면 원격 브라우저 클라이언트는 런타임에 토큰을 입력합니다. 토큰은 `sessionStorage`에만 저장되며 Vite 빌드 산출물에는 포함되지 않습니다.
 `OPENCLAW_CONFIG`는 절대경로를 권장하며, `v1.0.5`에서는 따옴표/선행 `~` 값도 자동 정규화됩니다.
@@ -651,6 +641,7 @@ GitHub에 더 최신 릴리즈가 게시되면, Claw-Empire는 UI 상단에 pull
 ---
 
 <a id="cli-프로바이더-설정"></a>
+
 ## 프로바이더 설정 (CLI / OAuth / API)
 
 Claw-Empire는 아래 3가지 방식의 프로바이더를 지원합니다:
@@ -661,12 +652,12 @@ Claw-Empire는 아래 3가지 방식의 프로바이더를 지원합니다:
 
 CLI 모드로 사용하려면 최소 하나 이상 설치하세요:
 
-| 프로바이더 | 설치 | 인증 |
-|-----------|------|------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude` (안내에 따라 진행) |
-| [Codex CLI](https://github.com/openai/codex) | `npm i -g @openai/codex` | `.env`에 `OPENAI_API_KEY` 설정 |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm i -g @google/gemini-cli` | 설정 패널에서 OAuth 인증 |
-| [OpenCode](https://github.com/opencode-ai/opencode) | `npm i -g opencode` | 프로바이더별 설정 |
+| 프로바이더                                                    | 설치                                 | 인증                           |
+| ------------------------------------------------------------- | ------------------------------------ | ------------------------------ |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm i -g @anthropic-ai/claude-code` | `claude` (안내에 따라 진행)    |
+| [Codex CLI](https://github.com/openai/codex)                  | `npm i -g @openai/codex`             | `.env`에 `OPENAI_API_KEY` 설정 |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm i -g @google/gemini-cli`        | 설정 패널에서 OAuth 인증       |
+| [OpenCode](https://github.com/opencode-ai/opencode)           | `npm i -g opencode`                  | 프로바이더별 설정              |
 
 앱 내 **Settings > CLI Tools** 패널에서 프로바이더와 모델을 설정하세요.
 
@@ -749,6 +740,6 @@ Claw-Empire는 보안을 최우선으로 설계되었습니다:
 
 **픽셀과 열정으로 만들었습니다.**
 
-*Claw-Empire — AI 에이전트들이 일하러 오는 곳.*
+_Claw-Empire — AI 에이전트들이 일하러 오는 곳._
 
 </div>
