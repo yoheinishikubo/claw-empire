@@ -622,8 +622,8 @@ export default function ProjectManagerModal({ agents, departments = [], onClose 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="flex h-[86vh] w-[min(1180px,95vw)] overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
-        <aside className="flex w-[330px] flex-col border-r border-slate-700 bg-slate-900/70">
+      <div className="flex h-[86vh] w-[min(1180px,95vw)] flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl md:flex-row">
+        <aside className={`flex w-full flex-col border-r border-slate-700 bg-slate-900/70 md:w-[330px] ${(selectedProjectId || isCreating || githubImportMode) ? 'hidden md:flex' : 'flex'}`}>
           <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
             <h2 className="text-sm font-semibold text-white">{headerTitle}</h2>
             <button
@@ -737,7 +737,17 @@ export default function ProjectManagerModal({ agents, departments = [], onClose 
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <section className={`flex min-w-0 flex-1 flex-col overflow-hidden ${(!selectedProjectId && !isCreating && !githubImportMode) ? 'hidden md:flex' : 'flex'}`}>
+          {/* 모바일 뒤로가기 버튼 */}
+          <div className="flex items-center gap-2 border-b border-slate-700 px-3 py-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => { setSelectedProjectId(null); setIsCreating(false); setEditingProjectId(null); setGithubImportMode(false); }}
+              className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              ← {t({ ko: '목록', en: 'List', ja: '一覧', zh: '列表' })}
+            </button>
+          </div>
           {githubImportMode ? (
             <GitHubImportPanel
               onComplete={(result) => {
