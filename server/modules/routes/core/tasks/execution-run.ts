@@ -1,0 +1,465 @@
+import path from "node:path";
+import { notifyTaskStatus } from "../../../../gateway/client.ts";
+import type { RuntimeContext } from "../../../../types/runtime-context.ts";
+import type { AgentRow } from "../../shared/types.ts";
+
+export function registerTaskRunRoute(ctx: RuntimeContext): void {
+  const {
+    app,
+    db,
+    activeProcesses,
+    appendTaskLog,
+    nowMs,
+    resolveLang,
+    ensureTaskExecutionSession,
+    resolveProjectPath,
+    logsDir,
+    createWorktree,
+    generateProjectContext,
+    getRecentChanges,
+    ensureClaudeMd,
+    getDeptRoleConstraint,
+    normalizeTextField,
+    getRecentConversationContext,
+    getTaskContinuationContext,
+    pickL,
+    l,
+    getProviderModelConfig,
+    buildTaskExecutionPrompt,
+    hasExplicitWarningFixRequest,
+    getNextHttpAgentPid,
+    broadcast,
+    getAgentDisplayName,
+    notifyCeo,
+    startProgressTimer,
+    launchApiProviderAgent,
+    launchHttpAgent,
+    spawnCliAgent,
+    handleTaskRunComplete,
+    buildAvailableSkillsPromptBlock,
+  } = ctx;
+
+  app.post("/api/tasks/:id/run", (req, res) => {
+    const id = String(req.params.id);
+    const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as
+      | {
+          id: string;
+          title: string;
+          description: string | null;
+          assigned_agent_id: string | null;
+          project_path: string | null;
+          status: string;
+        }
+      | undefined;
+    if (!task) return res.status(404).json({ error: "not_found" });
+    const taskLang = resolveLang(task.description ?? task.title);
+
+    if (activeProcesses.has(id)) {
+      const staleChild = activeProcesses.get(id);
+      const stalePid = typeof staleChild?.pid === "number" ? staleChild.pid : null;
+      let pidIsAlive = false;
+      if (stalePid !== null && stalePid > 0) {
+        try {
+          process.kill(stalePid, 0);
+          pidIsAlive = true;
+        } catch {
+          pidIsAlive = false;
+        }
+      }
+      if (!pidIsAlive) {
+        activeProcesses.delete(id);
+        appendTaskLog(id, "system", `Cleaned up stale process handle (pid=${stalePid}) on re-run attempt`);
+      }
+    }
+
+    if (task.status === "in_progress" || task.status === "collaborating") {
+      if (activeProcesses.has(id)) {
+        return res.status(400).json({ error: "already_running" });
+      }
+      const t = nowMs();
+      db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?").run(t, id);
+      task.status = "pending";
+      appendTaskLog(id, "system", `Reset stale in_progress status (no active process) for re-run`);
+    }
+
+    if (activeProcesses.has(id)) {
+      return res.status(409).json({
+        error: "process_still_active",
+        message: "Previous run is still stopping. Please retry after a moment.",
+      });
+    }
+
+    const agentId = task.assigned_agent_id || (req.body?.agent_id as string | undefined);
+    if (!agentId) {
+      return res.status(400).json({ error: "no_agent_assigned", message: "Assign an agent before running." });
+    }
+
+    const agent = db
+      .prepare(
+        `
+    SELECT a.*, d.name AS department_name, d.name_ko AS department_name_ko, d.prompt AS department_prompt
+    FROM agents a LEFT JOIN departments d ON a.department_id = d.id
+    WHERE a.id = ?
+  `,
+      )
+      .get(agentId) as
+      | {
+          id: string;
+          name: string;
+          name_ko: string | null;
+          role: string;
+          cli_provider: string | null;
+          oauth_account_id: string | null;
+          api_provider_id: string | null;
+          api_model: string | null;
+          personality: string | null;
+          department_id: string | null;
+          department_name: string | null;
+          department_name_ko: string | null;
+          department_prompt: string | null;
+        }
+      | undefined;
+    if (!agent) return res.status(400).json({ error: "agent_not_found" });
+
+    const agentBusy = activeProcesses.has(
+      (
+        db.prepare("SELECT current_task_id FROM agents WHERE id = ? AND status = 'working'").get(agentId) as
+          | { current_task_id: string | null }
+          | undefined
+      )?.current_task_id ?? "",
+    );
+    if (agentBusy) {
+      return res
+        .status(400)
+        .json({ error: "agent_busy", message: `${agent.name} is already working on another task.` });
+    }
+
+    const provider = agent.cli_provider || "claude";
+    if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(provider)) {
+      return res.status(400).json({ error: "unsupported_provider", provider });
+    }
+    const executionSession = ensureTaskExecutionSession(id, agentId, provider);
+
+    const projectPath = resolveProjectPath(task) || (req.body?.project_path as string | undefined) || process.cwd();
+    const logPath = path.join(logsDir, `${id}.log`);
+
+    const worktreePath = createWorktree(projectPath, id, agent.name);
+    const agentCwd = worktreePath || projectPath;
+
+    if (worktreePath) {
+      appendTaskLog(id, "system", `Git worktree created: ${worktreePath} (branch: climpire/${id.slice(0, 8)})`);
+    }
+
+    const projectContext = generateProjectContext(projectPath);
+    const recentChanges = getRecentChanges(projectPath, id);
+
+    if (worktreePath && provider === "claude") {
+      ensureClaudeMd(projectPath, worktreePath);
+    }
+
+    const roleLabel =
+      { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[agent.role] || agent.role;
+    const deptConstraint = agent.department_id
+      ? getDeptRoleConstraint(agent.department_id, agent.department_name || agent.department_id)
+      : "";
+    const departmentPrompt = normalizeTextField(agent.department_prompt);
+    const departmentPromptBlock = departmentPrompt ? `[Department Shared Prompt]\n${departmentPrompt}` : "";
+    const conversationCtx = getRecentConversationContext(agentId);
+    const continuationCtx = getTaskContinuationContext(id);
+    const continuationInstruction = continuationCtx
+      ? pickL(
+          l(
+            ["연속 실행: 동일 소유 컨텍스트를 유지하고, 불필요한 파일 재탐색 없이 미해결 항목만 반영하세요."],
+            [
+              "Continuation run: keep the same ownership context, avoid re-reading unrelated files, and apply only unresolved deltas.",
+            ],
+            ["継続実行: 同一オーナーシップを維持し、不要な再探索を避けて未解決差分のみ反映してください。"],
+            ["连续执行：保持同一责任上下文，避免重复阅读无关文件，仅处理未解决差异。"],
+          ),
+          taskLang,
+        )
+      : pickL(
+          l(
+            ["반복적인 착수 멘트 없이 바로 실행하세요."],
+            ["Execute directly without repeated kickoff narration."],
+            ["繰り返しの開始ナレーションなしで直ちに実行してください。"],
+            ["无需重复开场说明，直接执行。"],
+          ),
+          taskLang,
+        );
+    const projectStructureBlock = continuationCtx
+      ? ""
+      : projectContext
+        ? `[Project Structure]\n${projectContext.length > 4000 ? projectContext.slice(0, 4000) + "\n... (truncated)" : projectContext}`
+        : "";
+    const needsPlanInstruction = provider === "gemini" || provider === "copilot" || provider === "antigravity";
+    const subtaskInstruction = needsPlanInstruction
+      ? `\n\n${pickL(
+          l(
+            [
+              `[작업 계획 출력 규칙]
+작업을 시작하기 전에 아래 JSON 형식으로 계획을 출력하세요:
+\`\`\`json
+{"subtasks": [{"title": "서브태스크 제목1"}, {"title": "서브태스크 제목2"}]}
+\`\`\`
+각 서브태스크를 완료할 때마다 아래 형식으로 보고하세요:
+\`\`\`json
+{"subtask_done": "완료된 서브태스크 제목"}
+\`\`\``,
+            ],
+            [
+              `[Task Plan Output Rules]
+Before starting work, print a plan in the JSON format below:
+\`\`\`json
+{"subtasks": [{"title": "Subtask title 1"}, {"title": "Subtask title 2"}]}
+\`\`\`
+Whenever you complete a subtask, report it in this format:
+\`\`\`json
+{"subtask_done": "Completed subtask title"}
+\`\`\``,
+            ],
+            [
+              `[作業計画の出力ルール]
+作業開始前に、次の JSON 形式で計画を出力してください:
+\`\`\`json
+{"subtasks": [{"title": "サブタスク1"}, {"title": "サブタスク2"}]}
+\`\`\`
+各サブタスクを完了するたびに、次の形式で報告してください:
+\`\`\`json
+{"subtask_done": "完了したサブタスク"}
+\`\`\``,
+            ],
+            [
+              `[任务计划输出规则]
+开始工作前，请按下述 JSON 格式输出计划:
+\`\`\`json
+{"subtasks": [{"title": "子任务1"}, {"title": "子任务2"}]}
+\`\`\`
+每完成一个子任务，请按下述格式汇报:
+\`\`\`json
+{"subtask_done": "已完成的子任务"}
+\`\`\``,
+            ],
+          ),
+          taskLang,
+        )}\n`
+      : "";
+
+    const modelConfig = getProviderModelConfig();
+    const mainModel = modelConfig[provider]?.model || undefined;
+    const subModel = modelConfig[provider]?.subModel || undefined;
+    const mainReasoningLevel = modelConfig[provider]?.reasoningLevel || undefined;
+    const subReasoningLevel = modelConfig[provider]?.subModelReasoningLevel || undefined;
+    const subModelHint =
+      subModel && (provider === "claude" || provider === "codex")
+        ? `\n[Sub-agent model preference] When spawning sub-agents (Task tool), prefer using model: ${subModel}${subReasoningLevel ? ` with reasoning effort: ${subReasoningLevel}` : ""}`
+        : "";
+    const runInstruction = pickL(
+      l(
+        [
+          "위 작업을 충분히 완수하세요. 위 대화 맥락과 프로젝트 구조를 참고해도 좋지만, 프로젝트 구조 탐색에 시간을 쓰지 마세요. 필요한 구조는 이미 제공되었습니다.",
+        ],
+        [
+          "Please complete the task above thoroughly. Use the continuation brief, conversation context, and project structure above if relevant. Do NOT spend time exploring the project structure again unless required by unresolved checklist items.",
+        ],
+        [
+          "上記タスクを丁寧に完了してください。必要に応じて継続要約・会話コンテキスト・プロジェクト構成を参照できますが、未解決チェックリストに必要な場合を除き、構成探索に時間を使わないでください。",
+        ],
+        [
+          "请完整地完成上述任务。可按需参考连续执行摘要、会话上下文和项目结构，但除非未解决清单确有需要，不要再次花时间探索项目结构。",
+        ],
+      ),
+      taskLang,
+    );
+
+    const prompt = buildTaskExecutionPrompt(
+      [
+        (buildAvailableSkillsPromptBlock || ((providerName: string) => `[Available Skills][provider=${providerName || "unknown"}][unavailable]`))(provider),
+        `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
+        "This session is task-scoped. Keep continuity for this task only and do not cross-contaminate context from other projects.",
+        projectStructureBlock,
+        recentChanges ? `[Recent Changes]\n${recentChanges}` : "",
+        `[Task] ${task.title}`,
+        task.description ? `\n${task.description}` : "",
+        continuationCtx,
+        conversationCtx,
+        `\n---`,
+        `Agent: ${agent.name} (${roleLabel}, ${agent.department_name || "Unassigned"})`,
+        agent.personality ? `Personality: ${agent.personality}` : "",
+        deptConstraint,
+        departmentPromptBlock,
+        worktreePath
+          ? `NOTE: You are working in an isolated Git worktree branch (climpire/${id.slice(0, 8)}). Commit your changes normally.`
+          : "",
+        subtaskInstruction,
+        subModelHint,
+        continuationInstruction,
+        runInstruction,
+      ],
+      {
+        allowWarningFix: hasExplicitWarningFixRequest(task.title, task.description),
+      },
+    );
+
+    appendTaskLog(id, "system", `RUN start (agent=${agent.name}, provider=${provider})`);
+
+    if (provider === "api") {
+      const controller = new AbortController();
+      const fakePid = getNextHttpAgentPid();
+
+      const t = nowMs();
+      db.prepare(
+        "UPDATE tasks SET status = 'in_progress', assigned_agent_id = ?, started_at = ?, updated_at = ? WHERE id = ?",
+      ).run(agentId, t, t, id);
+      db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(id, agentId);
+
+      const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
+      const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
+      broadcast("task_update", updatedTask);
+      broadcast("agent_status", updatedAgent);
+      notifyTaskStatus(id, task.title, "in_progress", taskLang);
+
+      const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
+      const worktreeNote = worktreePath
+        ? pickL(
+            l(
+              [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+              [` (isolated branch: climpire/${id.slice(0, 8)})`],
+              [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+              [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+            ),
+            taskLang,
+          )
+        : "";
+      notifyCeo(
+        pickL(
+          l(
+            [`${assigneeName}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`],
+            [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
+            [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
+            [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+          ),
+          taskLang,
+        ),
+        id,
+      );
+
+      const taskRow = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(id) as
+        | { department_id: string | null }
+        | undefined;
+      startProgressTimer(id, task.title, taskRow?.department_id ?? null);
+
+      launchApiProviderAgent(
+        id,
+        agent.api_provider_id ?? null,
+        agent.api_model ?? null,
+        prompt,
+        agentCwd,
+        logPath,
+        controller,
+        fakePid,
+      );
+      return res.json({ ok: true, pid: fakePid, logPath, cwd: agentCwd, worktree: !!worktreePath });
+    }
+
+    if (provider === "copilot" || provider === "antigravity") {
+      const controller = new AbortController();
+      const fakePid = getNextHttpAgentPid();
+
+      const t = nowMs();
+      db.prepare(
+        "UPDATE tasks SET status = 'in_progress', assigned_agent_id = ?, started_at = ?, updated_at = ? WHERE id = ?",
+      ).run(agentId, t, t, id);
+      db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(id, agentId);
+
+      const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
+      const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
+      broadcast("task_update", updatedTask);
+      broadcast("agent_status", updatedAgent);
+      notifyTaskStatus(id, task.title, "in_progress", taskLang);
+
+      const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
+      const worktreeNote = worktreePath
+        ? pickL(
+            l(
+              [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+              [` (isolated branch: climpire/${id.slice(0, 8)})`],
+              [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+              [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+            ),
+            taskLang,
+          )
+        : "";
+      notifyCeo(
+        pickL(
+          l(
+            [`${assigneeName}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`],
+            [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
+            [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
+            [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+          ),
+          taskLang,
+        ),
+        id,
+      );
+
+      const taskRow = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(id) as
+        | { department_id: string | null }
+        | undefined;
+      startProgressTimer(id, task.title, taskRow?.department_id ?? null);
+
+      launchHttpAgent(id, provider, prompt, agentCwd, logPath, controller, fakePid, agent.oauth_account_id ?? null);
+      return res.json({ ok: true, pid: fakePid, logPath, cwd: agentCwd, worktree: !!worktreePath });
+    }
+
+    const child = spawnCliAgent(id, provider, prompt, agentCwd, logPath, mainModel, mainReasoningLevel);
+
+    child.on("close", (code: number | null) => {
+      handleTaskRunComplete(id, code ?? 1);
+    });
+
+    const t = nowMs();
+    db.prepare(
+      "UPDATE tasks SET status = 'in_progress', assigned_agent_id = ?, started_at = ?, updated_at = ? WHERE id = ?",
+    ).run(agentId, t, t, id);
+    db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(id, agentId);
+
+    const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
+    const updatedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
+    broadcast("task_update", updatedTask);
+    broadcast("agent_status", updatedAgent);
+    notifyTaskStatus(id, task.title, "in_progress", taskLang);
+
+    const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
+    const worktreeNote = worktreePath
+      ? pickL(
+          l(
+            [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+            [` (isolated branch: climpire/${id.slice(0, 8)})`],
+            [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+            [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+          ),
+          taskLang,
+        )
+      : "";
+    notifyCeo(
+      pickL(
+        l(
+          [`${assigneeName}가 '${task.title}' 작업을 시작했습니다.${worktreeNote}`],
+          [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
+          [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
+          [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+        ),
+        taskLang,
+      ),
+      id,
+    );
+
+    const taskRow = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(id) as
+      | { department_id: string | null }
+      | undefined;
+    startProgressTimer(id, task.title, taskRow?.department_id ?? null);
+
+    res.json({ ok: true, pid: child.pid ?? null, logPath, cwd: agentCwd, worktree: !!worktreePath });
+  });
+}
