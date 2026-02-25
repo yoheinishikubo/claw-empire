@@ -1,0 +1,490 @@
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+
+import type { Lang } from "../../../types/lang.ts";
+import type { AgentRow } from "./direct-chat.ts";
+import type { L10n } from "./language-policy.ts";
+import type { SubtaskRow } from "./subtask-summary.ts";
+import {
+  buildCrossLeaderAckMessage,
+  buildDelegatedDescription,
+  buildDelegatedTitle,
+  buildExecutionStartNotice,
+  buildOriginRequestMessage,
+  buildQueueProgressNotice,
+  buildWorktreeCeoNote,
+  teamLeadFallbackLabel,
+} from "./subtask-delegation-batch-messages.ts";
+
+type ParentTaskRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  project_id: string | null;
+  project_path: string | null;
+  department_id: string | null;
+};
+
+interface BatchDeps {
+  db: any;
+  l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
+  pickL: (pool: L10n, lang: Lang) => string;
+  resolveLang: (text?: string, fallback?: Lang) => Lang;
+  getDeptName: (deptId: string) => string;
+  getAgentDisplayName: (agent: AgentRow, lang: string) => string;
+  findTeamLeader: (deptId: string | null) => AgentRow | null;
+  findBestSubordinate: (deptId: string, excludeId: string, candidateAgentIds?: string[] | null) => AgentRow | null;
+  nowMs: () => number;
+  broadcast: (event: string, payload: unknown) => void;
+  notifyCeo: (content: string, taskId?: string | null, messageType?: string) => void;
+  sendAgentMessage: (
+    agent: AgentRow,
+    content: string,
+    messageType?: string,
+    receiverType?: string,
+    receiverId?: string | null,
+    taskId?: string | null,
+  ) => void;
+  appendTaskLog: (taskId: string, source: string, message: string) => void;
+  recordTaskCreationAudit: (payload: any) => void;
+  resolveProjectPath: (taskLike: {
+    project_id?: string | null;
+    project_path?: string | null;
+    description?: string | null;
+    title?: string | null;
+  }) => string;
+  createWorktree: (projectPath: string, taskId: string, agentName: string, baseBranch?: string) => string | null;
+  logsDir: string;
+  ensureTaskExecutionSession: (
+    taskId: string,
+    agentId: string,
+    provider: string,
+  ) => {
+    sessionId: string;
+    agentId: string;
+    provider: string;
+  };
+  ensureClaudeMd: (projectPath: string, worktreePath: string) => void;
+  getProviderModelConfig: () => Record<string, { model?: string; reasoningLevel?: string }>;
+  spawnCliAgent: (
+    taskId: string,
+    provider: string,
+    prompt: string,
+    cwd: string,
+    logFilePath: string,
+    model?: string,
+    reasoningLevel?: string,
+  ) => {
+    on: (event: "close", listener: (code: number | null) => void) => void;
+  };
+  getNextHttpAgentPid: () => number;
+  launchApiProviderAgent: (
+    taskId: string,
+    apiProviderId: string | null,
+    apiModel: string | null,
+    prompt: string,
+    cwd: string,
+    logFilePath: string,
+    controller: AbortController,
+    fakePid: number,
+  ) => void;
+  launchHttpAgent: (
+    taskId: string,
+    provider: string,
+    prompt: string,
+    cwd: string,
+    logFilePath: string,
+    controller: AbortController,
+    fakePid: number,
+    oauthAccountId: string | null,
+  ) => void;
+  startProgressTimer: (taskId: string, taskTitle: string, departmentId: string | null) => void;
+  subtaskDelegationCallbacks: Map<string, () => void>;
+  delegatedTaskToSubtask: Map<string, string>;
+  maybeNotifyAllSubtasksComplete: (parentTaskId: string) => void;
+  finalizeDelegatedSubtasks: (delegatedTaskId: string, subtaskIds: string[], exitCode: number) => void;
+  buildSubtaskDelegationPrompt: (
+    parentTask: ParentTaskRow,
+    assignedSubtasks: SubtaskRow[],
+    execAgent: AgentRow,
+    targetDeptId: string,
+    targetDeptName: string,
+  ) => string;
+}
+
+export function createSubtaskDelegationBatch(deps: BatchDeps) {
+  const {
+    db,
+    l,
+    pickL,
+    resolveLang,
+    getDeptName,
+    getAgentDisplayName,
+    findTeamLeader,
+    findBestSubordinate,
+    nowMs,
+    broadcast,
+    notifyCeo,
+    sendAgentMessage,
+    appendTaskLog,
+    recordTaskCreationAudit,
+    resolveProjectPath,
+    createWorktree,
+    logsDir,
+    ensureTaskExecutionSession,
+    ensureClaudeMd,
+    getProviderModelConfig,
+    spawnCliAgent,
+    getNextHttpAgentPid,
+    launchApiProviderAgent,
+    launchHttpAgent,
+    startProgressTimer,
+    subtaskDelegationCallbacks,
+    delegatedTaskToSubtask,
+    maybeNotifyAllSubtasksComplete,
+    finalizeDelegatedSubtasks,
+    buildSubtaskDelegationPrompt,
+  } = deps;
+  function delegateSubtaskBatch(
+    subtasks: SubtaskRow[],
+    queueIndex: number,
+    queueTotal: number,
+    parentTask: {
+      id: string;
+      title: string;
+      description: string | null;
+      project_id: string | null;
+      project_path: string | null;
+      department_id: string | null;
+    },
+    onBatchDone?: () => void,
+  ): void {
+    const lang = resolveLang(parentTask.description ?? parentTask.title);
+    if (subtasks.length === 0) {
+      onBatchDone?.();
+      return;
+    }
+
+    const targetDeptId = subtasks[0].target_department_id!;
+    const targetDeptName = getDeptName(targetDeptId);
+    const subtaskIds = subtasks.map((st) => st.id);
+    const firstTitle = subtasks[0].title;
+    const batchTitle = subtasks.length > 1 ? `${firstTitle} +${subtasks.length - 1}` : firstTitle;
+
+    const crossLeader = findTeamLeader(targetDeptId);
+    if (!crossLeader) {
+      const doneAt = nowMs();
+      for (const sid of subtaskIds) {
+        db.prepare("UPDATE subtasks SET status = 'done', completed_at = ?, blocked_reason = NULL WHERE id = ?").run(
+          doneAt,
+          sid,
+        );
+        broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sid));
+      }
+      maybeNotifyAllSubtasksComplete(parentTask.id);
+      onBatchDone?.();
+      return;
+    }
+
+    const originLeader = findTeamLeader(parentTask.department_id);
+    const originLeaderName = originLeader
+      ? getAgentDisplayName(originLeader, lang)
+      : teamLeadFallbackLabel({ l, pickL }, lang);
+    const crossLeaderName = getAgentDisplayName(crossLeader, lang);
+
+    if (queueTotal > 1) {
+      notifyCeo(
+        buildQueueProgressNotice({
+          l,
+          pickL,
+          lang,
+          targetDeptName,
+          queueIndex,
+          queueTotal,
+          itemCount: subtasks.length,
+        }),
+        parentTask.id,
+      );
+    }
+
+    if (originLeader) {
+      sendAgentMessage(
+        originLeader,
+        buildOriginRequestMessage({
+          l,
+          pickL,
+          lang,
+          crossLeaderName,
+          parentTitle: parentTask.title,
+          itemCount: subtasks.length,
+          batchTitle,
+        }),
+        "chat",
+        "agent",
+        crossLeader.id,
+        parentTask.id,
+      );
+    }
+
+    broadcast("cross_dept_delivery", {
+      from_agent_id: originLeader?.id || null,
+      to_agent_id: crossLeader.id,
+      task_title: batchTitle,
+    });
+
+    const ackDelay = 1500 + Math.random() * 1000;
+    setTimeout(() => {
+      const crossSub = findBestSubordinate(targetDeptId, crossLeader.id);
+      const execAgent = crossSub || crossLeader;
+      const execName = getAgentDisplayName(execAgent, lang);
+
+      sendAgentMessage(
+        crossLeader,
+        buildCrossLeaderAckMessage({
+          l,
+          pickL,
+          lang,
+          hasSubordinate: Boolean(crossSub),
+          originLeaderName,
+          itemCount: subtasks.length,
+          batchTitle,
+          execName,
+        }),
+        "chat",
+        "agent",
+        null,
+        parentTask.id,
+      );
+
+      const delegatedTaskId = randomUUID();
+      const ct = nowMs();
+      const delegatedTitle = buildDelegatedTitle({ l, pickL }, lang, subtasks.length, batchTitle);
+      const delegatedChecklist = subtasks.map((st, idx) => `${idx + 1}. ${st.title}`).join("\n");
+      const delegatedDescription = buildDelegatedDescription({
+        l,
+        pickL,
+        lang,
+        sourceDeptName: getDeptName(parentTask.department_id ?? ""),
+        parentSummary: parentTask.description || parentTask.title,
+        delegatedChecklist,
+      });
+      db.prepare(
+        `
+    INSERT INTO tasks (id, title, description, department_id, project_id, status, priority, task_type, project_path, source_task_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?)
+  `,
+      ).run(
+        delegatedTaskId,
+        delegatedTitle,
+        delegatedDescription,
+        targetDeptId,
+        parentTask.project_id ?? null,
+        parentTask.project_path,
+        parentTask.id,
+        ct,
+        ct,
+      );
+      recordTaskCreationAudit({
+        taskId: delegatedTaskId,
+        taskTitle: delegatedTitle,
+        taskStatus: "planned",
+        departmentId: targetDeptId,
+        sourceTaskId: parentTask.id,
+        taskType: "general",
+        projectPath: parentTask.project_path ?? null,
+        trigger: "workflow.subtask_batch_delegation",
+        triggerDetail: `parent_task=${parentTask.id}; subtasks=${subtasks.length}; target_dept=${targetDeptId}`,
+        actorType: "agent",
+        actorId: crossLeader.id,
+        actorName: crossLeader.name,
+        body: {
+          parent_task_id: parentTask.id,
+          subtask_ids: subtaskIds,
+          target_department_id: targetDeptId,
+        },
+      });
+      if (parentTask.project_id) {
+        db.prepare("UPDATE projects SET last_used_at = ?, updated_at = ? WHERE id = ?").run(
+          ct,
+          ct,
+          parentTask.project_id,
+        );
+      }
+      appendTaskLog(delegatedTaskId, "system", `Subtask delegation from '${parentTask.title}' → ${targetDeptName}`);
+      broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(delegatedTaskId));
+
+      const ct2 = nowMs();
+      db.prepare(
+        "UPDATE tasks SET assigned_agent_id = ?, status = 'in_progress', started_at = ?, updated_at = ? WHERE id = ?",
+      ).run(execAgent.id, ct2, ct2, delegatedTaskId);
+      db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(
+        delegatedTaskId,
+        execAgent.id,
+      );
+      appendTaskLog(delegatedTaskId, "system", `${crossLeaderName} → ${execName}`);
+
+      broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(delegatedTaskId));
+      broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(execAgent.id));
+
+      for (const sid of subtaskIds) {
+        db.prepare(
+          "UPDATE subtasks SET delegated_task_id = ?, status = 'in_progress', blocked_reason = NULL WHERE id = ?",
+        ).run(delegatedTaskId, sid);
+        broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sid));
+      }
+      delegatedTaskToSubtask.set(delegatedTaskId, subtaskIds[0]);
+      if (onBatchDone) {
+        subtaskDelegationCallbacks.set(delegatedTaskId, onBatchDone);
+      }
+
+      const execProvider = execAgent.cli_provider || "claude";
+      if (["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(execProvider)) {
+        const projPath = resolveProjectPath({
+          project_id: parentTask.project_id,
+          project_path: parentTask.project_path,
+          description: parentTask.description,
+          title: parentTask.title,
+        });
+        const worktreePath = createWorktree(projPath, delegatedTaskId, execAgent.name);
+        const agentCwd = worktreePath || projPath;
+        if (worktreePath) {
+          appendTaskLog(
+            delegatedTaskId,
+            "system",
+            `Git worktree created: ${worktreePath} (branch: climpire/${delegatedTaskId.slice(0, 8)})`,
+          );
+        }
+        const logFilePath = path.join(logsDir, `${delegatedTaskId}.log`);
+        const spawnPrompt = buildSubtaskDelegationPrompt(parentTask, subtasks, execAgent, targetDeptId, targetDeptName);
+        const executionSession = ensureTaskExecutionSession(delegatedTaskId, execAgent.id, execProvider);
+        const worktreeNote = worktreePath
+          ? `\nNOTE: You are working in an isolated Git worktree branch (climpire/${delegatedTaskId.slice(0, 8)}). Commit your changes normally.`
+          : "";
+        const sessionPrompt = [
+          `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
+          "Task-scoped session: keep continuity only within this delegated task.",
+          spawnPrompt,
+          worktreeNote,
+        ].join("\n");
+
+        if (worktreePath && execProvider === "claude") {
+          ensureClaudeMd(projPath, worktreePath);
+        }
+
+        appendTaskLog(delegatedTaskId, "system", `RUN start (agent=${execAgent.name}, provider=${execProvider})`);
+
+        const wrapCallbackForHttpProvider = () => {
+          const originalCallback = subtaskDelegationCallbacks.get(delegatedTaskId);
+          subtaskDelegationCallbacks.set(delegatedTaskId, () => {
+            // Finalize subtask statuses based on delegated task exit result
+            const finishedTask = db.prepare("SELECT status FROM tasks WHERE id = ?").get(delegatedTaskId) as
+              | { status: string }
+              | undefined;
+            if (!finishedTask || finishedTask.status === "cancelled" || finishedTask.status === "pending") {
+              delegatedTaskToSubtask.delete(delegatedTaskId);
+              appendTaskLog(
+                delegatedTaskId,
+                "system",
+                `Delegated batch callback skipped (status=${finishedTask?.status ?? "missing"})`,
+              );
+              if (originalCallback) originalCallback();
+              return;
+            }
+            const succeeded = finishedTask?.status === "done" || finishedTask?.status === "review";
+            const doneAt = nowMs();
+            for (const sid of subtaskIds) {
+              if (succeeded) {
+                db.prepare(
+                  "UPDATE subtasks SET status = 'done', completed_at = ?, blocked_reason = NULL WHERE id = ?",
+                ).run(doneAt, sid);
+              } else {
+                db.prepare("UPDATE subtasks SET status = 'blocked', blocked_reason = ? WHERE id = ?").run(
+                  "Delegated task failed",
+                  sid,
+                );
+              }
+              broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sid));
+            }
+            delegatedTaskToSubtask.delete(delegatedTaskId);
+            if (succeeded) {
+              const touchedParents = new Set<string>();
+              for (const sid of subtaskIds) {
+                const sub = db.prepare("SELECT task_id FROM subtasks WHERE id = ?").get(sid) as
+                  | { task_id: string }
+                  | undefined;
+                if (sub?.task_id) touchedParents.add(sub.task_id);
+              }
+              for (const pid of touchedParents) maybeNotifyAllSubtasksComplete(pid);
+            }
+            if (originalCallback) originalCallback();
+          });
+        };
+
+        if (execProvider === "api") {
+          wrapCallbackForHttpProvider();
+          const controller = new AbortController();
+          const fakePid = getNextHttpAgentPid();
+          launchApiProviderAgent(
+            delegatedTaskId,
+            execAgent.api_provider_id ?? null,
+            execAgent.api_model ?? null,
+            sessionPrompt,
+            agentCwd,
+            logFilePath,
+            controller,
+            fakePid,
+          );
+        } else if (execProvider === "copilot" || execProvider === "antigravity") {
+          wrapCallbackForHttpProvider();
+          const controller = new AbortController();
+          const fakePid = getNextHttpAgentPid();
+          launchHttpAgent(
+            delegatedTaskId,
+            execProvider,
+            sessionPrompt,
+            agentCwd,
+            logFilePath,
+            controller,
+            fakePid,
+            execAgent.oauth_account_id ?? null,
+          );
+        } else {
+          const delegateModelConfig = getProviderModelConfig();
+          const delegateModel = delegateModelConfig[execProvider]?.model || undefined;
+          const delegateReasoningLevel = delegateModelConfig[execProvider]?.reasoningLevel || undefined;
+          const child = spawnCliAgent(
+            delegatedTaskId,
+            execProvider,
+            sessionPrompt,
+            agentCwd,
+            logFilePath,
+            delegateModel,
+            delegateReasoningLevel,
+          );
+          child.on("close", (code: number | null) => {
+            finalizeDelegatedSubtasks(delegatedTaskId, subtaskIds, code ?? 1);
+          });
+        }
+
+        const worktreeCeoNote = buildWorktreeCeoNote({ l, pickL }, lang, delegatedTaskId, Boolean(worktreePath));
+        notifyCeo(
+          buildExecutionStartNotice({
+            l,
+            pickL,
+            lang,
+            targetDeptName,
+            execName,
+            itemCount: subtasks.length,
+            worktreeCeoNote,
+          }),
+          delegatedTaskId,
+        );
+        startProgressTimer(delegatedTaskId, delegatedTitle, targetDeptId);
+      } else {
+        onBatchDone?.();
+      }
+    }, ackDelay);
+  }
+
+  return { delegateSubtaskBatch };
+}
