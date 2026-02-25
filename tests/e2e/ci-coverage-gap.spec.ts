@@ -159,10 +159,12 @@ async function reorderDepartmentsWithRetry(
 }
 
 async function connectWsWithSessionCookie(cookieHeader: string): Promise<WebSocket> {
-  const ws = new WebSocket("ws://127.0.0.1:8800/ws", {
+  const baseUrl = new URL(process.env.PW_BASE_URL ?? "http://127.0.0.1:8810");
+  const wsProtocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${wsProtocol}//${baseUrl.host}/ws`, {
     headers: {
       Cookie: cookieHeader,
-      Origin: "http://127.0.0.1:8800",
+      Origin: `${baseUrl.protocol}//${baseUrl.host}`,
     },
   });
 

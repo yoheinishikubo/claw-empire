@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { Application, Container, Graphics, Text, Sprite, Texture, AnimatedSprite } from "pixi.js";
 import { useI18n } from "../i18n";
 import { useTheme, type ThemeMode } from "../ThemeContext";
@@ -287,23 +287,8 @@ export default function OfficeView({
 
   const { cliStatus, cliUsage, cliUsageRef, refreshing, handleRefreshUsage } = useCliUsage(tasks);
 
-  useOfficePixiRuntime({
-    containerRef,
-    appRef,
-    texturesRef,
-    destroyedRef,
-    initIdRef,
-    initDoneRef,
-    officeWRef,
-    scrollHostXRef,
-    scrollHostYRef,
-    deliveriesRef,
-    dataRef,
-    buildScene,
-    followCeoInView,
-    triggerDepartmentInteract,
-    keysRef,
-    tickerContext: {
+  const tickerContext = useMemo(
+    () => ({
       tickRef,
       keysRef,
       ceoPosRef,
@@ -328,7 +313,27 @@ export default function OfficeView({
       totalHRef,
       dataRef,
       followCeoInView,
-    },
+    }),
+    [followCeoInView, cliUsageRef],
+  );
+
+  useOfficePixiRuntime({
+    containerRef,
+    appRef,
+    texturesRef,
+    destroyedRef,
+    initIdRef,
+    initDoneRef,
+    officeWRef,
+    scrollHostXRef,
+    scrollHostYRef,
+    deliveriesRef,
+    dataRef,
+    buildScene,
+    followCeoInView,
+    triggerDepartmentInteract,
+    keysRef,
+    tickerContext,
     departments,
     agents,
     tasks,
