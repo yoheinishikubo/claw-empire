@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type DragEvent } from 'react';
 import type { Agent, Department, AgentRole, CliProvider } from '../types';
 import { useI18n, localeName } from '../i18n';
 import * as api from '../api';
@@ -80,7 +80,7 @@ function EmojiPicker({ value, onChange, size = 'md' }: { value: string; onChange
       </button>
       {open && (
         <div
-          className="absolute z-[60] top-full mt-1 left-0 rounded-xl shadow-2xl p-3 w-72"
+          className="absolute z-[60] top-full mt-1 left-0 rounded-xl shadow-2xl p-3 w-72 max-h-[60vh] overflow-y-auto overscroll-contain"
           style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)', backdropFilter: 'blur(20px)' }}
         >
           {EMOJI_GROUPS.map((g) => (
@@ -151,11 +151,17 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
   const [deptOrder, setDeptOrder] = useState<Department[]>([]);
   const [deptOrderDirty, setDeptOrderDirty] = useState(false);
   const [reorderSaving, setReorderSaving] = useState(false);
+  const [draggingDeptId, setDraggingDeptId] = useState<string | null>(null);
+  const [dragOverDeptId, setDragOverDeptId] = useState<string | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after' | null>(null);
 
   // departments가 변경되면 순번 로컬 상태 동기화
   useEffect(() => {
     setDeptOrder([...departments].sort((a, b) => a.sort_order - b.sort_order));
     setDeptOrderDirty(false);
+    setDraggingDeptId(null);
+    setDragOverDeptId(null);
+    setDragOverPosition(null);
   }, [departments]);
 
   const spriteMap = buildSpriteMap(agents);
@@ -262,6 +268,36 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
     if (target < 0 || target >= newOrder.length) return;
     [newOrder[index], newOrder[target]] = [newOrder[target], newOrder[index]];
     setDeptOrder(newOrder);
+    setDeptOrderDirty(true);
+  };
+
+  const getDropPosition = (e: DragEvent<HTMLDivElement>): 'before' | 'after' => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+  };
+
+  const clearDeptDragState = () => {
+    setDraggingDeptId(null);
+    setDragOverDeptId(null);
+    setDragOverPosition(null);
+  };
+
+  const moveDeptByDrag = (dragDeptId: string, targetDeptId: string, position: 'before' | 'after') => {
+    if (dragDeptId === targetDeptId) return;
+    const fromIndex = deptOrder.findIndex((d) => d.id === dragDeptId);
+    const targetIndex = deptOrder.findIndex((d) => d.id === targetDeptId);
+    if (fromIndex < 0 || targetIndex < 0) return;
+
+    const nextOrder = [...deptOrder];
+    const [dragged] = nextOrder.splice(fromIndex, 1);
+    let insertIndex = targetIndex + (position === 'after' ? 1 : 0);
+    if (fromIndex < insertIndex) insertIndex -= 1;
+    insertIndex = Math.max(0, Math.min(insertIndex, nextOrder.length));
+    nextOrder.splice(insertIndex, 0, dragged);
+
+    const changed = nextOrder.some((d, i) => d.id !== deptOrder[i]?.id);
+    if (!changed) return;
+    setDeptOrder(nextOrder);
     setDeptOrderDirty(true);
   };
 
@@ -467,12 +503,45 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
           <div className="space-y-2">
             {deptOrder.map((dept, idx) => {
               const agentCountForDept = agents.filter(a => a.department_id === dept.id).length;
+              const isDragging = draggingDeptId === dept.id;
+              const isDragTarget = dragOverDeptId === dept.id && draggingDeptId !== dept.id;
+              const showDropBefore = isDragTarget && dragOverPosition === 'before';
+              const showDropAfter = isDragTarget && dragOverPosition === 'after';
               return (
                 <div
                   key={dept.id}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:shadow-md group"
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggingDeptId(dept.id);
+                    setDragOverDeptId(null);
+                    setDragOverPosition(null);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', dept.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (!draggingDeptId || draggingDeptId === dept.id) return;
+                    e.preventDefault();
+                    const nextPosition = getDropPosition(e);
+                    if (dragOverDeptId !== dept.id || dragOverPosition !== nextPosition) {
+                      setDragOverDeptId(dept.id);
+                      setDragOverPosition(nextPosition);
+                    }
+                    e.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const droppedId = e.dataTransfer.getData('text/plain') || draggingDeptId;
+                    if (droppedId && droppedId !== dept.id) {
+                      moveDeptByDrag(droppedId, dept.id, getDropPosition(e));
+                    }
+                    clearDeptDragState();
+                  }}
+                  onDragEnd={clearDeptDragState}
+                  className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:shadow-md group ${isDragging ? 'opacity-60' : ''}`}
                   style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)' }}
                 >
+                  {showDropBefore && <div className="pointer-events-none absolute left-2 right-2 top-0 h-0.5 rounded bg-blue-400" />}
+                  {showDropAfter && <div className="pointer-events-none absolute left-2 right-2 bottom-0 h-0.5 rounded bg-blue-400" />}
                   {/* 순번 컨트롤 */}
                   <div className="flex flex-col gap-0.5">
                     <button
@@ -713,7 +782,7 @@ function AgentFormModal({ isKo, locale, tr, form, setForm, departments, isEdit, 
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto overscroll-contain rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
         style={{ background: 'var(--th-card-bg)', border: '1px solid var(--th-card-border)', backdropFilter: 'blur(20px)' }}
       >
         {/* Modal header */}

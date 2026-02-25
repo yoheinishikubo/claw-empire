@@ -1038,14 +1038,17 @@ function handleMentionDelegation(
 }
 
 function findBestSubordinate(deptId: string, excludeId: string, candidateAgentIds?: string[] | null): AgentRow | null {
-  // candidateAgentIds가 지정되면 해당 목록에서만 선택 (manual 모드)
-  if (candidateAgentIds && candidateAgentIds.length > 0) {
+  // candidateAgentIds가 지정되면 해당 목록에서만 선택 (manual 모드, 부서 고정)
+  if (Array.isArray(candidateAgentIds)) {
+    if (candidateAgentIds.length === 0) {
+      return null;
+    }
     const placeholders = candidateAgentIds.map(() => "?").join(",");
     const agents = db.prepare(
-      `SELECT * FROM agents WHERE id IN (${placeholders}) AND id != ? AND role != 'team_leader' ORDER BY
+      `SELECT * FROM agents WHERE id IN (${placeholders}) AND department_id = ? AND id != ? AND role != 'team_leader' ORDER BY
          CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
          CASE role WHEN 'senior' THEN 0 WHEN 'junior' THEN 1 WHEN 'intern' THEN 2 ELSE 3 END`
-    ).all(...candidateAgentIds, excludeId) as unknown as AgentRow[];
+    ).all(...candidateAgentIds, deptId, excludeId) as unknown as AgentRow[];
     return agents[0] ?? null;
   }
   // 기존 로직: 부서 전체에서 선택

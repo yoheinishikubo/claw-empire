@@ -1193,9 +1193,10 @@ app.post("/api/departments", (req, res) => {
   }
 });
 
-app.patch("/api/departments/:id", (req, res) => {
+app.patch("/api/departments/:id", (req, res, next) => {
   try {
     const id = String(req.params.id);
+    if (id === "reorder") return next();
     const body = req.body;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return res.status(400).json({ error: "invalid_payload" });
