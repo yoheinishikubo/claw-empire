@@ -11,7 +11,7 @@ import type {
   SubTask,
   Task,
   CeoOfficeCall,
-} from "../types";
+ WSEventType } from "../types";
 import {
   CODEX_THREAD_BINDING_TTL_MS,
   MAX_CEO_OFFICE_CALLS,
@@ -26,7 +26,6 @@ import {
 import { parseCliSubAgentEvents, shouldParseCliChunkForSubAgents } from "./sub-agent-events";
 import type { View } from "./types";
 import { appendCapped, areAgentsEquivalent } from "./utils";
-import type { WSEventType } from "../types";
 
 type SocketOn = (event: WSEventType, handler: (payload: unknown) => void) => () => void;
 

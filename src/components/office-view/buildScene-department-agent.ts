@@ -1,8 +1,7 @@
 import type { MutableRefObject } from "react";
 import { AnimatedSprite, Container, Graphics, Sprite, Text, TextStyle, type Texture } from "pixi.js";
 import type { Agent, SubAgent, Task } from "../../types";
-import type { CallbackSnapshot } from "./buildScene-types";
-import { type AnimItem, type SubCloneAnimItem } from "./buildScene-types";
+import type { AnimItem, CallbackSnapshot, SubCloneAnimItem } from "./buildScene-types";
 import {
   DESK_W,
   MAX_VISIBLE_SUB_CLONES_PER_AGENT,

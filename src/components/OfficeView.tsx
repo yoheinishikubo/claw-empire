@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
-import { Application, Container, Graphics, Text, Sprite, Texture, AnimatedSprite } from "pixi.js";
+import { type Application, type Container, type Graphics, type Text, type Sprite, type Texture, type AnimatedSprite } from "pixi.js";
 import { useI18n } from "../i18n";
 import { useTheme, type ThemeMode } from "../ThemeContext";
 import CliUsagePanel from "./office-view/CliUsagePanel";

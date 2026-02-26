@@ -214,7 +214,7 @@ export function createUsageCliTools(deps: CreateUsageCliToolsDeps) {
     },
   ];
 
-  let cachedCliStatus: { data: CliStatusResult; loadedAt: number } | null = null;
+  const cachedCliStatus: { data: CliStatusResult; loadedAt: number } | null = null;
   const CLI_STATUS_TTL = 30_000;
 
   function execWithTimeout(cmd: string, args: string[], timeoutMs: number): Promise<string> {

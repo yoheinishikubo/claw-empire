@@ -206,6 +206,8 @@ export function useSkillsLibraryState({ agents, localeTag, t }: { agents: Agent[
   }, [learnedProvidersBySkill, learningSkillKey]);
 
   const learnInProgress = learnJob?.status === "queued" || learnJob?.status === "running";
+  const learnInProgressRef = useRef(learnInProgress);
+  learnInProgressRef.current = learnInProgress;
   const preferKoreanName = localeTag.startsWith("ko");
 
   useEffect(() => {
@@ -267,7 +269,7 @@ export function useSkillsLibraryState({ agents, localeTag, t }: { agents: Agent[
   );
 
   const closeLearningModal = useCallback(() => {
-    if (learnInProgress) return;
+    if (learnInProgressRef.current) return;
     setLearningSkill(null);
     setSelectedProviders([]);
     setLearnJob(null);
@@ -275,7 +277,7 @@ export function useSkillsLibraryState({ agents, localeTag, t }: { agents: Agent[
     setUnlearnError(null);
     setUnlearningProviders([]);
     setUnlearnEffects({});
-  }, [learnInProgress]);
+  }, []);
 
   useEffect(() => {
     if (!learningSkill) return;

@@ -53,6 +53,7 @@ export default tseslint.config(
         {
           prefer: "type-imports",
           fixStyle: "inline-type-imports",
+          disallowTypeAnnotations: false,
         },
       ],
       "@typescript-eslint/no-misused-promises": [

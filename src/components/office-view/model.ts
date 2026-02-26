@@ -1,4 +1,4 @@
-import { Container, Graphics, Text, TextStyle } from "pixi.js";
+import { type Container, Graphics, Text, TextStyle } from "pixi.js";
 import type {
   Department,
   Agent,

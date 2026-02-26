@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { type Container, Graphics } from "pixi.js";
 import { DESK_H, DESK_W, TARGET_CHAR_H } from "./model";
 import { blendColor } from "./drawing-core";
 import { OFFICE_PASTEL } from "./themes-locale";

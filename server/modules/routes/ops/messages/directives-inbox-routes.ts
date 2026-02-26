@@ -88,9 +88,9 @@ export function registerDirectiveAndInboxRoutes(ctx: RuntimeContext, deps: Direc
     const body = (req.body ?? {}) as Record<string, unknown>;
     const idempotencyKey = resolveMessageIdempotencyKey(req, body, "api.directives");
     const content = body.content;
-    let explicitProjectId = normalizeTextField(body.project_id);
-    let explicitProjectPath = normalizeTextField(body.project_path);
-    let explicitProjectContext = normalizeTextField(body.project_context);
+    const explicitProjectId = normalizeTextField(body.project_id);
+    const explicitProjectPath = normalizeTextField(body.project_path);
+    const explicitProjectContext = normalizeTextField(body.project_context);
     if (!content || typeof content !== "string") {
       if (
         !recordMessageIngressAuditOr503(res, {
@@ -319,9 +319,9 @@ export function registerDirectiveAndInboxRoutes(ctx: RuntimeContext, deps: Direc
     const raw = text.trimStart();
     const isDirective = raw.startsWith("$");
     const content = isDirective ? raw.slice(1).trimStart() : raw;
-    let inboxProjectId = normalizeTextField(body.project_id);
-    let inboxProjectPath = normalizeTextField(body.project_path);
-    let inboxProjectContext = normalizeTextField(body.project_context);
+    const inboxProjectId = normalizeTextField(body.project_id);
+    const inboxProjectPath = normalizeTextField(body.project_path);
+    const inboxProjectContext = normalizeTextField(body.project_context);
     if (!content) {
       if (
         !recordMessageIngressAuditOr503(res, {

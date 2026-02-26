@@ -30,7 +30,7 @@ export function registerRoutesPartC(ctx: RuntimeContext): RouteOpsExports {
   const buildDirectReplyPrompt = __ctx.buildDirectReplyPrompt;
   const buildTaskExecutionPrompt = __ctx.buildTaskExecutionPrompt;
   let cachedCliStatus = __ctx.cachedCliStatus;
-  let cachedModels = __ctx.cachedModels;
+  const cachedModels = __ctx.cachedModels;
   const chooseSafeReply = __ctx.chooseSafeReply;
   const cleanupWorktree = __ctx.cleanupWorktree;
   const clearTaskWorkflowState = __ctx.clearTaskWorkflowState;

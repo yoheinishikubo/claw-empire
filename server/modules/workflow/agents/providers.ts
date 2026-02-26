@@ -85,7 +85,7 @@ export function initializeWorkflowAgentProviders(ctx: RuntimeContext): any {
   } = usageCliTools;
 
   let httpAgentCounter = Date.now() % 1_000_000;
-  let cachedModels: { data: Record<string, string[]>; loadedAt: number } | null = null;
+  const cachedModels: { data: Record<string, string[]>; loadedAt: number } | null = null;
   const MODELS_CACHE_TTL = 60_000;
   function getNextHttpAgentPid(): number {
     httpAgentCounter += 1;

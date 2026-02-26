@@ -2,7 +2,7 @@ import type { MutableRefObject } from "react";
 import { Container, Graphics, Text, TextStyle, type Application, type Texture } from "pixi.js";
 import type { Agent, Department, SubAgent, Task } from "../../types";
 import { localeName } from "../../i18n";
-import type { CallbackSnapshot } from "./buildScene-types";
+import type { CallbackSnapshot , AnimItem, SubCloneAnimItem } from "./buildScene-types";
 import {
   COLS_PER_ROW,
   DESK_W,
@@ -32,7 +32,6 @@ import {
 } from "./drawing-core";
 import { drawChair, drawDesk, drawPlant, drawWhiteboard } from "./drawing-furniture-a";
 import { drawBookshelf } from "./drawing-furniture-b";
-import type { AnimItem, SubCloneAnimItem } from "./buildScene-types";
 import { renderDeskAgentAndSubClones } from "./buildScene-department-agent";
 
 interface BuildDepartmentRoomsParams {

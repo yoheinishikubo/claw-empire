@@ -227,7 +227,7 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
       candidates.push(trimmed);
     }
     for (const candidate of candidates) {
-      let line = candidate
+      const line = candidate
         .replace(/^\[(?:one-shot-error|tool-error)\]\s*/i, "")
         .replace(/^error:\s*/i, "")
         .trim();

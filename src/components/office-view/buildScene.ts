@@ -1,4 +1,4 @@
-import { Container } from "pixi.js";
+import { type Container } from "pixi.js";
 import { buildSpriteMap } from "../AgentAvatar";
 import {
   BREAK_ROOM_GAP,
