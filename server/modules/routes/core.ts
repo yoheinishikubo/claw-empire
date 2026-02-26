@@ -274,7 +274,13 @@ export function registerRoutesPartA(ctx: RuntimeContext): Record<string, never> 
   // ---------------------------------------------------------------------------
   // Departments
   // ---------------------------------------------------------------------------
-  registerDepartmentRoutes(__ctx);
+  registerDepartmentRoutes({
+    app,
+    db,
+    broadcast,
+    normalizeTextField,
+    runInTransaction,
+  });
 
   // ---------------------------------------------------------------------------
   // Projects
@@ -388,7 +394,11 @@ export function registerRoutesPartA(ctx: RuntimeContext): Record<string, never> 
     randomDelay,
   });
 
-  registerGitHubRoutes(__ctx);
+  registerGitHubRoutes({
+    app,
+    db,
+    broadcast,
+  });
 
   return {};
 }

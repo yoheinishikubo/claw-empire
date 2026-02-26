@@ -1,7 +1,12 @@
 import type { RuntimeContext } from "../../../types/runtime-context.ts";
 
-export function registerDepartmentRoutes(ctx: RuntimeContext): void {
-  const { app, db, broadcast, normalizeTextField, runInTransaction } = ctx;
+export type DepartmentRouteDeps = Pick<
+  RuntimeContext,
+  "app" | "db" | "broadcast" | "normalizeTextField" | "runInTransaction"
+>;
+
+export function registerDepartmentRoutes(deps: DepartmentRouteDeps): void {
+  const { app, db, broadcast, normalizeTextField, runInTransaction } = deps;
 
   const PROTECTED_DEPARTMENT_IDS = new Set(["planning", "dev", "design", "qa", "devsecops", "operations"]);
 

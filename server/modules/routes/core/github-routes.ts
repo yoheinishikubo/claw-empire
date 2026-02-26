@@ -6,8 +6,10 @@ import { randomUUID } from "node:crypto";
 import { decryptSecret } from "../../../oauth/helpers.ts";
 import type { RuntimeContext } from "../../../types/runtime-context.ts";
 
-export function registerGitHubRoutes(ctx: RuntimeContext): void {
-  const { app, db, broadcast } = ctx;
+export type GitHubRouteDeps = Pick<RuntimeContext, "app" | "db" | "broadcast">;
+
+export function registerGitHubRoutes(deps: GitHubRouteDeps): void {
+  const { app, db, broadcast } = deps;
 
   function getGitHubAccessToken(): string | null {
     const row = db
