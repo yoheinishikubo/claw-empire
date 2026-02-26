@@ -91,41 +91,44 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
     const homeDir = os.homedir();
     const projectsDir = path.join(homeDir, "Projects");
     const projectsDirLower = path.join(homeDir, "projects");
+    const isDirectorySafe = (targetPath: string): boolean => {
+      try {
+        return fs.statSync(targetPath).isDirectory();
+      } catch {
+        return false;
+      }
+    };
+    const readProjectNamesSafe = (projectDir: string): string[] => {
+      try {
+        return fs
+          .readdirSync(projectDir, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+          .map((entry) => entry.name);
+      } catch {
+        return [];
+      }
+    };
 
     // 1. Explicit absolute path in message
     const absMatch = message.match(/(?:^|\s)(\/[\w./-]+)/);
     if (absMatch) {
       const p = absMatch[1];
       // Check if it's a real directory
-      try {
-        if (fs.statSync(p).isDirectory()) return p;
-      } catch {}
+      if (isDirectorySafe(p)) return p;
       // Check parent directory
       const parent = path.dirname(p);
-      try {
-        if (fs.statSync(parent).isDirectory()) return parent;
-      } catch {}
+      if (isDirectorySafe(parent)) return parent;
     }
 
     // 2. ~ path
     const tildeMatch = message.match(/~\/([\w./-]+)/);
     if (tildeMatch) {
       const expanded = path.join(homeDir, tildeMatch[1]);
-      try {
-        if (fs.statSync(expanded).isDirectory()) return expanded;
-      } catch {}
+      if (isDirectorySafe(expanded)) return expanded;
     }
 
     // 3. Scan known project directories and match by name
-    let knownProjects: string[] = [];
-    for (const pDir of [projectsDir, projectsDirLower]) {
-      try {
-        const entries = fs.readdirSync(pDir, { withFileTypes: true });
-        knownProjects = knownProjects.concat(
-          entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name),
-        );
-      } catch {}
-    }
+    const knownProjects = [projectsDir, projectsDirLower].flatMap((projectDir) => readProjectNamesSafe(projectDir));
 
     // Match project names in the message (case-insensitive)
     const msgLower = message.toLowerCase();
@@ -133,13 +136,9 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
       if (msgLower.includes(proj.toLowerCase())) {
         // Return the actual path
         const fullPath = path.join(projectsDir, proj);
-        try {
-          if (fs.statSync(fullPath).isDirectory()) return fullPath;
-        } catch {}
+        if (isDirectorySafe(fullPath)) return fullPath;
         const fullPathLower = path.join(projectsDirLower, proj);
-        try {
-          if (fs.statSync(fullPathLower).isDirectory()) return fullPathLower;
-        } catch {}
+        if (isDirectorySafe(fullPathLower)) return fullPathLower;
       }
     }
 
@@ -204,7 +203,9 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
     if (!candidate) return null;
     try {
       if (fs.statSync(candidate).isDirectory()) return candidate;
-    } catch {}
+    } catch {
+      // Ignore stale paths from historical task rows.
+    }
     return null;
   }
 
@@ -214,7 +215,9 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
     for (const candidate of candidates) {
       try {
         if (fs.statSync(candidate).isDirectory()) return candidate;
-      } catch {}
+      } catch {
+        // Ignore inaccessible or non-existent directories.
+      }
     }
     return process.cwd();
   }

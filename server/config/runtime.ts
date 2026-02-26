@@ -47,13 +47,13 @@ export const OAUTH_BASE_HOST = HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1"
 export const SESSION_COOKIE_NAME = "claw_session";
 
 export function normalizeSecret(raw: string | undefined): string {
-  const trimmed = (raw ?? "").trim().replace(/^['\"]|['\"]$/g, "");
+  const trimmed = (raw ?? "").trim().replace(/^['"]|['"]$/g, "");
   if (!trimmed || trimmed === "__CHANGE_ME__") return "";
   return trimmed;
 }
 
 export function normalizePathEnv(raw: string | undefined): string {
-  const trimmed = (raw ?? "").trim().replace(/^['\"]|['\"]$/g, "");
+  const trimmed = (raw ?? "").trim().replace(/^['"]|['"]$/g, "");
   if (!trimmed || trimmed === "__CHANGE_ME__") return "";
   if (!trimmed.startsWith("~")) return trimmed;
 
