@@ -8,6 +8,8 @@ It is intentionally compact and focused on frequently used endpoints.
 - Base URL (local): `http://127.0.0.1:8790`
 - API prefix: `/api`
 - Health endpoint: `/healthz`
+- Swagger UI: `/api/docs`
+- OpenAPI JSON: `/api/openapi.json`
 
 ## Authentication
 
@@ -16,6 +18,9 @@ It is intentionally compact and focused on frequently used endpoints.
   - `Authorization: Bearer <API_AUTH_TOKEN>`
 - Inbox webhook endpoint requires:
   - `x-inbox-secret: <INBOX_WEBHOOK_SECRET>`
+- Swagger note:
+  - `/api/docs` opens with an automatic `/api/auth/session` bootstrap attempt (loopback/local case).
+  - If you still get `401 unauthorized`, set `Bearer <API_AUTH_TOKEN>` via Swagger `Authorize`.
 
 ## Common Error Shape
 

@@ -13,6 +13,7 @@ import { registerTaskReportRoutes } from "./ops/task-reports/routes.ts";
 import { registerModelRoutes } from "./ops/models-routes.ts";
 import { registerOAuthRoutes } from "./ops/oauth/routes.ts";
 import { registerSkillRoutes } from "./ops/skills/routes.ts";
+import { registerApiDocsRoutes } from "./ops/api-docs.ts";
 
 export function registerRoutesPartC(ctx: RuntimeContext): RouteOpsExports {
   const __ctx: RuntimeContext = ctx;
@@ -200,6 +201,7 @@ export function registerRoutesPartC(ctx: RuntimeContext): RouteOpsExports {
   // Settings / Stats
   // ---------------------------------------------------------------------------
   registerOpsSettingsStatsRoutes(__ctx);
+  registerApiDocsRoutes({ app });
 
   // ---------------------------------------------------------------------------
   // Task terminal log viewer

@@ -95,6 +95,8 @@ export function isPublicApiPath(pathname: string): boolean {
   if (pathname === "/api/health") return true;
   if (pathname === "/api/auth/session") return true;
   if (pathname === "/api/inbox") return true;
+  if (pathname === "/api/openapi.json") return true;
+  if (pathname === "/api/docs" || pathname.startsWith("/api/docs/")) return true;
   if (pathname === "/api/oauth/start") return true;
   if (pathname.startsWith("/api/oauth/callback/")) return true;
   return false;
