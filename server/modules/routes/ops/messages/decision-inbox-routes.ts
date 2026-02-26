@@ -1,5 +1,6 @@
 import type { RuntimeContext } from "../../../../types/runtime-context.ts";
 import type { AgentRow } from "../../shared/types.ts";
+import type { DecisionInboxRouteItem } from "./decision-inbox/types.ts";
 import { handleProjectReviewDecisionReply } from "./decision-inbox/project-review-reply.ts";
 import { handleReviewRoundDecisionReply } from "./decision-inbox/review-round-reply.ts";
 import { handleTimeoutResumeDecisionReply } from "./decision-inbox/timeout-reply.ts";
@@ -34,25 +35,6 @@ export function registerDecisionInboxRoutes(ctx: RuntimeContext): void {
     startTaskExecutionForAgent,
     chooseSafeReply,
   } = __ctx;
-
-  type DecisionInboxRouteItem = {
-    id: string;
-    kind: "project_review_ready" | "task_timeout_resume" | "review_round_pick";
-    created_at: number;
-    summary: string;
-    agent_id?: string | null;
-    agent_name?: string | null;
-    agent_name_ko?: string | null;
-    agent_avatar?: string | null;
-    project_id: string | null;
-    project_name: string | null;
-    project_path: string | null;
-    task_id: string | null;
-    task_title: string | null;
-    meeting_id?: string | null;
-    review_round?: number | null;
-    options: Array<{ number: number; action: string; label: string }>;
-  };
 
   const PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX = "Decision inbox: project review task option selected";
   const REVIEW_DECISION_RESOLVED_LOG_PREFIX = "Decision inbox: review decision resolved";
