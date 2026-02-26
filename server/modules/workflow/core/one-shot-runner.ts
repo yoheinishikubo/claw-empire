@@ -16,7 +16,12 @@ type CreateOneShotRunnerDeps = {
   normalizeStreamChunk: (raw: Buffer | string, opts?: { dropCliNoise?: boolean }) => string;
   hasStructuredJsonLines: (raw: string) => boolean;
   normalizeConversationReply: (raw: string, maxChars?: number, opts?: { maxSentences?: number }) => string;
-  buildAgentArgs: (provider: string, model?: string, reasoningLevel?: string) => string[];
+  buildAgentArgs: (
+    provider: string,
+    model?: string,
+    reasoningLevel?: string,
+    opts?: { noTools?: boolean },
+  ) => string[];
   withCliPathFallback: (pathValue: string | undefined) => string;
 };
 
@@ -37,6 +42,13 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
     buildAgentArgs,
     withCliPathFallback,
   } = deps;
+  const NO_TOOLS_POLICY_ERROR = "tool_use_blocked_by_no_tools_policy";
+  const CLI_TOOL_SIGNAL_REGEX =
+    /"type"\s*:\s*"(?:tool_use|tool_result|command_execution|function_call|tool_call|mcp_tool_call)"|"tool_use_id"\s*:|"toolName"\s*:/i;
+
+  function hasCliToolSignal(text: string): boolean {
+    return CLI_TOOL_SIGNAL_REGEX.test(text);
+  }
 
   function createSafeLogStreamOps(logStream: any): {
     safeWrite: (text: string) => boolean;
@@ -80,6 +92,7 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
     const timeoutMs = opts.timeoutMs ?? 180_000;
     const projectPath = opts.projectPath || process.cwd();
     const streamTaskId = opts.streamTaskId ?? null;
+    const noTools = opts.noTools === true;
     const runId = `meeting-${agent.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const logPath = path.join(logsDir, `${runId}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "w" });
@@ -91,6 +104,8 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
     let activeStderrListener: ((chunk: Buffer) => void) | null = null;
     let activeErrorListener: ((err: Error) => void) | null = null;
     let activeCloseListener: ((code: number | null) => void) | null = null;
+    let abortActiveRun: ((reason: string) => void) | null = null;
+    let noToolsViolationDetected = false;
     const detachChildListeners = () => {
       const child = activeChild;
       if (!child) return;
@@ -121,6 +136,10 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
       rawOutput += text;
       safeWrite(text);
       if (streamTaskId) broadcast("cli_output", { task_id: streamTaskId, stream, data: text });
+      if (noTools && !noToolsViolationDetected && hasCliToolSignal(text)) {
+        noToolsViolationDetected = true;
+        abortActiveRun?.(NO_TOOLS_POLICY_ERROR);
+      }
     };
 
     try {
@@ -181,7 +200,7 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
         const modelConfig = getProviderModelConfig();
         const model = modelConfig[provider]?.model || undefined;
         const reasoningLevel = modelConfig[provider]?.reasoningLevel || undefined;
-        const args = buildAgentArgs(provider, model, reasoningLevel);
+        const args = buildAgentArgs(provider, model, reasoningLevel, { noTools });
 
         await new Promise<void>((resolve, reject) => {
           const cleanEnv = { ...process.env };
@@ -206,15 +225,21 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
           const settle = (callback: () => void) => {
             if (settled) return;
             settled = true;
+            abortActiveRun = null;
             detachChildListeners();
             callback();
           };
-
-          const timeout = setTimeout(() => {
+          const abortRun = (reason: string) => {
+            if (settled) return;
             const pid = child.pid ?? 0;
             detachChildListeners();
             if (pid > 0) killPidTree(pid);
-            settle(() => reject(new Error(`timeout after ${timeoutMs}ms`)));
+            settle(() => reject(new Error(reason)));
+          };
+          abortActiveRun = abortRun;
+
+          const timeout = setTimeout(() => {
+            abortRun(`timeout after ${timeoutMs}ms`);
           }, timeoutMs);
 
           activeErrorListener = (err: Error) => {
@@ -239,6 +264,25 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
       }
     } catch (err: any) {
       const message = err?.message ? String(err.message) : String(err);
+      if (message === NO_TOOLS_POLICY_ERROR) {
+        if (opts.rawOutput) {
+          const raw = rawOutput.trim();
+          if (raw) return { text: raw };
+          const pretty = prettyStreamJson(rawOutput).trim();
+          if (pretty) return { text: pretty };
+          return { text: "" };
+        }
+        const partial = normalizeConversationReply(rawOutput, 320);
+        if (partial) return { text: partial };
+        const pretty = prettyStreamJson(rawOutput);
+        const roughSource = pretty.trim() || hasStructuredJsonLines(rawOutput) ? pretty : rawOutput;
+        const rough = roughSource.replace(/\s+/g, " ").trim();
+        if (rough) {
+          const clipped = rough.length > 320 ? `${rough.slice(0, 319).trimEnd()}…` : rough;
+          return { text: clipped };
+        }
+        return { text: "" };
+      }
       onChunk(`\n[one-shot-error] ${message}\n`, "stderr");
       if (opts.rawOutput) {
         const raw = rawOutput.trim();
@@ -258,6 +302,7 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
       }
       return { text: "", error: message };
     } finally {
+      abortActiveRun = null;
       detachChildListeners();
       await new Promise<void>((resolve) => safeEnd(resolve));
     }

@@ -45,13 +45,22 @@ export function createCliTools(deps: CreateCliToolsDeps) {
     return parts.join(path.delimiter);
   }
 
-  function buildAgentArgs(provider: string, model?: string, reasoningLevel?: string): string[] {
+  function buildAgentArgs(
+    provider: string,
+    model?: string,
+    reasoningLevel?: string,
+    opts: { noTools?: boolean } = {},
+  ): string[] {
+    const { noTools = false } = opts;
     switch (provider) {
       case "codex": {
-        const args = ["codex", "--enable", "multi_agent"];
+        const args = ["codex"];
+        if (!noTools) args.push("--enable", "multi_agent");
         if (model) args.push("-m", model);
         if (reasoningLevel) args.push("-c", `model_reasoning_effort="${reasoningLevel}"`);
-        args.push("--yolo", "exec", "--json");
+        if (!noTools) args.push("--yolo");
+        args.push("exec", "--json");
+        if (noTools) args.push("--sandbox", "read-only");
         return args;
       }
       case "claude": {
@@ -66,12 +75,17 @@ export function createCliTools(deps: CreateCliToolsDeps) {
           "200",
         ];
         if (model) args.push("--model", model);
+        if (noTools) args.push("--tools", "");
         return args;
       }
       case "gemini": {
         const args = ["gemini"];
         if (model) args.push("-m", model);
-        args.push("--yolo", "--output-format=stream-json");
+        if (noTools) {
+          args.push("--approval-mode", "plan", "--output-format=stream-json");
+        } else {
+          args.push("--yolo", "--output-format=stream-json");
+        }
         return args;
       }
       case "opencode": {

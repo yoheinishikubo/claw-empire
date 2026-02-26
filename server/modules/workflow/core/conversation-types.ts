@@ -29,6 +29,7 @@ export interface OneShotRunOptions {
   timeoutMs?: number;
   streamTaskId?: string | null;
   rawOutput?: boolean;
+  noTools?: boolean;
 }
 
 export interface OneShotRunResult {

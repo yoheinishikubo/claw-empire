@@ -108,7 +108,7 @@ export function createPlannedApprovalTools(deps: CreatePlannedApprovalToolsDeps)
         const lang = resolveLang(taskDescription ?? taskTitle);
         const transcript: any[] = [];
         const oneShotTimeoutMs = Math.max(5_000, Number(reviewMeetingOneShotTimeoutMs ?? 65_000));
-        const oneShotOptions = { projectPath, timeoutMs: oneShotTimeoutMs };
+        const oneShotOptions = { projectPath, timeoutMs: oneShotTimeoutMs, noTools: true };
         const wantsRevision = (content: string): boolean =>
           /보완|수정|보류|리스크|추가.?필요|hold|revise|revision|required|pending|risk|block|保留|修正|补充|暂缓/i.test(
             content,
