@@ -7,6 +7,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: test
@@ -94,6 +97,12 @@ jobs:
 
       - name: Run lint
         run: pnpm run lint
+
+      - name: Run type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Run build
+        run: pnpm run build
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
