@@ -180,10 +180,7 @@ export function createProjectReviewPlanningHelpers(deps: ProjectReviewPlanningDe
     return text.replace(/\n{3,}/g, "\n\n").trim();
   }
 
-  function resolvePlanningLeadMeta(
-    lang: string,
-    decisionState?: PlanningLeadStateLike | null,
-  ): PlanningLeadMeta {
+  function resolvePlanningLeadMeta(lang: string, decisionState?: PlanningLeadStateLike | null): PlanningLeadMeta {
     const fallbackLead = findTeamLeader("planning");
     const stateAgentId = String(decisionState?.planner_agent_id ?? "").trim();
     const stateAgent = stateAgentId

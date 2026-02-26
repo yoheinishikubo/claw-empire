@@ -67,7 +67,10 @@ const buildAgentUpgradeRequiredPayload = () => {
   };
 };
 
-export function registerDirectiveAndInboxRoutes(ctx: DirectiveAndInboxRouteCtx, deps: DirectiveAndInboxRouteDeps): void {
+export function registerDirectiveAndInboxRoutes(
+  ctx: DirectiveAndInboxRouteCtx,
+  deps: DirectiveAndInboxRouteDeps,
+): void {
   const { app, db, broadcast } = ctx;
   const {
     IdempotencyConflictError,

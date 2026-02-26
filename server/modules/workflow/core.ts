@@ -12,11 +12,7 @@ import {
   REVIEW_MAX_REVISION_SIGNALS_PER_ROUND,
   REVIEW_MAX_ROUNDS,
 } from "../../db/runtime.ts";
-import {
-  BUILTIN_GOOGLE_CLIENT_ID,
-  BUILTIN_GOOGLE_CLIENT_SECRET,
-  encryptSecret,
-} from "../../oauth/helpers.ts";
+import { BUILTIN_GOOGLE_CLIENT_ID, BUILTIN_GOOGLE_CLIENT_SECRET, encryptSecret } from "../../oauth/helpers.ts";
 import { notifyTaskStatus } from "../../gateway/client.ts";
 import { createWsHub } from "../../ws/hub.ts";
 import { createProjectContextTools } from "./core/project-context-tools.ts";
@@ -207,21 +203,16 @@ export function initializeWorkflowPartA(ctx: RuntimeContext): WorkflowCoreExport
     taskWorktrees,
   });
 
-  const {
-    mergeWorktree,
-    mergeToDevAndCreatePR,
-    rollbackTaskWorktree,
-    getWorktreeDiffSummary,
-    hasVisibleDiffSummary,
-  } = createWorktreeMergeTools({
-    db: db as any,
-    taskWorktrees,
-    appendTaskLog,
-    cleanupWorktree,
-    resolveLang,
-    l,
-    pickL,
-  });
+  const { mergeWorktree, mergeToDevAndCreatePR, rollbackTaskWorktree, getWorktreeDiffSummary, hasVisibleDiffSummary } =
+    createWorktreeMergeTools({
+      db: db as any,
+      taskWorktrees,
+      appendTaskLog,
+      cleanupWorktree,
+      resolveLang,
+      l,
+      pickL,
+    });
 
   const {
     hasExplicitWarningFixRequest,

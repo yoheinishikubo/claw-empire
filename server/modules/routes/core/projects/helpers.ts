@@ -319,7 +319,6 @@ export function createProjectRouteHelpers({ db, normalizeTextField }: CreateProj
     });
   }
 
-
   // spawn 기반 프로세스 실행 (GUI 다이얼로그 호환용)
   interface SpawnGuiResult {
     code: number | null;
@@ -446,11 +445,10 @@ export function createProjectRouteHelpers({ db, normalizeTextField }: CreateProj
       const mainPid = mainPromise.pid;
 
       // helper: 400ms 후 메인 프로세스(wscript)의 윈도우를 포그라운드로 올림
-      const activatorChild = spawn(
-        "wscript.exe",
-        [activatorFile, String(mainPid ?? 0)],
-        { stdio: "ignore", windowsHide: true },
-      );
+      const activatorChild = spawn("wscript.exe", [activatorFile, String(mainPid ?? 0)], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
 
       const { code: vbsCode, stderr: vbsStderr } = await mainPromise;
 

@@ -1,7 +1,4 @@
-import {
-  registerTaskExecutionControlRoutes,
-  type TaskExecutionControlRouteDeps,
-} from "./execution-control.ts";
+import { registerTaskExecutionControlRoutes, type TaskExecutionControlRouteDeps } from "./execution-control.ts";
 import { registerTaskRunRoute, type TaskRunRouteDeps } from "./execution-run.ts";
 
 export type TaskExecutionRouteDeps = TaskRunRouteDeps & TaskExecutionControlRouteDeps;

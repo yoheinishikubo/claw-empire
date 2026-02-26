@@ -183,12 +183,14 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
         if (lang === "zh") return `${name}: 已确认执行前的补充项与最高优先验证课题。`;
         return `${name}: 착수 전 보완 항목과 최우선 검증 과제를 확인했습니다.`;
       case "summary":
-        if (lang === "en") return `${name}: I will consolidate all leader feedback and proceed with the agreed next step.`;
+        if (lang === "en")
+          return `${name}: I will consolidate all leader feedback and proceed with the agreed next step.`;
         if (lang === "ja") return `${name}: 各チームリーダーの意見を統合し、合意した次のステップへ進めます。`;
         if (lang === "zh") return `${name}: 我将汇总各负责人意见，并按约定进入下一步。`;
         return `${name}: 각 팀장 의견을 취합해 합의된 다음 단계로 진행하겠습니다.`;
       case "approval":
-        if (lang === "en") return `${name}: Decision noted. We will proceed according to the current meeting conclusion.`;
+        if (lang === "en")
+          return `${name}: Decision noted. We will proceed according to the current meeting conclusion.`;
         if (lang === "ja") return `${name}: 本会議の結論に従って進行します。`;
         if (lang === "zh") return `${name}: 已确认决策，将按本轮会议结论执行。`;
         return `${name}: 본 회의 결론에 따라 진행하겠습니다.`;
@@ -243,10 +245,15 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
   function detectRunFailure(rawText: string, runError?: string): RunFailureKind | null {
     const source = [runError || "", rawText || ""].filter(Boolean).join("\n");
     if (!source.trim()) return null;
-    if (/auto-rejecting|permission.*rejected|rejected permission|external_directory|user rejected permission/i.test(source))
+    if (
+      /auto-rejecting|permission.*rejected|rejected permission|external_directory|user rejected permission/i.test(
+        source,
+      )
+    )
       return "permission";
     if (/modified since it was last read|read the file again before modifying/i.test(source)) return "stale_file";
-    if (/"type"\s*:\s*"(?:step_finish|step-finish)".*"reason"\s*:\s*"tool-calls"/i.test(source)) return "tool_calls_only";
+    if (/"type"\s*:\s*"(?:step_finish|step-finish)".*"reason"\s*:\s*"tool-calls"/i.test(source))
+      return "tool_calls_only";
     if (/timeout after|timed out|request timed out/i.test(source)) return "timeout";
     if (runError || /\[(?:one-shot-error|tool-error)\]/i.test(source) || /^error:/im.test(source)) return "generic";
     return null;

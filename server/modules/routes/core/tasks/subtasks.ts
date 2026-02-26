@@ -75,7 +75,14 @@ export function registerTaskSubtaskRoutes(deps: TaskSubtaskRouteDeps): void {
     INSERT INTO subtasks (id, task_id, title, description, status, assigned_agent_id, created_at)
     VALUES (?, ?, ?, ?, 'pending', ?, ?)
   `,
-    ).run(id, taskId, (body as any).title, (body as any).description ?? null, (body as any).assigned_agent_id ?? null, nowMs());
+    ).run(
+      id,
+      taskId,
+      (body as any).title,
+      (body as any).description ?? null,
+      (body as any).assigned_agent_id ?? null,
+      nowMs(),
+    );
 
     const parentTaskDept = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(taskId) as
       | { department_id: string | null }

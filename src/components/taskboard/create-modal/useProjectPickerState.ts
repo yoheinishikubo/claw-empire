@@ -333,7 +333,13 @@ export function useProjectPickerState({
     } finally {
       setNativePathPicking(false);
     }
-  }, [loadManualPathEntries, newProjectPath, resolvePathHelperErrorMessage, unsupportedPathApiMessage, setFormFeedback]);
+  }, [
+    loadManualPathEntries,
+    newProjectPath,
+    resolvePathHelperErrorMessage,
+    unsupportedPathApiMessage,
+    setFormFeedback,
+  ]);
 
   const handleSelectPathSuggestion = useCallback((candidate: string) => {
     setNewProjectPath(candidate);

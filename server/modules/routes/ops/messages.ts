@@ -35,51 +35,60 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): Record<string, ne
 
   registerDecisionInboxRoutes(__ctx);
 
-  registerChatMessageRoutes({ app, db, broadcast }, {
-    IdempotencyConflictError,
-    StorageBusyError,
-    firstQueryValue,
-    resolveMessageIdempotencyKey,
-    recordMessageIngressAuditOr503,
-    insertMessageWithIdempotency,
-    recordAcceptedIngressAuditOrRollback,
-    normalizeTextField,
-    handleReportRequest,
-    scheduleAgentReply,
-    detectMentions,
-    resolveLang,
-    handleMentionDelegation,
-  });
+  registerChatMessageRoutes(
+    { app, db, broadcast },
+    {
+      IdempotencyConflictError,
+      StorageBusyError,
+      firstQueryValue,
+      resolveMessageIdempotencyKey,
+      recordMessageIngressAuditOr503,
+      insertMessageWithIdempotency,
+      recordAcceptedIngressAuditOrRollback,
+      normalizeTextField,
+      handleReportRequest,
+      scheduleAgentReply,
+      detectMentions,
+      resolveLang,
+      handleMentionDelegation,
+    },
+  );
 
-  registerAnnouncementRoutes({ app, db, broadcast }, {
-    IdempotencyConflictError,
-    StorageBusyError,
-    resolveMessageIdempotencyKey,
-    recordMessageIngressAuditOr503,
-    insertMessageWithIdempotency,
-    recordAcceptedIngressAuditOrRollback,
-    scheduleAnnouncementReplies,
-    detectMentions,
-    findTeamLeader,
-    handleTaskDelegation,
-  });
+  registerAnnouncementRoutes(
+    { app, db, broadcast },
+    {
+      IdempotencyConflictError,
+      StorageBusyError,
+      resolveMessageIdempotencyKey,
+      recordMessageIngressAuditOr503,
+      insertMessageWithIdempotency,
+      recordAcceptedIngressAuditOrRollback,
+      scheduleAnnouncementReplies,
+      detectMentions,
+      findTeamLeader,
+      handleTaskDelegation,
+    },
+  );
 
-  registerDirectiveAndInboxRoutes({ app, db, broadcast }, {
-    IdempotencyConflictError,
-    StorageBusyError,
-    enforceDirectiveProjectBinding: ENFORCE_DIRECTIVE_PROJECT_BINDING,
-    resolveMessageIdempotencyKey,
-    recordMessageIngressAuditOr503,
-    insertMessageWithIdempotency,
-    recordAcceptedIngressAuditOrRollback,
-    normalizeTextField,
-    scheduleAnnouncementReplies,
-    analyzeDirectivePolicy,
-    shouldExecuteDirectiveDelegation,
-    findTeamLeader,
-    handleTaskDelegation,
-    detectMentions,
-  });
+  registerDirectiveAndInboxRoutes(
+    { app, db, broadcast },
+    {
+      IdempotencyConflictError,
+      StorageBusyError,
+      enforceDirectiveProjectBinding: ENFORCE_DIRECTIVE_PROJECT_BINDING,
+      resolveMessageIdempotencyKey,
+      recordMessageIngressAuditOr503,
+      insertMessageWithIdempotency,
+      recordAcceptedIngressAuditOrRollback,
+      normalizeTextField,
+      scheduleAnnouncementReplies,
+      analyzeDirectivePolicy,
+      shouldExecuteDirectiveDelegation,
+      findTeamLeader,
+      handleTaskDelegation,
+      detectMentions,
+    },
+  );
 
   return {};
 }

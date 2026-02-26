@@ -101,9 +101,12 @@ export function createWorktreeMergeTools(deps: CreateWorktreeMergeToolsDeps) {
           return {
             success: true,
             message: pickL(
-              l(["변경사항이 없어 병합이 필요하지 않습니다."], ["No changes to merge."], ["マージする変更がありません。"], [
-                "没有可合并的更改。",
-              ]),
+              l(
+                ["변경사항이 없어 병합이 필요하지 않습니다."],
+                ["No changes to merge."],
+                ["マージする変更がありません。"],
+                ["没有可合并的更改。"],
+              ),
               lang,
             ),
           };

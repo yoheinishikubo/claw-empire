@@ -74,7 +74,9 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
     preferredDeptId?: string | null,
     excludeIds: string[] = [],
   ): AgentRow | null {
-    const candidateIds = [...new Set(candidateAgentIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
+    const candidateIds = [
+      ...new Set(candidateAgentIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0)),
+    ];
     if (candidateIds.length === 0) return null;
 
     const excludedIds = [...new Set(excludeIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
@@ -190,8 +192,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
           ? pickManualPoolAgent(projectCandidateAgentIds, parent.department_id, [leader.id]) ||
             pickManualPoolAgent(projectCandidateAgentIds, null, [leader.id])
           : null;
-      const leaderAllowed =
-        !Array.isArray(projectCandidateAgentIds) || projectCandidateAgentIds.includes(leader.id);
+      const leaderAllowed = !Array.isArray(projectCandidateAgentIds) || projectCandidateAgentIds.includes(leader.id);
       const assignee = subordinate ?? (leaderAllowed ? leader : manualPoolFallback) ?? leader;
       const deptName = getDeptName(parent.department_id!);
       const t = nowMs();
@@ -254,8 +255,9 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
     const { teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId } = ctx;
     const resolvedProjectId =
       ctx.projectId ??
-      ((db.prepare("SELECT project_id FROM tasks WHERE id = ?").get(taskId) as { project_id: string | null } | undefined)
-        ?.project_id ?? null);
+      (db.prepare("SELECT project_id FROM tasks WHERE id = ?").get(taskId) as { project_id: string | null } | undefined)
+        ?.project_id ??
+      null;
     const projectCandidateAgentIds =
       ctx.projectCandidateAgentIds !== undefined
         ? ctx.projectCandidateAgentIds
@@ -282,8 +284,9 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
           pickManualPoolAgent(projectCandidateAgentIds, crossDeptId) ||
           pickManualPoolAgent(projectCandidateAgentIds, null)
         : null;
-    const crossCoordinator = crossLeaderAllowed ? crossLeader : crossSub ?? manualPoolFallback ?? crossLeader;
-    const crossCoordinatorName = lang === "ko" ? crossCoordinator.name_ko || crossCoordinator.name : crossCoordinator.name;
+    const crossCoordinator = crossLeaderAllowed ? crossLeader : (crossSub ?? manualPoolFallback ?? crossLeader);
+    const crossCoordinatorName =
+      lang === "ko" ? crossCoordinator.name_ko || crossCoordinator.name : crossCoordinator.name;
 
     // Notify remaining queue
     if (deptIds.length > 1) {
@@ -349,35 +352,38 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
             pickManualPoolAgent(projectCandidateAgentIds, null)
           : null;
       const execAgent =
-        crossSubAtRun ?? (crossLeaderAllowed ? crossLeader : manualPoolFallbackAtRun) ?? crossCoordinator ?? crossLeader;
+        crossSubAtRun ??
+        (crossLeaderAllowed ? crossLeader : manualPoolFallbackAtRun) ??
+        crossCoordinator ??
+        crossLeader;
       const execName = lang === "ko" ? execAgent.name_ko || execAgent.name : execAgent.name;
 
       const crossAckMsg =
         execAgent.id !== crossCoordinator.id
-        ? pickL(
-            l(
-              [
-                `네, ${leaderName}님! 확인했습니다. ${execName}에게 바로 배정하겠습니다 👍`,
-                `알겠습니다! ${execName}가 지원하도록 하겠습니다. 진행 상황 공유드릴게요.`,
-              ],
-              [
-                `Sure, ${leaderName}! I'll assign ${execName} to support right away 👍`,
-                `Got it! ${execName} will handle the ${crossDeptName} side. I'll keep you posted.`,
-              ],
-              [`了解しました、${leaderName}さん！${execName}を割り当てます 👍`],
-              [`好的，${leaderName}！安排${execName}支援 👍`],
-            ),
-            lang,
-          )
-        : pickL(
-            l(
-              [`네, ${leaderName}님! 확인했습니다. 제가 직접 처리하겠습니다 👍`],
-              [`Sure, ${leaderName}! I'll handle it personally 👍`],
-              [`了解しました！私が直接対応します 👍`],
-              [`好的！我亲自来处理 👍`],
-            ),
-            lang,
-          );
+          ? pickL(
+              l(
+                [
+                  `네, ${leaderName}님! 확인했습니다. ${execName}에게 바로 배정하겠습니다 👍`,
+                  `알겠습니다! ${execName}가 지원하도록 하겠습니다. 진행 상황 공유드릴게요.`,
+                ],
+                [
+                  `Sure, ${leaderName}! I'll assign ${execName} to support right away 👍`,
+                  `Got it! ${execName} will handle the ${crossDeptName} side. I'll keep you posted.`,
+                ],
+                [`了解しました、${leaderName}さん！${execName}を割り当てます 👍`],
+                [`好的，${leaderName}！安排${execName}支援 👍`],
+              ),
+              lang,
+            )
+          : pickL(
+              l(
+                [`네, ${leaderName}님! 확인했습니다. 제가 직접 처리하겠습니다 👍`],
+                [`Sure, ${leaderName}! I'll handle it personally 👍`],
+                [`了解しました！私が直接対応します 👍`],
+                [`好的！我亲自来处理 👍`],
+              ),
+              lang,
+            );
       sendAgentMessage(crossCoordinator, crossAckMsg, "chat", "agent", null, taskId);
 
       // Create actual task in the cross-department

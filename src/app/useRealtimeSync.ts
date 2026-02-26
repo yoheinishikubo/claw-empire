@@ -11,7 +11,8 @@ import type {
   SubTask,
   Task,
   CeoOfficeCall,
- WSEventType } from "../types";
+  WSEventType,
+} from "../types";
 import {
   CODEX_THREAD_BINDING_TTL_MS,
   MAX_CEO_OFFICE_CALLS,

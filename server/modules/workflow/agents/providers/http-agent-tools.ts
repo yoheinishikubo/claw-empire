@@ -207,7 +207,9 @@ export function createHttpAgentTools(deps: CreateHttpAgentToolsDeps) {
     const modelConfig = getProviderModelConfig();
     const defaultRawModel = modelConfig.antigravity?.model || "google/antigravity-gemini-2.5-pro";
     const autoSwap = getOAuthAutoSwapEnabled();
-    const preferred = getPreferredOAuthAccounts("google_antigravity").filter((a) => Boolean(a.accessToken || a.refreshToken));
+    const preferred = getPreferredOAuthAccounts("google_antigravity").filter((a) =>
+      Boolean(a.accessToken || a.refreshToken),
+    );
     const baseAccounts = prioritizeOAuthAccount(preferred, preferredAccountId);
     const hasPinnedAccount = Boolean(preferredAccountId) && baseAccounts.some((a) => a.id === preferredAccountId);
     const accounts = hasPinnedAccount ? baseAccounts : rotateOAuthAccounts("google_antigravity", baseAccounts);

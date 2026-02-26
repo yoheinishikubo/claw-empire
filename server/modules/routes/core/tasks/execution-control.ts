@@ -186,7 +186,9 @@ export function registerTaskExecutionControlRoutes(deps: TaskExecutionControlRou
         notifyCeo(
           pickL(
             l(
-              [`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`],
+              [
+                `'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`,
+              ],
               [`'${task.title}' was cancelled.${rolledBack ? " Code changes were rolled back via git." : ""}`],
               [
                 `'${task.title}' はキャンセルされました。${rolledBack ? " コード変更は git でロールバックされました。" : ""}`,
@@ -277,9 +279,13 @@ export function registerTaskExecutionControlRoutes(deps: TaskExecutionControlRou
       notifyCeo(
         pickL(
           l(
-            [`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`],
+            [
+              `'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`,
+            ],
             [`'${task.title}' was cancelled.${rolledBack ? " Code changes were rolled back via git." : ""}`],
-            [`'${task.title}' はキャンセルされました。${rolledBack ? " コード変更は git でロールバックされました。" : ""}`],
+            [
+              `'${task.title}' はキャンセルされました。${rolledBack ? " コード変更は git でロールバックされました。" : ""}`,
+            ],
             [`'${task.title}' 已取消。${rolledBack ? " 代码变更已通过 git 回滚。" : ""}`],
           ),
           lang,

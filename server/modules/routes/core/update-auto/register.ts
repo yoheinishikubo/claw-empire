@@ -10,7 +10,12 @@ import {
 import { parseAutoUpdateChannel } from "../../update-auto-policy.ts";
 import { createAutoUpdateLock } from "../../update-auto-lock.ts";
 import { createCommandCaptureTools } from "./command-capture.ts";
-import { applyUpdateNow, type AutoUpdateRestartMode, type UpdateApplyResult, type UpdateStatusPayload } from "./apply-update.ts";
+import {
+  applyUpdateNow,
+  type AutoUpdateRestartMode,
+  type UpdateApplyResult,
+  type UpdateStatusPayload,
+} from "./apply-update.ts";
 
 export function registerUpdateAutoRoutes(ctx: RuntimeContext): void {
   const __ctx: RuntimeContext = ctx;
@@ -183,10 +188,9 @@ export function registerUpdateAutoRoutes(ctx: RuntimeContext): void {
   }
 
   function writeAutoUpdateEnabledSetting(enabled: boolean): void {
-    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
-      AUTO_UPDATE_ENABLED_SETTING_KEY,
-      enabled ? "true" : "false",
-    );
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(AUTO_UPDATE_ENABLED_SETTING_KEY, enabled ? "true" : "false");
   }
 
   function refreshAutoUpdateActiveState(): boolean {
@@ -197,11 +201,11 @@ export function registerUpdateAutoRoutes(ctx: RuntimeContext): void {
   function isLikelyManagedRuntime(): boolean {
     return Boolean(
       process.env.pm_id ||
-        process.env.PM2_HOME ||
-        process.env.INVOCATION_ID ||
-        process.env.KUBERNETES_SERVICE_HOST ||
-        process.env.CONTAINER ||
-        process.env.DOCKER_CONTAINER,
+      process.env.PM2_HOME ||
+      process.env.INVOCATION_ID ||
+      process.env.KUBERNETES_SERVICE_HOST ||
+      process.env.CONTAINER ||
+      process.env.DOCKER_CONTAINER,
     );
   }
 
@@ -368,7 +372,9 @@ export function registerUpdateAutoRoutes(ctx: RuntimeContext): void {
         `scheduler ready (enabled=${autoUpdateActive ? "1" : "0"}, first_check_in_ms=${AUTO_UPDATE_INITIAL_DELAY_MS}, interval_ms=${AUTO_UPDATE_CHECK_INTERVAL_MS})`,
       );
       if (AUTO_UPDATE_RESTART_MODE === "exit" && !isLikelyManagedRuntime()) {
-        logAutoUpdate("warning: restart_mode=exit is enabled but no process manager was detected; process may stop after update");
+        logAutoUpdate(
+          "warning: restart_mode=exit is enabled but no process manager was detected; process may stop after update",
+        );
       }
 
       autoUpdateBootTimer = setTimeout(() => {

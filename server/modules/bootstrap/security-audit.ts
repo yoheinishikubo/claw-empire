@@ -116,7 +116,10 @@ function normalizeAuditText(value: unknown, maxLength = 500): string | null {
   return `${trimmed.slice(0, maxLength)}...[truncated:${trimmed.length}]`;
 }
 
-function resolveAuditRequestId(req: { get(name: string): string | undefined }, body: Record<string, unknown>): string | null {
+function resolveAuditRequestId(
+  req: { get(name: string): string | undefined },
+  body: Record<string, unknown>,
+): string | null {
   const candidates: unknown[] = [
     body.request_id,
     body.requestId,
@@ -155,7 +158,10 @@ export function createSecurityAuditTools(deps: SecurityAuditDeps) {
   const SECURITY_AUDIT_CHAIN_SEED = process.env.SECURITY_AUDIT_CHAIN_SEED?.trim() || "claw-empire-security-audit-v1";
   const SECURITY_AUDIT_CHAIN_KEY = process.env.SECURITY_AUDIT_CHAIN_KEY ?? "";
 
-  function computeAuditChainHash(prevHash: string, entry: Omit<MessageIngressAuditEntry, "prev_hash" | "chain_hash">): string {
+  function computeAuditChainHash(
+    prevHash: string,
+    entry: Omit<MessageIngressAuditEntry, "prev_hash" | "chain_hash">,
+  ): string {
     const hasher = createHash("sha256");
     hasher.update(SECURITY_AUDIT_CHAIN_SEED, "utf8");
     hasher.update("|", "utf8");

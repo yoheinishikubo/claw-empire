@@ -1,8 +1,4 @@
-import type {
-  ReviewRoundDecisionItem,
-  ReviewRoundDecisionItemDeps,
-  ReviewRoundDecisionItems,
-} from "./types.ts";
+import type { ReviewRoundDecisionItem, ReviewRoundDecisionItemDeps, ReviewRoundDecisionItems } from "./types.ts";
 
 export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps): ReviewRoundDecisionItems {
   const {

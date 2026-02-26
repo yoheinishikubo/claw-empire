@@ -167,7 +167,9 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
     preferredDeptId?: string | null,
     excludeIds: string[] = [],
   ): AgentRow | null {
-    const candidateIds = [...new Set(candidateAgentIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
+    const candidateIds = [
+      ...new Set(candidateAgentIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0)),
+    ];
     if (candidateIds.length === 0) return null;
 
     const excludedIds = [...new Set(excludeIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0))];
@@ -245,7 +247,7 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
           pickManualPoolAgent(projectCandidateAgentIds, targetDeptId) ||
           pickManualPoolAgent(projectCandidateAgentIds, null)
         : null;
-    const crossCoordinator = crossLeaderAllowed ? crossLeader : crossSub ?? manualPoolFallback ?? crossLeader;
+    const crossCoordinator = crossLeaderAllowed ? crossLeader : (crossSub ?? manualPoolFallback ?? crossLeader);
     const originLeaderName = originLeader
       ? getAgentDisplayName(originLeader, lang)
       : teamLeadFallbackLabel({ l, pickL }, lang);
@@ -304,7 +306,10 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
             pickManualPoolAgent(projectCandidateAgentIds, null)
           : null;
       const execAgent =
-        crossSubAtRun ?? (crossLeaderAllowed ? crossLeader : manualPoolFallbackAtRun) ?? crossCoordinator ?? crossLeader;
+        crossSubAtRun ??
+        (crossLeaderAllowed ? crossLeader : manualPoolFallbackAtRun) ??
+        crossCoordinator ??
+        crossLeader;
       const execName = getAgentDisplayName(execAgent, lang);
 
       sendAgentMessage(
