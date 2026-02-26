@@ -74,6 +74,7 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 - **Runtime stability** - Fixed missing split-route modules, cleaned duplicated type definitions and encoding-related hazards, and reduced App orchestration bloat by extracting bootstrap/live-sync hooks.
 - **Testing and docs** - Reinforced test DB/runtime isolation, exposed Swagger UI + OpenAPI spec path, and refreshed contributor/CI documentation.
 - **Meeting timeout clarity** - `REVIEW_MEETING_ONESHOT_TIMEOUT_MS` now uses a clear milliseconds default (`65000`), while keeping legacy `65` style values backward-compatible.
+- **API contract automation** - Added `openapi:sync`/`openapi:check`, CI OpenAPI validation, and standardized error/example coverage so README → Swagger → runtime behavior stays aligned.
 
 - Full notes: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
 - API docs: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)

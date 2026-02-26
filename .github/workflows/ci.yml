@@ -98,6 +98,9 @@ jobs:
       - name: Run lint
         run: pnpm run lint
 
+      - name: Run OpenAPI contract check
+        run: pnpm run openapi:check
+
       - name: Run type check
         run: pnpm exec tsc -p tsconfig.json --noEmit
 

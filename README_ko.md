@@ -74,6 +74,7 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 - **런타임 안정화** - 분리된 라우트 누락, 중복 타입, 인코딩 리스크를 정리하고 App 부트스트랩/라이브싱크 로직을 훅으로 분리했습니다.
 - **테스트/문서 보강** - 테스트 DB 분리 안전장치를 강화하고 Swagger/OpenAPI 경로를 공개했으며 기여/CI 문서를 최신화했습니다.
 - **회의 타임아웃 단위 명확화** - `REVIEW_MEETING_ONESHOT_TIMEOUT_MS` 기본값을 밀리초 기준 `65000`으로 명시하고, 기존 `65` 형식도 하위호환으로 유지합니다.
+- **API 계약 자동화** - `openapi:sync`/`openapi:check`와 CI OpenAPI 검증을 추가하고, 에러/예시 응답 기준을 표준화해 README → Swagger → 실제 동작 정합성을 강화했습니다.
 
 - 상세 문서: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
 - API 문서: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
