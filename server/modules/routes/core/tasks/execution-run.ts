@@ -182,11 +182,7 @@ export function registerTaskRunRoute(deps: TaskRunRouteDeps): void {
       return res.status(400).json({ error: "unsupported_provider", provider });
     }
     const executionSession = ensureTaskExecutionSession(id, agentId, provider);
-    const pendingInterruptPrompts = loadPendingInterruptPrompts(
-      db as any,
-      id,
-      executionSession.sessionId,
-    );
+    const pendingInterruptPrompts = loadPendingInterruptPrompts(db as any, id, executionSession.sessionId);
     const interruptPromptBlock = buildInterruptPromptBlock(pendingInterruptPrompts);
 
     const projectPath = resolveProjectPath(task) || (req.body?.project_path as string | undefined) || process.cwd();

@@ -6,7 +6,10 @@ type DbLike = Pick<DatabaseSync, "prepare">;
 const MAX_INTERRUPT_PROMPT_CHARS = 4000;
 const ANSI_ESCAPE_REGEX = /\u001b(?:\[[0-?]*[ -/]*[@-~]|][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
 const CONTROL_CHAR_REGEX = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
-const TEMPLATE_BREAKOUT_PATTERNS = [/<\/?(system|assistant|developer|tool)>/i, /<\|(?:system|assistant|developer|tool)[^|]*\|>/i];
+const TEMPLATE_BREAKOUT_PATTERNS = [
+  /<\/?(system|assistant|developer|tool)>/i,
+  /<\|(?:system|assistant|developer|tool)[^|]*\|>/i,
+];
 const COMMAND_INJECTION_PATTERNS = [
   /(?:^|\n)\s*```(?:bash|sh|zsh|cmd|powershell|pwsh)\b/i,
   /\b(?:curl|wget)\b[^\n]*\|\s*(?:sh|bash|zsh|pwsh|powershell)\b/i,
@@ -98,7 +101,8 @@ export function consumeInterruptPrompts(db: DbLike, ids: number[], consumedAt: n
 export function buildInterruptPromptBlock(rows: TaskInterruptInjectionRow[]): string {
   if (rows.length === 0) return "";
   const sections = rows.map(
-    (row, idx) => `[Injected Prompt ${idx + 1}] (sha256=${row.prompt_hash.slice(0, 12)}, queued_at=${row.created_at})\n${row.prompt_text}`,
+    (row, idx) =>
+      `[Injected Prompt ${idx + 1}] (sha256=${row.prompt_hash.slice(0, 12)}, queued_at=${row.created_at})\n${row.prompt_text}`,
   );
   return `[Interrupt Prompt Queue]\n${sections.join("\n\n")}`;
 }

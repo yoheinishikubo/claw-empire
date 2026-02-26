@@ -41,4 +41,3 @@ describe("interrupt injection tools", () => {
     expect(block).toContain(hash.slice(0, 12));
   });
 });
-

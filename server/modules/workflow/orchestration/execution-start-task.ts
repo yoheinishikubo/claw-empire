@@ -84,11 +84,7 @@ export function createExecutionStartTaskTools(deps: CreateExecutionStartTaskTool
     const provider = execAgent.cli_provider || "claude";
     if (!["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(provider)) return;
     const executionSession = ensureTaskExecutionSession(taskId, execAgent.id, provider);
-    const pendingInterruptPrompts = loadPendingInterruptPrompts(
-      db as any,
-      taskId,
-      executionSession.sessionId,
-    );
+    const pendingInterruptPrompts = loadPendingInterruptPrompts(db as any, taskId, executionSession.sessionId);
     const interruptPromptBlock = buildInterruptPromptBlock(pendingInterruptPrompts);
 
     const taskData = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as

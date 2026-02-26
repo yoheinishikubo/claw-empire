@@ -145,7 +145,9 @@ export function registerTaskExecutionControlRoutes(deps: TaskExecutionControlRou
       | undefined;
     if (!task) return res.status(404).json({ error: "not_found" });
     if (task.status !== "pending") {
-      return res.status(400).json({ error: "invalid_status", message: `Cannot inject prompt while status is '${task.status}'` });
+      return res
+        .status(400)
+        .json({ error: "invalid_status", message: `Cannot inject prompt while status is '${task.status}'` });
     }
 
     const { sessionId, controlToken } = readInterruptSessionProof(req as any);

@@ -560,7 +560,7 @@ export default function AgentDetail({
                         ? `${CLI_LABELS[agent.cli_provider] ?? agent.cli_provider} · ${agent.cli_model}${agent.cli_provider === "codex" && agent.cli_reasoning_level ? ` (${agent.cli_reasoning_level})` : ""}`
                         : agent.cli_provider === "codex" && agent.cli_reasoning_level
                           ? `${CLI_LABELS[agent.cli_provider] ?? agent.cli_provider} · (${agent.cli_reasoning_level})`
-                      : (CLI_LABELS[agent.cli_provider] ?? agent.cli_provider)}
+                          : (CLI_LABELS[agent.cli_provider] ?? agent.cli_provider)}
                     <span className="text-[9px] text-slate-600 ml-0.5">✏️</span>
                   </button>
                 )}
