@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.1-blue" alt="Releases" />
   <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
@@ -21,7 +21,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.2.0.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.2.1.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -67,17 +67,17 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ---
 
-## Latest Release (v1.2.0)
+## Latest Release (v1.2.1)
 
-- **Product features** - Completed Agent/Department CRUD, manual project assignment flow, delegation safeguards, and custom skill upload workflow.
-- **Code modularization** - Split oversized frontend/backend modules into feature folders (`src/components/*`, `server/modules/routes/*`, `server/modules/workflow/*`) while preserving runtime behavior.
-- **Type safety hardening** - Removed server `@ts-nocheck` usage and tightened shared/runtime typing boundaries.
-- **Formatting standardization** - Added Prettier baseline (`.prettierrc.json`, `.prettierignore`), `format`/`format:check` scripts, and CI format enforcement.
-- **Test expansion + CI stability** - Added `tests/e2e/ci-coverage-gap.spec.ts`, expanded frontend/backend unit tests (`src/api`, `useWebSocket`, `usePolling`, `i18n`, `auth`, `hub`, `runtime`, `gateway`), and stabilized Playwright CI settings.
+- **CI hardening** - Resolved pnpm version mismatch, added explicit typecheck/build gates (`tsc -p tsconfig.json --noEmit`, `pnpm run build`), and applied least-privilege workflow permissions.
+- **Quality guardrails** - Adopted ESLint flat config with CI lint, added hidden/bidi Unicode workflow guard, and introduced gradual lint tightening via `lint-staged`.
+- **Runtime stability** - Fixed missing split-route modules, cleaned duplicated type definitions and encoding-related hazards, and reduced App orchestration bloat by extracting bootstrap/live-sync hooks.
+- **Testing and docs** - Reinforced test DB/runtime isolation, exposed Swagger UI + OpenAPI spec path, and refreshed contributor/CI documentation.
 
-- Full notes: [`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
+- Full notes: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
+- API docs: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
+- Security policy: [`SECURITY.md`](SECURITY.md)
 
----
 
 ## Screenshots
 
@@ -746,6 +746,11 @@ Claw-Empire is designed with security in mind:
 - **No secrets in repo** — Comprehensive `.gitignore` blocks `.env`, `*.pem`, `*.key`, `credentials.json`, etc.
 - **Preflight security checks** — Run `pnpm run preflight:public` before any public release to scan for leaked secrets in both working tree and git history
 - **Localhost by default** — Development server binds to `127.0.0.1`, not exposed to network
+
+## API Docs & Security Quick Links
+
+- **API documentation** — Use [`docs/api.md`](docs/api.md) for endpoint overview and usage notes, and [`docs/openapi.json`](docs/openapi.json) for schema/tooling integration.
+- **Security policy** — Review disclosure and policy details in [`SECURITY.md`](SECURITY.md), and run `pnpm run preflight:public` before public releases.
 
 ---
 

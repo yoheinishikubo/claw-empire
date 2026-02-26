@@ -99,7 +99,7 @@ jobs:
         run: pnpm run lint
 
       - name: Run type check
-        run: pnpm exec tsc --noEmit
+        run: pnpm exec tsc -p tsconfig.json --noEmit
 
       - name: Run build
         run: pnpm run build

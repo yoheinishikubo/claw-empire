@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.1-blue" alt="Releases" />
   <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
@@ -21,7 +21,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.2.0.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.2.1.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -67,15 +67,17 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ---
 
-## 最新リリース (v1.2.0)
+## 最新リリース (v1.2.1)
 
-- **機能アップデート** — 社員/部署CRUD、プロジェクト手動アサイン、委任セーフガード、カスタムスキルアップロードを本格対応。
-- **コードのモジュール化** — 大型化したフロント/バックエンドを機能別フォルダ（`src/components/*`, `server/modules/routes/*`, `server/modules/workflow/*`）へ分割し、保守性とレビュー性を向上。
-- **型負債の解消** — サーバーランタイムの `@ts-nocheck` を除去し、共通型・実行時型の境界を強化して既存動作を維持。
-- **フォーマット標準化** — Prettier 基準（`.prettierrc.json`, `.prettierignore`）と `format`/`format:check` を導入し、CIでフォーマット検証を実施。
-- **テスト拡張 + CI安定化** — `tests/e2e/ci-coverage-gap.spec.ts` を追加し、フロント/バックエンド単体テスト（`src/api`, `useWebSocket`, `usePolling`, `i18n`, `auth`, `hub`, `runtime`, `gateway`）を強化。Playwright CI設定も安定化。
+- **CI強化** - pnpmのバージョン競合を解消し、型チェック/ビルドゲート（`tsc -p tsconfig.json --noEmit`, `pnpm run build`）を明示、workflow権限を最小化しました。
+- **品質ガードレール** - ESLint Flat Config + CI lint を導入し、hidden/bidi Unicode ガードと `lint-staged` による段階的な lint 強化を追加しました。
+- **ランタイム安定化** - 分割ルートの欠落、重複型、文字化けリスクを整理し、App の初期化/ライブ同期ロジックをフックへ分離しました。
+- **テスト/ドキュメント強化** - テストDB分離の安全策を強化し、Swagger/OpenAPI の導線を追加、貢献/CIドキュメントを更新しました。
 
-- 詳細: [`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
+- 詳細: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
+- APIドキュメント: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
+- セキュリティポリシー: [`SECURITY.md`](SECURITY.md)
+
 
 ## スクリーンショット
 
@@ -709,6 +711,11 @@ Claw-Empireはセキュリティを重視した設計になっています：
 - **リポジトリにシークレットを含まない** — 包括的な `.gitignore` が `.env`、`*.pem`、`*.key`、`credentials.json` などをブロック
 - **プリフライトセキュリティチェック** — 公開リリース前に `pnpm run preflight:public` を実行し、ワーキングツリーとgit履歴の両方で漏洩したシークレットをスキャン
 - **デフォルトでローカルホスト** — 開発サーバーは `127.0.0.1` にバインドされ、ネットワークに公開されない
+
+## APIドキュメント & セキュリティ要約
+
+- **APIドキュメント** — エンドポイント概要/利用方法は [`docs/api.md`](docs/api.md)、スキーマ/ツール連携は [`docs/openapi.json`](docs/openapi.json) を参照してください。
+- **セキュリティポリシー** — 脆弱性報告/方針は [`SECURITY.md`](SECURITY.md) を確認し、公開リリース前は `pnpm run preflight:public` の実行を推奨します。
 
 ---
 

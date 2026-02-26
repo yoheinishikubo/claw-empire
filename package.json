@@ -42,6 +42,7 @@
     "test:ci": "pnpm run test:web --coverage && pnpm run test:api --coverage && pnpm run test:e2e",
     "lint": "eslint src server",
     "lint:fix": "eslint src server --fix",
+    "lint:staged": "lint-staged",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}\""
   },
@@ -84,6 +85,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.3.0",
     "jsdom": "^26.1.0",
+    "lint-staged": "^16.2.7",
     "msw": "^2.8.2",
     "nodemon": "^3.1.11",
     "playwright": "^1.58.2",
@@ -100,6 +102,10 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}": "prettier --write",
+    "{src/api,server/config}/**/*.ts": "eslint --fix --max-warnings=0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

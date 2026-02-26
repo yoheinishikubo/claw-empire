@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import type { DecisionInboxItem } from "./components/chat/decision-inbox";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type {
@@ -16,26 +16,18 @@ import type {
   CeoOfficeCall,
   RoomTheme,
 } from "./types";
-import { DEFAULT_SETTINGS } from "./types";
-import { detectBrowserLanguage } from "./i18n";
 import type { TaskReportDetail } from "./api";
 import * as api from "./api";
+import { detectBrowserLanguage } from "./i18n";
 import { useTheme } from "./ThemeContext";
 import { ROOM_THEMES_STORAGE_KEY, UPDATE_BANNER_DISMISS_STORAGE_KEY } from "./app/constants";
 import {
-  areAgentListsEquivalent,
-  areTaskListsEquivalent,
   detectRuntimeOs,
   isForceUpdateBannerEnabled,
-  isRoomThemeMap,
-  isUserLanguagePinned,
   mergeSettingsWithDefaults,
-  readStoredClientLanguage,
   readStoredRoomThemes,
-  syncClientLanguage,
 } from "./app/utils";
 import type { OAuthCallbackResult, RuntimeOs, RoomThemeMap, TaskPanelTab, View } from "./app/types";
-import { mapWorkflowDecisionItemsRaw } from "./app/decision-inbox";
 import { useRealtimeSync } from "./app/useRealtimeSync";
 import { useAppLabels } from "./app/useAppLabels";
 import AppLoadingScreen from "./app/AppLoadingScreen";
@@ -45,6 +37,8 @@ import { useAppActions } from "./app/useAppActions";
 import { useActiveMeetingTaskId } from "./app/useActiveMeetingTaskId";
 import { useUpdateStatusPolling } from "./app/useUpdateStatusPolling";
 import { useAppViewEffects } from "./app/useAppViewEffects";
+import { useAppBootstrapData } from "./app/useAppBootstrapData";
+import { useLiveSyncScheduler } from "./app/useLiveSyncScheduler";
 
 export type { OAuthCallbackResult } from "./app/types";
 
@@ -116,130 +110,29 @@ export default function App() {
   const subAgentStreamTailRef = useRef<Map<string, string>>(new Map());
   const activeChatRef = useRef<{ showChat: boolean; agentId: string | null }>({ showChat: false, agentId: null });
   activeChatRef.current = { showChat, agentId: chatAgent?.id ?? null };
-  const liveSyncInFlightRef = useRef(false);
-  const liveSyncQueuedRef = useRef(false);
-  const liveSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { connected, on } = useWebSocket();
+  const scheduleLiveSync = useLiveSyncScheduler({
+    setTasks,
+    setAgents,
+    setStats,
+    setDecisionInboxItems,
+  });
 
-  const fetchAll = useCallback(async () => {
-    try {
-      const [depts, ags, tks, sts, sett, subs, presence, decisionItems] = await Promise.all([
-        api.getDepartments(),
-        api.getAgents(),
-        api.getTasks(),
-        api.getStats(),
-        api.getSettings(),
-        api.getActiveSubtasks(),
-        api.getMeetingPresence().catch(() => []),
-        api.getDecisionInbox().catch(() => []),
-      ]);
-      setDepartments(depts);
-      setAgents(ags);
-      setTasks(tks);
-      setStats(sts);
-      const mergedSettings = mergeSettingsWithDefaults(sett);
-      const autoDetectedLanguage = detectBrowserLanguage();
-      const storedClientLanguage = readStoredClientLanguage();
-      const shouldAutoAssignLanguage =
-        !isUserLanguagePinned() && !storedClientLanguage && mergedSettings.language === DEFAULT_SETTINGS.language;
-      const nextSettings = shouldAutoAssignLanguage
-        ? { ...mergedSettings, language: autoDetectedLanguage }
-        : mergedSettings;
-
-      setSettings(nextSettings);
-      syncClientLanguage(nextSettings.language);
-      const dbRoomThemes = isRoomThemeMap(nextSettings.roomThemes) ? nextSettings.roomThemes : undefined;
-
-      if (!hasLocalRoomThemesRef.current && dbRoomThemes && Object.keys(dbRoomThemes).length > 0) {
-        setCustomRoomThemes(dbRoomThemes);
-        hasLocalRoomThemesRef.current = true;
-        try {
-          window.localStorage.setItem(ROOM_THEMES_STORAGE_KEY, JSON.stringify(dbRoomThemes));
-        } catch {
-          // ignore quota errors
-        }
-      }
-
-      if (
-        hasLocalRoomThemesRef.current &&
-        Object.keys(initialRoomThemes.themes).length > 0 &&
-        (!dbRoomThemes || Object.keys(dbRoomThemes).length === 0)
-      ) {
-        api.saveRoomThemes(initialRoomThemes.themes).catch((error) => {
-          console.error("Room theme sync to DB failed:", error);
-        });
-      }
-
-      if (shouldAutoAssignLanguage && mergedSettings.language !== autoDetectedLanguage) {
-        api.saveSettings(nextSettings).catch((error) => {
-          console.error("Auto language sync failed:", error);
-        });
-      }
-      setSubtasks(subs);
-      setMeetingPresence(presence);
-      setDecisionInboxItems(mapWorkflowDecisionItemsRaw(decisionItems ?? []));
-    } catch (error) {
-      console.error("Failed to fetch data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [initialRoomThemes.themes]);
-
-  const runLiveSync = useCallback(() => {
-    if (liveSyncInFlightRef.current) {
-      liveSyncQueuedRef.current = true;
-      return;
-    }
-    liveSyncInFlightRef.current = true;
-    Promise.all([api.getTasks(), api.getAgents(), api.getStats(), api.getDecisionInbox()])
-      .then(([nextTasks, nextAgents, nextStats, nextDecisionItems]) => {
-        setTasks((prev) => (areTaskListsEquivalent(prev, nextTasks) ? prev : nextTasks));
-        setAgents((prev) => (areAgentListsEquivalent(prev, nextAgents) ? prev : nextAgents));
-        setStats(nextStats);
-        setDecisionInboxItems((prev) => {
-          const preservedAgentRequests = prev.filter((item) => item.kind === "agent_request");
-          const workflowItems = mapWorkflowDecisionItemsRaw(nextDecisionItems);
-          const merged = [...workflowItems, ...preservedAgentRequests];
-          const deduped = new Map<string, DecisionInboxItem>();
-          for (const entry of merged) deduped.set(entry.id, entry);
-          return Array.from(deduped.values()).sort((a, b) => b.createdAt - a.createdAt);
-        });
-      })
-      .catch(console.error)
-      .finally(() => {
-        liveSyncInFlightRef.current = false;
-        if (!liveSyncQueuedRef.current) return;
-        liveSyncQueuedRef.current = false;
-        setTimeout(() => runLiveSync(), 120);
-      });
-  }, []);
-
-  const scheduleLiveSync = useCallback(
-    (delayMs = 120) => {
-      if (liveSyncTimerRef.current) return;
-      liveSyncTimerRef.current = setTimeout(
-        () => {
-          liveSyncTimerRef.current = null;
-          runLiveSync();
-        },
-        Math.max(0, delayMs),
-      );
-    },
-    [runLiveSync],
-  );
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  useEffect(() => {
-    return () => {
-      if (!liveSyncTimerRef.current) return;
-      clearTimeout(liveSyncTimerRef.current);
-      liveSyncTimerRef.current = null;
-    };
-  }, []);
+  useAppBootstrapData({
+    initialRoomThemes,
+    hasLocalRoomThemesRef,
+    setDepartments,
+    setAgents,
+    setTasks,
+    setStats,
+    setSettings,
+    setSubtasks,
+    setMeetingPresence,
+    setDecisionInboxItems,
+    setCustomRoomThemes,
+    setLoading,
+  });
 
   useUpdateStatusPolling(setUpdateStatus);
   useAppViewEffects({

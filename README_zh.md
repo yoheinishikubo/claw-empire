@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.1-blue" alt="Releases" />
   <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
@@ -21,7 +21,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.2.0.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.2.1.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -67,15 +67,17 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ---
 
-## 最新发布 (v1.2.0)
+## 最新发布 (v1.2.1)
 
-- **功能更新** — 完成员工/部门 CRUD、项目手动分配、委派安全机制与自定义技能上传等核心能力。
-- **代码模块化** — 将大型前后端代码拆分到功能目录（`src/components/*`、`server/modules/routes/*`、`server/modules/workflow/*`），提升可维护性与评审可读性。
-- **类型债务治理** — 移除服务器运行时 `@ts-nocheck`，强化共享类型与运行时类型边界，在不改变既有行为的前提下提高类型安全。
-- **格式规范落地** — 新增 Prettier 基线（`.prettierrc.json`、`.prettierignore`）、`format`/`format:check` 脚本，并在 CI 执行格式校验。
-- **测试代码扩展 + CI 稳定化** — 新增 `tests/e2e/ci-coverage-gap.spec.ts`，补齐前后端单元测试（`src/api`、`useWebSocket`、`usePolling`、`i18n`、`auth`、`hub`、`runtime`、`gateway`），并稳定 Playwright CI 参数。
+- **CI 加固** - 解决 pnpm 版本冲突，显式加入类型检查/构建闸门（`tsc -p tsconfig.json --noEmit`, `pnpm run build`），并采用最小权限 workflow。
+- **质量护栏** - 引入 ESLint Flat Config + CI lint，新增 hidden/bidi Unicode 检查，并通过 `lint-staged` 逐步收紧 lint 规则。
+- **运行时稳定性** - 修复拆分路由遗漏、重复类型与编码风险，并将 App 初始化/实时同步逻辑拆分为 hooks。
+- **测试与文档增强** - 强化测试 DB 隔离保护，补充 Swagger/OpenAPI 入口，并更新贡献/CI 文档。
 
-- 详细说明：[`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
+- 详细说明: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
+- API 文档: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
+- 安全策略: [`SECURITY.md`](SECURITY.md)
+
 
 ## 截图
 
@@ -709,6 +711,11 @@ Claw-Empire 在设计上充分考虑了安全性：
 - **仓库中无密钥** — 全面的 `.gitignore` 配置屏蔽 `.env`、`*.pem`、`*.key`、`credentials.json` 等敏感文件
 - **发布前安全检查** — 在任何公开发布前运行 `pnpm run preflight:public`，扫描工作区和 git 历史中泄露的密钥
 - **默认绑定本地** — 开发服务器绑定到 `127.0.0.1`，不对外网暴露
+
+## API 文档与安全策略速览
+
+- **API 文档** — 接口概览/使用说明见 [`docs/api.md`](docs/api.md)，Schema 与工具集成见 [`docs/openapi.json`](docs/openapi.json)。
+- **安全策略** — 漏洞提交流程与安全策略见 [`SECURITY.md`](SECURITY.md)，公开发布前建议执行 `pnpm run preflight:public`。
 
 ---
 
