@@ -1,15 +1,5 @@
 import { randomUUID } from "node:crypto";
-
-type DecisionOption = { number: number; action: string; label: string };
-
-type ProjectReviewReplyInput = {
-  req: any;
-  res: any;
-  currentItem: any;
-  selectedOption: DecisionOption;
-  optionNumber: number;
-  deps: any;
-};
+import type { ProjectReviewReplyInput, ProjectReviewTaskChoice } from "./types.ts";
 
 export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput): boolean {
   const { req, res, currentItem, selectedOption, optionNumber, deps } = input;
@@ -93,7 +83,9 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
       ]),
       task_id: targetTask.id,
     });
-    const remaining = getProjectReviewTaskChoices(projectId).filter((task: any) => !task.selected).length;
+    const remaining = getProjectReviewTaskChoices(projectId).filter(
+      (task: ProjectReviewTaskChoice) => !task.selected,
+    ).length;
     res.json({
       ok: true,
       resolved: false,
@@ -222,12 +214,15 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
     const reviewTaskChoices = getProjectReviewTaskChoices(projectId);
     const requiresRepresentativeSelection = reviewTaskChoices.length > 1;
     const pendingChoices = requiresRepresentativeSelection
-      ? reviewTaskChoices.filter((task: any) => !task.selected)
+      ? reviewTaskChoices.filter((task: ProjectReviewTaskChoice) => !task.selected)
       : [];
     if (requiresRepresentativeSelection && pendingChoices.length > 0) {
       res.status(409).json({
         error: "project_task_options_pending",
-        pending_task_choices: pendingChoices.map((task: any) => ({ id: task.id, title: task.title })),
+        pending_task_choices: pendingChoices.map((task: ProjectReviewTaskChoice) => ({
+          id: task.id,
+          title: task.title,
+        })),
       });
       return true;
     }

@@ -1,13 +1,5 @@
 import type { AgentRow } from "../../../shared/types.ts";
-
-type DecisionOption = { number: number; action: string; label: string };
-
-type TimeoutReplyInput = {
-  res: any;
-  currentItem: any;
-  selectedOption: DecisionOption;
-  deps: any;
-};
+import type { TimeoutReplyInput } from "./types.ts";
 
 export function handleTimeoutResumeDecisionReply(input: TimeoutReplyInput): boolean {
   const { res, currentItem, selectedOption, deps } = input;

@@ -1,8 +1,10 @@
-export function createReviewRoundDecisionItems(deps: any): {
-  getReviewDecisionFallbackLabel: (lang: string) => string;
-  getReviewDecisionNotes: (taskId: string, reviewRound: number, limit?: number) => string[];
-  buildReviewRoundDecisionItems: () => any[];
-} {
+import type {
+  ReviewRoundDecisionItem,
+  ReviewRoundDecisionItemDeps,
+  ReviewRoundDecisionItems,
+} from "./types.ts";
+
+export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps): ReviewRoundDecisionItems {
   const {
     db,
     nowMs,
@@ -56,7 +58,7 @@ export function createReviewRoundDecisionItems(deps: any): {
     return out;
   }
 
-  function buildReviewRoundDecisionItems(): any[] {
+  function buildReviewRoundDecisionItems(): ReviewRoundDecisionItem[] {
     const lang = getPreferredLanguage();
     const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
     const rows = db
@@ -104,7 +106,7 @@ export function createReviewRoundDecisionItems(deps: any): {
       meeting_completed_at: number | null;
     }>;
 
-    const out: any[] = [];
+    const out: ReviewRoundDecisionItem[] = [];
     for (const row of rows) {
       const notesRaw = getReviewDecisionNotes(row.task_id, row.meeting_round, 6);
       const notes = notesRaw.length > 0 ? notesRaw : [getReviewDecisionFallbackLabel(lang)];

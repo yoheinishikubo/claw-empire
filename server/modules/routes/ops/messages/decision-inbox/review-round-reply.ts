@@ -1,13 +1,4 @@
-type DecisionOption = { number: number; action: string; label: string };
-
-type ReviewRoundReplyInput = {
-  req: any;
-  res: any;
-  currentItem: any;
-  selectedOption: DecisionOption;
-  optionNumber: number;
-  deps: any;
-};
+import type { DecisionOption, ReviewRoundReplyInput } from "./types.ts";
 
 export function handleReviewRoundDecisionReply(input: ReviewRoundReplyInput): boolean {
   const { req, res, currentItem, selectedOption, optionNumber, deps } = input;
@@ -33,7 +24,7 @@ export function handleReviewRoundDecisionReply(input: ReviewRoundReplyInput): bo
   } = deps;
 
   const taskId = currentItem.task_id;
-  const meetingId = normalizeTextField((currentItem as { meeting_id?: string | null }).meeting_id);
+  const meetingId = normalizeTextField(currentItem.meeting_id);
   if (!taskId || !meetingId) {
     res.status(400).json({ error: "task_or_meeting_required" });
     return true;
@@ -161,11 +152,11 @@ export function handleReviewRoundDecisionReply(input: ReviewRoundReplyInput): bo
     }
     try {
       scheduleNextReviewRound(taskId, task.title, reviewRound, lang);
-    } catch (err: any) {
+    } catch (err: unknown) {
       db.prepare("UPDATE meeting_minutes SET status = 'revision_requested', completed_at = NULL WHERE id = ?").run(
         meetingId,
       );
-      const msg = err?.message ? String(err.message) : String(err);
+      const msg = err instanceof Error ? err.message : String(err);
       appendTaskLog(
         taskId,
         "error",

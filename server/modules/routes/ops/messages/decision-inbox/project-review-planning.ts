@@ -1,4 +1,11 @@
-export function createProjectReviewPlanningHelpers(deps: any): any {
+import type {
+  PlanningLeadMeta,
+  PlanningLeadStateLike,
+  ProjectReviewPlanningDeps,
+  ProjectReviewPlanningHelpers,
+} from "./types.ts";
+
+export function createProjectReviewPlanningHelpers(deps: ProjectReviewPlanningDeps): ProjectReviewPlanningHelpers {
   const {
     db,
     nowMs,
@@ -173,20 +180,10 @@ export function createProjectReviewPlanningHelpers(deps: any): any {
     return text.replace(/\n{3,}/g, "\n\n").trim();
   }
 
-  type PlanningLeadStateLike = {
-    planner_agent_id?: string | null;
-    planner_agent_name?: string | null;
-  };
-
   function resolvePlanningLeadMeta(
     lang: string,
     decisionState?: PlanningLeadStateLike | null,
-  ): {
-    agent_id: string | null;
-    agent_name: string;
-    agent_name_ko: string;
-    agent_avatar: string;
-  } {
+  ): PlanningLeadMeta {
     const fallbackLead = findTeamLeader("planning");
     const stateAgentId = String(decisionState?.planner_agent_id ?? "").trim();
     const stateAgent = stateAgentId

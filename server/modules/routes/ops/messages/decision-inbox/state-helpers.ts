@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
+import type {
+  DecisionStateHelperDeps,
+  DecisionStateHelpers,
+  DecisionStateStatus,
+  ProjectReviewDecisionEventInput,
+  ProjectReviewDecisionState,
+  ReviewRoundDecisionState,
+} from "./types.ts";
 
-export function createDecisionStateHelpers(deps: any): any {
+export function createDecisionStateHelpers(deps: DecisionStateHelperDeps): DecisionStateHelpers {
   const { db, nowMs } = deps;
 
   function buildProjectReviewSnapshotHash(
@@ -14,7 +22,7 @@ export function createDecisionStateHelpers(deps: any): any {
     return createHash("sha256").update(`${projectId}|${base}`).digest("hex").slice(0, 24);
   }
 
-  function getProjectReviewDecisionState(projectId: string): any | null {
+  function getProjectReviewDecisionState(projectId: string): ProjectReviewDecisionState | null {
     const row = db
       .prepare(
         `
@@ -31,14 +39,14 @@ export function createDecisionStateHelpers(deps: any): any {
       WHERE project_id = ?
     `,
       )
-      .get(projectId) as any | undefined;
+      .get(projectId) as ProjectReviewDecisionState | undefined;
     return row ?? null;
   }
 
   function upsertProjectReviewDecisionState(
     projectId: string,
     snapshotHash: string,
-    status: "collecting" | "ready" | "failed",
+    status: DecisionStateStatus,
     plannerSummary: string | null,
     plannerAgentId: string | null,
     plannerAgentName: string | null,
@@ -80,7 +88,7 @@ export function createDecisionStateHelpers(deps: any): any {
     return createHash("sha256").update(`${meetingId}|round=${reviewRound}|${base}`).digest("hex").slice(0, 24);
   }
 
-  function getReviewRoundDecisionState(meetingId: string): any | null {
+  function getReviewRoundDecisionState(meetingId: string): ReviewRoundDecisionState | null {
     const row = db
       .prepare(
         `
@@ -97,14 +105,14 @@ export function createDecisionStateHelpers(deps: any): any {
       WHERE meeting_id = ?
     `,
       )
-      .get(meetingId) as any | undefined;
+      .get(meetingId) as ReviewRoundDecisionState | undefined;
     return row ?? null;
   }
 
   function upsertReviewRoundDecisionState(
     meetingId: string,
     snapshotHash: string,
-    status: "collecting" | "ready" | "failed",
+    status: DecisionStateStatus,
     plannerSummary: string | null,
     plannerAgentId: string | null,
     plannerAgentName: string | null,
@@ -134,16 +142,7 @@ export function createDecisionStateHelpers(deps: any): any {
     ).run(meetingId, snapshotHash, status, plannerSummary, plannerAgentId, plannerAgentName, ts, ts);
   }
 
-  function recordProjectReviewDecisionEvent(input: {
-    project_id: string;
-    snapshot_hash?: string | null;
-    event_type: "planning_summary" | "representative_pick" | "followup_request" | "start_review_meeting";
-    summary: string;
-    selected_options_json?: string | null;
-    note?: string | null;
-    task_id?: string | null;
-    meeting_id?: string | null;
-  }): void {
+  function recordProjectReviewDecisionEvent(input: ProjectReviewDecisionEventInput): void {
     db.prepare(
       `
       INSERT INTO project_review_decision_events (

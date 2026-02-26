@@ -1,8 +1,14 @@
-export function createProjectAndTimeoutDecisionItems(deps: any): {
-  getProjectReviewTaskChoices: (projectId: string) => Array<{ id: string; title: string; selected: boolean }>;
-  buildProjectReviewDecisionItems: () => any[];
-  buildTimeoutResumeDecisionItems: () => any[];
-} {
+import type {
+  ProjectAndTimeoutDecisionItemDeps,
+  ProjectAndTimeoutDecisionItems,
+  ProjectReviewDecisionItem,
+  ProjectReviewTaskChoice,
+  TimeoutResumeDecisionItem,
+} from "./types.ts";
+
+export function createProjectAndTimeoutDecisionItems(
+  deps: ProjectAndTimeoutDecisionItemDeps,
+): ProjectAndTimeoutDecisionItems {
   const {
     db,
     nowMs,
@@ -18,12 +24,7 @@ export function createProjectAndTimeoutDecisionItems(deps: any): {
     PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX,
   } = deps;
 
-  function getProjectReviewTaskChoices(projectId: string): Array<{
-    id: string;
-    title: string;
-    updated_at: number;
-    selected: boolean;
-  }> {
+  function getProjectReviewTaskChoices(projectId: string): ProjectReviewTaskChoice[] {
     const selectionPattern = `${PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX}%`;
     const rows = db
       .prepare(
@@ -60,7 +61,7 @@ export function createProjectAndTimeoutDecisionItems(deps: any): {
     }));
   }
 
-  function buildProjectReviewDecisionItems(): any[] {
+  function buildProjectReviewDecisionItems(): ProjectReviewDecisionItem[] {
     const lang = getPreferredLanguage();
     const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
 
@@ -91,7 +92,7 @@ export function createProjectAndTimeoutDecisionItems(deps: any): {
       root_review_total: number | null;
     }>;
 
-    const out: any[] = [];
+    const out: ProjectReviewDecisionItem[] = [];
     for (const row of rows) {
       const activeTotal = row.active_total ?? 0;
       const activeReview = row.active_review ?? 0;
@@ -316,7 +317,7 @@ export function createProjectAndTimeoutDecisionItems(deps: any): {
     return out;
   }
 
-  function buildTimeoutResumeDecisionItems(): any[] {
+  function buildTimeoutResumeDecisionItems(): TimeoutResumeDecisionItem[] {
     const lang = getPreferredLanguage();
     const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
 

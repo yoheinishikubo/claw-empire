@@ -1,4 +1,6 @@
-export function createReviewRoundPlanningHelpers(deps: any): any {
+import type { ReviewRoundPlanningDeps, ReviewRoundPlanningHelpers } from "./types.ts";
+
+export function createReviewRoundPlanningHelpers(deps: ReviewRoundPlanningDeps): ReviewRoundPlanningHelpers {
   const {
     db,
     nowMs,
