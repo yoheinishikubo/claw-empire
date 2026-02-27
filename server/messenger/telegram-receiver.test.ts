@@ -37,8 +37,6 @@ async function importReceiverModule(env: Record<string, string | undefined>) {
     ...ORIGINAL_ENV,
     DB_PATH: env.DB_PATH,
     INBOX_WEBHOOK_SECRET: env.INBOX_WEBHOOK_SECRET,
-    TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
-    TELEGRAM_CHAT_IDS: env.TELEGRAM_CHAT_IDS,
   };
 
   return import("./telegram-receiver.ts");
@@ -68,8 +66,6 @@ describe("telegram receiver", () => {
       const receiver = await importReceiverModule({
         DB_PATH: dbPath,
         INBOX_WEBHOOK_SECRET: "inbox-secret",
-        TELEGRAM_BOT_TOKEN: undefined,
-        TELEGRAM_CHAT_IDS: undefined,
       });
       const status: import("./telegram-receiver.ts").TelegramReceiverStatus = {
         running: true,
@@ -159,8 +155,6 @@ describe("telegram receiver", () => {
       const receiver = await importReceiverModule({
         DB_PATH: dbPath,
         INBOX_WEBHOOK_SECRET: "inbox-secret",
-        TELEGRAM_BOT_TOKEN: undefined,
-        TELEGRAM_CHAT_IDS: undefined,
       });
       const status: import("./telegram-receiver.ts").TelegramReceiverStatus = {
         running: true,
@@ -217,4 +211,3 @@ describe("telegram receiver", () => {
     }
   });
 });
-

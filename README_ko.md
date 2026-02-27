@@ -130,7 +130,7 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 <tr>
 <td width="50%">
 
-**메신저 연동** — Telegram, Discord, Slack에서 `$` CEO 디렉티브를 전송하고 내장 직접 세션으로 태스크 업데이트를 수신
+**메신저 연동** — Telegram, WhatsApp, Discord, Google Chat, Slack, Signal, iMessage 세션을 설정하고 `$` CEO 디렉티브를 전송합니다
 
 <img src="Sample_Img/telegram.png" alt="Messenger Integration" width="100%" />
 </td>
@@ -293,15 +293,15 @@ curl -s http://127.0.0.1:8790/healthz
 
 예상 응답: `{"ok":true,...}`
 
-`.env`의 `OPENCLAW_CONFIG`는 절대경로 사용을 권장합니다(문서 기준 따옴표 없이 권장). `v1.0.5`에서는 따옴표/선행 `~` 값도 런타임에서 정규화합니다.
+메신저 채널은 설정 UI에서 등록되며 SQLite(`settings.messengerChannels`)에 저장됩니다. `.env` 기반 메신저 토큰/채널 변수는 더 이상 사용하지 않습니다.
 
-### 4단계: OpenClaw 게이트웨이 + inbox(선택) 검증
+### 4단계: 메신저 + inbox(선택) 검증
 
 ```bash
-curl -s http://127.0.0.1:8790/api/gateway/targets
+curl -s http://127.0.0.1:8790/api/messenger/sessions
 ```
 
-`OPENCLAW_CONFIG`가 올바르면 사용 가능한 메신저 세션 목록이 반환됩니다.
+설정에 저장된 메신저 세션 목록이 반환됩니다.
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
@@ -445,7 +445,7 @@ pnpm setup -- --port 8790
 
 <a id="openclaw-integration"></a>
 
-### OpenClaw 연동 셋업 (Telegram/Discord/Slack)
+### OpenClaw 연동 셋업 (Telegram/WhatsApp/Discord/Google Chat/Slack/Signal/iMessage)
 
 `install.sh` / `install.ps1` (또는 `scripts/openclaw-setup.*`)은 가능한 경우 `OPENCLAW_CONFIG`를 자동 감지하여 `.env`에 기록합니다.
 

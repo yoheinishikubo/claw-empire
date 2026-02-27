@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
+import type { MessengerChannel } from "../../../messenger/channels.ts";
 
 export type DelegationOptions = {
   skipPlannedMeeting?: boolean;
@@ -8,7 +9,7 @@ export type DelegationOptions = {
   projectId?: string | null;
   projectPath?: string | null;
   projectContext?: string | null;
-  messengerChannel?: "telegram" | "discord" | "slack";
+  messengerChannel?: MessengerChannel;
   messengerTargetId?: string | null;
 };
 
@@ -150,28 +151,10 @@ export function initializeProjectResolution({ db }: InitializeProjectResolutionA
       WHERE LOWER(name) = LOWER(?)
       ORDER BY last_used_at DESC, updated_at DESC
       LIMIT 1
-    `,
+      `,
         )
         .get(contextHint) as ProjectLookupRow | undefined;
       if (rowByName) return toResolvedProject(rowByName);
-
-      const existingProjectHint =
-        /기존\s*프로젝트|기존\s*작업|existing project|same project|current project|ongoing project|既存.*プロジェクト|現在.*プロジェクト|之前项目|当前项目/i.test(
-          contextHint,
-        );
-      if (existingProjectHint) {
-        const latest = db
-          .prepare(
-            `
-        SELECT id, name, project_path, core_goal
-        FROM projects
-        ORDER BY last_used_at DESC, updated_at DESC
-        LIMIT 1
-      `,
-          )
-          .get() as ProjectLookupRow | undefined;
-        if (latest) return toResolvedProject(latest);
-      }
     }
 
     return { id: null, name: null, projectPath: null, coreGoal: null };

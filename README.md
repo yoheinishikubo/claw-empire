@@ -130,7 +130,7 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 <tr>
 <td width="50%">
 
-**Messenger Integration** — Send `$` CEO directives from Telegram, Discord, Slack and receive task updates through built-in direct messenger sessions
+**Messenger Integration** — Configure Telegram, WhatsApp, Discord, Google Chat, Slack, Signal, iMessage sessions and send `$` CEO directives
 
 <img src="Sample_Img/telegram.png" alt="Telegram Integration" width="100%" />
 </td>
@@ -293,15 +293,15 @@ curl -s http://127.0.0.1:8790/healthz
 
 Expected: `{"ok":true,...}`
 
-`OPENCLAW_CONFIG` should be an absolute path in `.env` (unquoted preferred in docs). In `v1.0.5`, quoted values and leading `~` are also normalized at runtime.
+Messenger channels are configured in Settings UI and persisted to SQLite (`settings.messengerChannels`). `.env` messenger token/channel variables are no longer used.
 
-### Step 4: Optional OpenClaw gateway + inbox verification
+### Step 4: Optional messenger + inbox verification
 
 ```bash
-curl -s http://127.0.0.1:8790/api/gateway/targets
+curl -s http://127.0.0.1:8790/api/messenger/sessions
 ```
 
-If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
+This returns messenger sessions saved in Settings.
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
@@ -452,7 +452,7 @@ pnpm setup -- --port 8790
 
 <a id="openclaw-integration"></a>
 
-### OpenClaw Integration Setup (Telegram/Discord/Slack)
+### OpenClaw Integration Setup (Telegram/WhatsApp/Discord/Google Chat/Slack/Signal/iMessage)
 
 `install.sh` / `install.ps1` (or `scripts/openclaw-setup.*`) will auto-detect and write `OPENCLAW_CONFIG` when possible.
 

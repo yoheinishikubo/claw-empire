@@ -304,7 +304,17 @@ export interface RoomTheme {
   accent: number;
 }
 
-export type MessengerChannelType = "telegram" | "discord" | "slack";
+export const MESSENGER_CHANNELS = [
+  "telegram",
+  "whatsapp",
+  "discord",
+  "googlechat",
+  "slack",
+  "signal",
+  "imessage",
+] as const;
+
+export type MessengerChannelType = (typeof MESSENGER_CHANNELS)[number];
 
 export interface MessengerSessionConfig {
   id: string;
@@ -320,11 +330,7 @@ export interface MessengerChannelConfig {
   receiveEnabled?: boolean;
 }
 
-export interface MessengerChannelsConfig {
-  telegram: MessengerChannelConfig;
-  discord: MessengerChannelConfig;
-  slack: MessengerChannelConfig;
-}
+export type MessengerChannelsConfig = Record<MessengerChannelType, MessengerChannelConfig>;
 
 export interface CompanySettings {
   companyName: string;
@@ -366,7 +372,11 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   },
   messengerChannels: {
     telegram: { token: "", sessions: [], receiveEnabled: true },
+    whatsapp: { token: "", sessions: [], receiveEnabled: false },
     discord: { token: "", sessions: [], receiveEnabled: false },
+    googlechat: { token: "", sessions: [], receiveEnabled: false },
     slack: { token: "", sessions: [], receiveEnabled: false },
+    signal: { token: "", sessions: [], receiveEnabled: false },
+    imessage: { token: "", sessions: [], receiveEnabled: false },
   },
 };

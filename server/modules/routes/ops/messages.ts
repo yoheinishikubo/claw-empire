@@ -33,7 +33,7 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): Record<string, ne
   const findTeamLeader = __ctx.findTeamLeader;
   const handleTaskDelegation = __ctx.handleTaskDelegation;
 
-  registerDecisionInboxRoutes(__ctx);
+  const decisionInboxBridge = registerDecisionInboxRoutes(__ctx);
 
   registerChatMessageRoutes(
     { app, db, broadcast },
@@ -88,6 +88,7 @@ export function registerOpsMessageRoutes(ctx: RuntimeContext): Record<string, ne
       handleTaskDelegation,
       scheduleAgentReply,
       detectMentions,
+      tryHandleInboxDecisionReply: decisionInboxBridge.tryHandleInboxDecisionReply,
     },
   );
 

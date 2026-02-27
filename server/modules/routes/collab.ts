@@ -2,6 +2,7 @@ import type { RuntimeContext, RouteCollabExports } from "../../types/runtime-con
 import type { Lang } from "../../types/lang.ts";
 import { randomUUID } from "node:crypto";
 import { sendMessengerMessage, type MessengerChannel } from "../../gateway/client.ts";
+import { isMessengerChannel } from "../../messenger/channels.ts";
 
 import { createAnnouncementReplyScheduler } from "./collab/announcement-response.ts";
 import { createChatReplyGenerator } from "./collab/chat-response.ts";
@@ -62,17 +63,16 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
   const TASK_MESSENGER_ROUTE_PREFIX = "[messenger-route]";
   const TASK_MESSENGER_ROUTE_CACHE_MAX = 1024;
   const TASK_MESSENGER_ROUTE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const TASK_MESSENGER_RELAY_MESSAGE_TYPES = new Set(["report", "chat", "status_update"]);
   const taskMessengerRouteByTaskId = new Map<string, { channel: MessengerChannel; targetId: string; updatedAt: number }>();
 
-  function isMessengerChannel(value: unknown): value is MessengerChannel {
-    return value === "telegram" || value === "discord" || value === "slack";
-  }
-
   function parseTaskMessengerRouteLine(line: string): { channel: MessengerChannel; targetId: string } | null {
-    const match = line.match(/^\[messenger-route\]\s+(telegram|discord|slack):(.+)$/i);
-    if (!match) return null;
-    const channelRaw = match[1]?.toLowerCase();
-    const targetId = (match[2] || "").trim();
+    if (!line.startsWith(`${TASK_MESSENGER_ROUTE_PREFIX} `)) return null;
+    const payload = line.slice(TASK_MESSENGER_ROUTE_PREFIX.length).trim();
+    const separator = payload.indexOf(":");
+    if (separator <= 0) return null;
+    const channelRaw = payload.slice(0, separator).trim().toLowerCase();
+    const targetId = payload.slice(separator + 1).trim();
     if (!isMessengerChannel(channelRaw) || !targetId) return null;
     return { channel: channelRaw, targetId };
   }
@@ -146,6 +146,11 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
   function getMessengerChunkLimit(channel: MessengerChannel): number {
     if (channel === "discord") return 1900;
     if (channel === "telegram") return 3800;
+    if (channel === "slack") return 3900;
+    if (channel === "whatsapp") return 3900;
+    if (channel === "googlechat") return 3900;
+    if (channel === "signal") return 3900;
+    if (channel === "imessage") return 3900;
     return 35000;
   }
 
@@ -172,7 +177,7 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
     return chunks;
   }
 
-  async function relayTaskReportToAssignedMessengerSessions(taskId: string, rawContent: string): Promise<void> {
+  async function relayTaskBroadcastToAssignedMessengerSessions(taskId: string, rawContent: string): Promise<void> {
     const content = rawContent.trim();
     if (!content) return;
 
@@ -187,6 +192,16 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
         text: chunk,
       });
     }
+  }
+
+  function shouldRelayTaskBroadcastToMessenger(
+    messageType: string,
+    receiverType: string,
+    taskId: string | null,
+  ): taskId is string {
+    if (!taskId) return false;
+    if (receiverType !== "all") return false;
+    return TASK_MESSENGER_RELAY_MESSAGE_TYPES.has(messageType);
   }
 
   function sendAgentMessage(
@@ -220,9 +235,11 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
       sender_avatar: agent.avatar_emoji ?? "🤖",
     });
 
-    if (messageType === "report" && receiverType === "all" && taskId) {
-      void relayTaskReportToAssignedMessengerSessions(taskId, content).catch((err) => {
-        console.warn(`[messenger-report] failed to relay task report (task=${taskId}): ${String(err)}`);
+    if (shouldRelayTaskBroadcastToMessenger(messageType, receiverType, taskId)) {
+      void relayTaskBroadcastToAssignedMessengerSessions(taskId, content).catch((err) => {
+        console.warn(
+          `[messenger-relay] failed to relay task broadcast (task=${taskId}, type=${messageType}): ${String(err)}`,
+        );
       });
     }
   }

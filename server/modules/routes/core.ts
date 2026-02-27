@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
 import { INBOX_WEBHOOK_SECRET, PKG_VERSION } from "../../config/runtime.ts";
 import { listMessengerSessions, sendMessengerMessage, sendMessengerSessionMessage } from "../../gateway/client.ts";
+import { isMessengerChannel, isNativeMessengerChannel } from "../../messenger/channels.ts";
 import { getTelegramReceiverStatus } from "../../messenger/telegram-receiver.ts";
 import {
   BUILTIN_GITHUB_CLIENT_ID,
@@ -221,7 +222,7 @@ export function registerRoutesPartA(ctx: RuntimeContext): Record<string, never> 
   registerUpdateAutoRoutes(__ctx);
 
   // ---------------------------------------------------------------------------
-  // Direct messenger channels (Telegram/Discord/Slack)
+  // Direct messenger channels
   // ---------------------------------------------------------------------------
   app.get("/api/messenger/sessions", (_req, res) => {
     try {
@@ -255,6 +256,10 @@ export function registerRoutesPartA(ctx: RuntimeContext): Record<string, never> 
 
       const sessionKey = normalizeTextField(body.sessionKey);
       if (sessionKey) {
+        const sessionChannelHint = sessionKey.split(":", 1)[0]?.trim().toLowerCase() ?? "";
+        if (sessionChannelHint && isMessengerChannel(sessionChannelHint) && !isNativeMessengerChannel(sessionChannelHint)) {
+          return res.status(400).json({ ok: false, error: `channel transport not implemented: ${sessionChannelHint}` });
+        }
         await sendMessengerSessionMessage(sessionKey, text);
         return res.json({ ok: true });
       }
@@ -264,8 +269,11 @@ export function registerRoutesPartA(ctx: RuntimeContext): Record<string, never> 
       if (!channel || !targetId) {
         return res.status(400).json({ ok: false, error: "sessionKey or channel/targetId required" });
       }
-      if (channel !== "telegram" && channel !== "discord" && channel !== "slack") {
+      if (!isMessengerChannel(channel)) {
         return res.status(400).json({ ok: false, error: "unsupported channel" });
+      }
+      if (!isNativeMessengerChannel(channel)) {
+        return res.status(400).json({ ok: false, error: `channel transport not implemented: ${channel}` });
       }
 
       await sendMessengerMessage({

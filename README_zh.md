@@ -130,7 +130,7 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 <tr>
 <td width="50%">
 
-**即时通讯集成** — 通过 Telegram、Discord、Slack 发送 `$` CEO 指令，并通过内置直连会话接收任务更新
+**即时通讯集成** — 可配置 Telegram、WhatsApp、Discord、Google Chat、Slack、Signal、iMessage 会话并发送 `$` CEO 指令
 
 <img src="Sample_Img/telegram.png" alt="Messenger Integration" width="100%" />
 </td>
@@ -293,15 +293,15 @@ curl -s http://127.0.0.1:8790/healthz
 
 期望结果：`{"ok":true,...}`
 
-`.env` 中的 `OPENCLAW_CONFIG` 建议使用绝对路径（文档建议不加引号）。在 `v1.0.5` 中，外层引号和前导 `~` 也会在运行时自动规范化。
+消息渠道在设置 UI 中配置，并持久化到 SQLite（`settings.messengerChannels`）。`.env` 中的消息令牌/频道变量已不再使用。
 
-### 第 4 步：可选 OpenClaw 网关 + inbox 验证
+### 第 4 步：可选消息渠道 + inbox 验证
 
 ```bash
-curl -s http://127.0.0.1:8790/api/gateway/targets
+curl -s http://127.0.0.1:8790/api/messenger/sessions
 ```
 
-当 `OPENCLAW_CONFIG` 有效时，将返回可用的消息会话列表。
+将返回设置中保存的消息会话列表。
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
@@ -445,7 +445,7 @@ pnpm setup -- --port 8790
 
 <a id="openclaw-integration"></a>
 
-### OpenClaw 集成设置（Telegram/Discord/Slack）
+### OpenClaw 集成设置（Telegram/WhatsApp/Discord/Google Chat/Slack/Signal/iMessage）
 
 `install.sh` / `install.ps1`（或 `scripts/openclaw-setup.*`）会在可用时自动检测并写入 `OPENCLAW_CONFIG` 到 `.env`。
 

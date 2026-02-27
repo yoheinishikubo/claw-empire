@@ -1,5 +1,5 @@
-import type { Agent, CompanySettings, RoomTheme, Task } from "../types";
-import { DEFAULT_SETTINGS } from "../types";
+import type { Agent, CompanySettings, MessengerChannelConfig, MessengerChannelsConfig, RoomTheme, Task } from "../types";
+import { DEFAULT_SETTINGS, MESSENGER_CHANNELS } from "../types";
 import { LANGUAGE_STORAGE_KEY, LANGUAGE_USER_SET_STORAGE_KEY, normalizeLanguage } from "../i18n";
 import type { RoomThemeMap, RuntimeOs } from "./types";
 import { ROOM_THEMES_STORAGE_KEY } from "./constants";
@@ -191,23 +191,19 @@ export function areTaskListsEquivalent(prev: Task[], next: Task[]): boolean {
 }
 
 export function mergeSettingsWithDefaults(settings?: Partial<CompanySettings> | null): CompanySettings {
-  const mergedMessengerChannels = {
-    telegram: {
-      ...(DEFAULT_SETTINGS.messengerChannels?.telegram ?? { token: "", sessions: [], receiveEnabled: true }),
-      ...(settings?.messengerChannels?.telegram ?? {}),
-      sessions: settings?.messengerChannels?.telegram?.sessions ?? DEFAULT_SETTINGS.messengerChannels?.telegram?.sessions ?? [],
+  const mergedMessengerChannels = MESSENGER_CHANNELS.reduce<MessengerChannelsConfig>(
+    (acc, channel) => {
+      const defaults = DEFAULT_SETTINGS.messengerChannels?.[channel] ?? { token: "", sessions: [], receiveEnabled: false };
+      const incoming: Partial<MessengerChannelConfig> = settings?.messengerChannels?.[channel] ?? {};
+      acc[channel] = {
+        ...defaults,
+        ...incoming,
+        sessions: incoming.sessions ?? defaults.sessions ?? [],
+      };
+      return acc;
     },
-    discord: {
-      ...(DEFAULT_SETTINGS.messengerChannels?.discord ?? { token: "", sessions: [], receiveEnabled: false }),
-      ...(settings?.messengerChannels?.discord ?? {}),
-      sessions: settings?.messengerChannels?.discord?.sessions ?? DEFAULT_SETTINGS.messengerChannels?.discord?.sessions ?? [],
-    },
-    slack: {
-      ...(DEFAULT_SETTINGS.messengerChannels?.slack ?? { token: "", sessions: [], receiveEnabled: false }),
-      ...(settings?.messengerChannels?.slack ?? {}),
-      sessions: settings?.messengerChannels?.slack?.sessions ?? DEFAULT_SETTINGS.messengerChannels?.slack?.sessions ?? [],
-    },
-  };
+    {} as MessengerChannelsConfig,
+  );
 
   return {
     ...DEFAULT_SETTINGS,

@@ -1,11 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import {
-  INBOX_WEBHOOK_SECRET,
-  OAUTH_BASE_HOST,
-  PORT,
-  TELEGRAM_BOT_TOKEN,
-  TELEGRAM_CHAT_IDS,
-} from "../config/runtime.ts";
+import { INBOX_WEBHOOK_SECRET, OAUTH_BASE_HOST, PORT } from "../config/runtime.ts";
 
 const MESSENGER_SETTINGS_KEY = "messengerChannels";
 const TELEGRAM_RECEIVER_OFFSET_KEY = "telegramReceiverOffset";
@@ -132,11 +126,9 @@ function readMessengerChannels(db: DatabaseSync): PersistedMessengerChannels | n
 }
 
 function resolveTelegramConfig(db: DatabaseSync): TelegramReceiverConfig {
-  let token = normalizeText(TELEGRAM_BOT_TOKEN);
+  let token = "";
   let receiveEnabled = true;
-  let allowedChatIds = new Set<string>(
-    TELEGRAM_CHAT_IDS.map((chatId) => normalizeChatId(chatId)).filter((chatId) => chatId.length > 0),
-  );
+  let allowedChatIds = new Set<string>();
 
   const messengerChannels = readMessengerChannels(db);
   const telegram = messengerChannels?.telegram;
@@ -419,4 +411,3 @@ export function getTelegramReceiverStatus(): TelegramReceiverStatus {
   }
   return receiverHandle.getStatus();
 }
-

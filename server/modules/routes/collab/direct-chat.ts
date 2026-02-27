@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { sendMessengerMessage, sendMessengerTyping, type MessengerChannel } from "../../../gateway/client.ts";
+import { isMessengerChannel } from "../../../messenger/channels.ts";
 import type { RuntimeContext } from "../../../types/runtime-context.ts";
 import type { Lang } from "../../../types/lang.ts";
 import type { DelegationOptions } from "./project-resolution.ts";
@@ -131,6 +132,27 @@ export function shouldTreatDirectChatAsTask(ceoMessage: string, messageType: str
   return false;
 }
 
+export function isProjectProgressInquiry(text: string, messageType: string = "chat"): boolean {
+  if (messageType === "task_assign") return false;
+  const normalized = text.trim();
+  if (!normalized) return false;
+
+  const progressPatterns = [
+    /(진행\s*상황|진행상황|진척|현황|어디까지|상태\s*(어때|어떄|어떤|좀|확인)|업데이트|task\s*현황|tasks?\s*상황)/i,
+    /(project|task).*(status|progress|update|where are we|how far)/i,
+    /(status|progress|update).*(project|task)/i,
+    /(進捗|状況|ステータス|どこまで|更新)/i,
+    /(进度|状态|进展|到哪了|更新)/i,
+  ];
+  if (!progressPatterns.some((pattern) => pattern.test(normalized))) return false;
+
+  const projectScopeHints = [
+    /(프로젝트|project|task|tasks|업무|작업)/i,
+    /(このプロジェクト|项目|任务|進捗)/i,
+  ];
+  return projectScopeHints.some((pattern) => pattern.test(normalized)) || /어디까지|how far|どこまで|到哪了/i.test(normalized);
+}
+
 export function isTaskKickoffMessage(text: string): boolean {
   const normalized = text.trim().toLowerCase().replace(/\s+/g, " ").replace(/[!?.。！？…~]+$/g, "");
   if (!normalized) return false;
@@ -205,11 +227,11 @@ export function detectProjectKindChoice(text: string): "existing" | "new" | null
   if (numericNew && !numericExisting) return "new";
 
   const existingHit =
-    /(기존\s*프로젝트|기존\b|기존으로|existing\s*project|\bexisting\b|already\s*project|既存プロジェクト|既存|已有项目|已有)/i.test(
+    /(?:기존\s*프로젝트|기존\b|기존으로|기존거|있던\s*거|원래\s*있던|existing\s*project|existing\s*one|\bexisting\b|already\s*project|already\s*existing|既存プロジェクト|既存|已有项目|已有)/i.test(
       raw,
     ) || compact.includes("기존프로젝트");
   const newHit =
-    /(신규\s*프로젝트|신규\b|신규로|새\s*프로젝트|새로\s*프로젝트|new\s*project|\bnew\b|新規プロジェクト|新規|新项目)/i.test(
+    /(신규\s*프로젝트|신규\b|신규로|새\s*프로젝트|새로\s*프로젝트|새거|new\s*project|\bnew\b|新規プロジェクト|新規|新项目)/i.test(
       raw,
     ) || compact.includes("새프로젝트") || compact.includes("신규프로젝트") || compact.includes("newproject");
 
@@ -350,10 +372,6 @@ export function resolveContextualTaskMessage(
   return null;
 }
 
-function isMessengerChannel(value: unknown): value is MessengerChannel {
-  return value === "telegram" || value === "discord" || value === "slack";
-}
-
 function splitSentences(text: string): string[] {
   return (
     text.match(/[^.!?…。！？]+[.!?…。！？]?/gu)?.map((part) => part.trim()).filter(Boolean) ?? [text.trim()]
@@ -417,6 +435,11 @@ export function normalizeAgentReply(content: string): string {
 function getMessengerChunkLimit(channel: MessengerChannel): number {
   if (channel === "discord") return 1900;
   if (channel === "telegram") return 3800;
+  if (channel === "slack") return 3900;
+  if (channel === "whatsapp") return 3900;
+  if (channel === "googlechat") return 3900;
+  if (channel === "signal") return 3900;
+  if (channel === "imessage") return 3900;
   return 35000;
 }
 
@@ -475,12 +498,19 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
     handleTaskDelegation,
   } = deps;
   type PendingProjectBindingState = "ask_kind" | "ask_existing" | "ask_new_name" | "ask_new_path";
+  type ExistingProjectCandidate = {
+    id: string;
+    name: string | null;
+    projectPath: string | null;
+    projectContext: string | null;
+  };
   type PendingProjectBinding = {
     taskMessage: string;
     options: DelegationOptions;
     requestedAt: number;
     state: PendingProjectBindingState;
     newProjectName?: string;
+    existingCandidates?: ExistingProjectCandidate[];
   };
   const pendingProjectBindingByAgent = new Map<string, PendingProjectBinding>();
 
@@ -506,7 +536,11 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
   function startMessengerTypingHeartbeat(options: DelegationOptions, agent: AgentRow): () => void {
     const channel = options.messengerChannel;
     const targetId = (options.messengerTargetId || "").trim();
-    if (!isMessengerChannel(channel) || !targetId || channel === "slack") {
+    if (
+      !isMessengerChannel(channel) ||
+      !targetId ||
+      (channel !== "telegram" && channel !== "discord" && channel !== "signal")
+    ) {
       return () => undefined;
     }
 
@@ -635,6 +669,195 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
     }
   }
 
+  function normalizeLooseProjectName(value: string): string {
+    return value
+      .trim()
+      .replace(/^[`"'“”‘’]+|[`"'“”‘’]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function loadRecentExistingProjects(limit: number = 5): ExistingProjectCandidate[] {
+    const rows = db
+      .prepare(
+        `
+        SELECT id, name, project_path, core_goal
+        FROM projects
+        ORDER BY last_used_at DESC, updated_at DESC
+        LIMIT ?
+      `,
+      )
+      .all(limit) as Array<{ id: string; name: string | null; project_path: string | null; core_goal: string | null }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: normalizeTextField(row.name),
+      projectPath: normalizeTextField(row.project_path),
+      projectContext: normalizeTextField(row.core_goal),
+    }));
+  }
+
+  function latestProjectMarker(lang: Lang): string {
+    if (lang === "en") return " [LATEST]";
+    if (lang === "ja") return " [最新]";
+    if (lang === "zh") return " [最新]";
+    return " [최신]";
+  }
+
+  function projectPathLabel(lang: Lang): string {
+    if (lang === "en") return "Path";
+    if (lang === "ja") return "パス";
+    if (lang === "zh") return "路径";
+    return "경로";
+  }
+
+  function formatExistingProjectCandidateLines(candidates: ExistingProjectCandidate[], lang: Lang): string[] {
+    const marker = latestProjectMarker(lang);
+    const pathLabel = projectPathLabel(lang);
+    return candidates.map((candidate, index) => {
+      const displayName = normalizeTextField(candidate.name) || normalizeTextField(candidate.projectPath) || candidate.id;
+      const pathText = normalizeTextField(candidate.projectPath);
+      const latestSuffix = index === 0 ? marker : "";
+      if (!pathText) return `${index + 1}. ${displayName}${latestSuffix}`;
+      return `${index + 1}. ${displayName}${latestSuffix}\n   ${pathLabel}: ${pathText}`;
+    });
+  }
+
+  function extractNumberSelection(text: string): number | null {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    const normalized = trimmed.toLowerCase().replace(/\s+/g, " ").trim();
+    const compact = normalized.replace(/[\s.!?,~`"'“”‘’(){}\[\]:;|/\\\-_=+]+/g, "");
+    if (/1️⃣/.test(trimmed) || compact === "1") return 1;
+    if (/2️⃣/.test(trimmed) || compact === "2") return 2;
+    if (/3️⃣/.test(trimmed) || compact === "3") return 3;
+    if (/4️⃣/.test(trimmed) || compact === "4") return 4;
+    if (/5️⃣/.test(trimmed) || compact === "5") return 5;
+    const numeric = normalized.match(/(?:^|\s)([1-9])(?:번|번째)?(?:으로|로)?(?:\s|$)/);
+    if (!numeric?.[1]) return null;
+    const value = Number.parseInt(numeric[1], 10);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function buildProjectBindingFromCandidate(candidate: ExistingProjectCandidate): {
+    projectId: string;
+    projectPath: string | null;
+    projectContext: string | null;
+  } {
+    return {
+      projectId: candidate.id,
+      projectPath: candidate.projectPath,
+      projectContext: candidate.projectContext,
+    };
+  }
+
+  function selectExistingProjectFromCandidates(
+    text: string,
+    candidates: ExistingProjectCandidate[],
+  ): { projectId: string; projectPath: string | null; projectContext: string | null } | null {
+    if (candidates.length === 0) return null;
+
+    const index = extractNumberSelection(text);
+    if (index && index >= 1 && index <= candidates.length) {
+      return buildProjectBindingFromCandidate(candidates[index - 1]);
+    }
+
+    const detectedPath = detectProjectPath(text) || extractAbsolutePathFromText(text);
+    if (detectedPath) {
+      const normalizedDetected = path.normalize(detectedPath);
+      const byPath = candidates.find((candidate) => {
+        const candidatePath = normalizeTextField(candidate.projectPath);
+        return candidatePath ? path.normalize(candidatePath) === normalizedDetected : false;
+      });
+      if (byPath) return buildProjectBindingFromCandidate(byPath);
+    }
+
+    const normalizedInput = normalizeLooseProjectName(text).toLowerCase();
+    if (!normalizedInput) return null;
+    const byExactName = candidates.find((candidate) => {
+      const name = normalizeTextField(candidate.name);
+      return name ? name.toLowerCase() === normalizedInput : false;
+    });
+    if (byExactName) return buildProjectBindingFromCandidate(byExactName);
+
+    const byContainsName = candidates.filter((candidate) => {
+      const name = normalizeTextField(candidate.name);
+      return name ? name.toLowerCase().includes(normalizedInput) || normalizedInput.includes(name.toLowerCase()) : false;
+    });
+    if (byContainsName.length === 1) {
+      return buildProjectBindingFromCandidate(byContainsName[0]);
+    }
+
+    return null;
+  }
+
+  function extractProjectNameCandidates(text: string): string[] {
+    const values: string[] = [];
+    const seen = new Set<string>();
+    const add = (rawValue: string | null | undefined): void => {
+      if (!rawValue) return;
+      const cleaned = normalizeLooseProjectName(rawValue);
+      if (!cleaned || cleaned.length < 2 || cleaned.length > 80) return;
+      if (/^(기존|신규|새|project|프로젝트|name)$/i.test(cleaned)) return;
+      const key = cleaned.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      values.push(cleaned);
+    };
+
+    for (const match of text.matchAll(
+      /(?:프로젝트\s*(?:이름|명)?|project\s*name|name)\s*[:=]?\s*["'`]?([A-Za-z0-9][A-Za-z0-9._-]{1,79})["'`]?/gi,
+    )) {
+      add(match[1]);
+    }
+
+    for (const match of text.matchAll(/["'`]{1}([^"'`\n]{2,80})["'`]{1}/g)) {
+      add(match[1]);
+    }
+
+    const compact = normalizeLooseProjectName(text);
+    if (/^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$/.test(compact)) {
+      add(compact);
+    }
+
+    return values;
+  }
+
+  function findProjectByNameCandidate(nameCandidate: string): {
+    id: string;
+    project_path: string | null;
+    core_goal: string | null;
+  } | null {
+    const exact = db
+      .prepare(
+        `
+        SELECT id, project_path, core_goal
+        FROM projects
+        WHERE LOWER(name) = LOWER(?)
+        ORDER BY last_used_at DESC, updated_at DESC
+        LIMIT 1
+      `,
+      )
+      .get(nameCandidate) as { id: string; project_path: string | null; core_goal: string | null } | undefined;
+    if (exact) return exact;
+
+    const normalizedCandidate = normalizeLooseProjectName(nameCandidate);
+    if (normalizedCandidate.length < 2) return null;
+    const fuzzyRows = db
+      .prepare(
+        `
+        SELECT id, project_path, core_goal
+        FROM projects
+        WHERE LOWER(name) LIKE LOWER(?)
+        ORDER BY last_used_at DESC, updated_at DESC
+        LIMIT 3
+      `,
+      )
+      .all(`%${normalizedCandidate}%`) as Array<{ id: string; project_path: string | null; core_goal: string | null }>;
+    if (fuzzyRows.length !== 1) return null;
+    return fuzzyRows[0];
+  }
+
   function hasProjectBinding(taskMessage: string, options: DelegationOptions): boolean {
     void taskMessage;
     if (normalizeTextField(options.projectId)) return true;
@@ -672,45 +895,360 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
       };
     }
 
-    const candidate = trimmed.replace(/^프로젝트\s*[:\-]?\s*/i, "");
-    if (!candidate || candidate.length < 2) return null;
-
-    const exactByName = db
-      .prepare(
-        `
-        SELECT id, project_path, core_goal
-        FROM projects
-        WHERE LOWER(name) = LOWER(?)
-        ORDER BY last_used_at DESC, updated_at DESC
-        LIMIT 1
-      `,
-      )
-      .get(candidate) as { id: string; project_path: string | null; core_goal: string | null } | undefined;
-    if (exactByName) {
+    const candidates = extractProjectNameCandidates(trimmed);
+    for (const candidate of candidates) {
+      const project = findProjectByNameCandidate(candidate);
+      if (!project) continue;
       return {
-        projectId: exactByName.id,
-        projectPath: normalizeTextField(exactByName.project_path),
-        projectContext: normalizeTextField(exactByName.core_goal),
+        projectId: project.id,
+        projectPath: normalizeTextField(project.project_path),
+        projectContext: normalizeTextField(project.core_goal),
       };
     }
 
-    const fuzzyByName = db
+    return null;
+  }
+
+  type ProjectProgressTarget = {
+    projectId: string | null;
+    projectName: string | null;
+    projectPath: string | null;
+    projectContext: string | null;
+  };
+
+  type ProjectProgressTaskRow = {
+    id: string;
+    title: string;
+    status: string;
+    updated_at: number;
+    assigned_agent_id: string | null;
+    assignee_name: string | null;
+    assignee_name_ko: string | null;
+  };
+
+  function isCurrentProjectReference(text: string): boolean {
+    const normalized = text.trim();
+    if (!normalized) return false;
+    return /(이\s*프로젝트|해당\s*프로젝트|현재\s*프로젝트|this\s*project|current\s*project|このプロジェクト|当前项目|这个项目)/i.test(
+      normalized,
+    );
+  }
+
+  function resolveProjectProgressTarget(
+    agent: AgentRow,
+    ceoMessage: string,
+    options: DelegationOptions,
+  ): ProjectProgressTarget | null {
+    const fromText = resolveProjectBindingFromText(ceoMessage);
+    if (fromText) {
+      const resolved = resolveProjectFromOptions({
+        ...options,
+        projectId: fromText.projectId ?? options.projectId,
+        projectPath: fromText.projectPath ?? options.projectPath,
+        projectContext: fromText.projectContext ?? options.projectContext,
+      });
+      if (resolved.id || resolved.projectPath) {
+        return {
+          projectId: resolved.id ?? null,
+          projectName: resolved.name ?? null,
+          projectPath: resolved.projectPath ?? null,
+          projectContext: resolved.coreGoal ?? null,
+        };
+      }
+    }
+
+    const fromOptions = resolveProjectFromOptions(options);
+    if (fromOptions.id || fromOptions.projectPath) {
+      return {
+        projectId: fromOptions.id ?? null,
+        projectName: fromOptions.name ?? null,
+        projectPath: fromOptions.projectPath ?? null,
+        projectContext: fromOptions.coreGoal ?? null,
+      };
+    }
+
+    if (agent.current_task_id) {
+      const currentTaskBinding = db
+        .prepare("SELECT project_id, project_path FROM tasks WHERE id = ? LIMIT 1")
+        .get(agent.current_task_id) as { project_id: string | null; project_path: string | null } | undefined;
+      if (currentTaskBinding?.project_id || normalizeTextField(currentTaskBinding?.project_path)) {
+        const resolved = resolveProjectFromOptions({
+          projectId: normalizeTextField(currentTaskBinding?.project_id),
+          projectPath: normalizeTextField(currentTaskBinding?.project_path),
+        });
+        if (resolved.id || resolved.projectPath) {
+          return {
+            projectId: resolved.id ?? null,
+            projectName: resolved.name ?? null,
+            projectPath: resolved.projectPath ?? null,
+            projectContext: resolved.coreGoal ?? null,
+          };
+        }
+      }
+    }
+
+    if (isCurrentProjectReference(ceoMessage)) {
+      const latestBoundTask = db
+        .prepare(
+          `
+          SELECT project_id, project_path
+          FROM tasks
+          WHERE (assigned_agent_id = ? OR department_id = ?)
+            AND (
+              (project_id IS NOT NULL AND TRIM(project_id) <> '')
+              OR (project_path IS NOT NULL AND TRIM(project_path) <> '')
+            )
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `,
+        )
+        .get(agent.id, agent.department_id) as { project_id: string | null; project_path: string | null } | undefined;
+      if (latestBoundTask?.project_id || normalizeTextField(latestBoundTask?.project_path)) {
+        const resolved = resolveProjectFromOptions({
+          projectId: normalizeTextField(latestBoundTask?.project_id),
+          projectPath: normalizeTextField(latestBoundTask?.project_path),
+        });
+        if (resolved.id || resolved.projectPath) {
+          return {
+            projectId: resolved.id ?? null,
+            projectName: resolved.name ?? null,
+            projectPath: resolved.projectPath ?? null,
+            projectContext: resolved.coreGoal ?? null,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function resolveProgressStatusLabel(status: string, lang: Lang): string {
+    const labels: Record<string, Record<Lang, string>> = {
+      inbox: { ko: "접수", en: "Inbox", ja: "受信", zh: "收件" },
+      planned: { ko: "계획", en: "Planned", ja: "計画", zh: "计划" },
+      collaborating: { ko: "협업", en: "Collaborating", ja: "協業", zh: "协作" },
+      in_progress: { ko: "진행", en: "In Progress", ja: "進行中", zh: "进行中" },
+      review: { ko: "검토", en: "Review", ja: "レビュー", zh: "评审" },
+      pending: { ko: "보류", en: "Pending", ja: "保留", zh: "待处理" },
+      done: { ko: "완료", en: "Done", ja: "完了", zh: "完成" },
+      cancelled: { ko: "취소", en: "Cancelled", ja: "取消", zh: "取消" },
+    };
+    return labels[status]?.[lang] ?? status;
+  }
+
+  function loadProjectProgressTasks(target: ProjectProgressTarget): ProjectProgressTaskRow[] {
+    if (target.projectId) {
+      return db
+        .prepare(
+          `
+          SELECT
+            t.id,
+            t.title,
+            t.status,
+            t.updated_at,
+            t.assigned_agent_id,
+            a.name AS assignee_name,
+            a.name_ko AS assignee_name_ko
+          FROM tasks t
+          LEFT JOIN agents a ON a.id = t.assigned_agent_id
+          WHERE t.project_id = ?
+            AND COALESCE(t.hidden, 0) = 0
+          ORDER BY t.updated_at DESC
+          LIMIT 250
+        `,
+        )
+        .all(target.projectId) as ProjectProgressTaskRow[];
+    }
+
+    const projectPath = normalizeTextField(target.projectPath);
+    if (!projectPath) return [];
+    if (process.platform === "win32" || process.platform === "darwin") {
+      return db
+        .prepare(
+          `
+          SELECT
+            t.id,
+            t.title,
+            t.status,
+            t.updated_at,
+            t.assigned_agent_id,
+            a.name AS assignee_name,
+            a.name_ko AS assignee_name_ko
+          FROM tasks t
+          LEFT JOIN agents a ON a.id = t.assigned_agent_id
+          WHERE LOWER(t.project_path) = LOWER(?)
+            AND COALESCE(t.hidden, 0) = 0
+          ORDER BY t.updated_at DESC
+          LIMIT 250
+        `,
+        )
+        .all(projectPath) as ProjectProgressTaskRow[];
+    }
+    return db
       .prepare(
         `
-        SELECT id, project_path, core_goal
-        FROM projects
-        WHERE LOWER(name) LIKE LOWER(?)
-        ORDER BY last_used_at DESC, updated_at DESC
-        LIMIT 1
+        SELECT
+          t.id,
+          t.title,
+          t.status,
+          t.updated_at,
+          t.assigned_agent_id,
+          a.name AS assignee_name,
+          a.name_ko AS assignee_name_ko
+        FROM tasks t
+        LEFT JOIN agents a ON a.id = t.assigned_agent_id
+        WHERE t.project_path = ?
+          AND COALESCE(t.hidden, 0) = 0
+        ORDER BY t.updated_at DESC
+        LIMIT 250
       `,
       )
-      .get(`%${candidate}%`) as { id: string; project_path: string | null; core_goal: string | null } | undefined;
-    if (!fuzzyByName) return null;
+      .all(projectPath) as ProjectProgressTaskRow[];
+  }
+
+  function buildProjectProgressSummary(agent: AgentRow, ceoMessage: string, options: DelegationOptions): {
+    lang: Lang;
+    content: string;
+    projectFound: boolean;
+  } {
+    const lang = resolveLang(ceoMessage);
+    const target = resolveProjectProgressTarget(agent, ceoMessage, options);
+    if (!target) {
+      return {
+        lang,
+        projectFound: false,
+        content: pickL(
+          l(
+            [
+              "진행 현황을 조회할 프로젝트를 아직 찾지 못했습니다. 프로젝트 이름이나 경로를 함께 알려주시면 바로 확인하겠습니다.",
+            ],
+            [
+              "I couldn't identify which project to inspect yet. Share the project name or path and I'll check immediately.",
+            ],
+            ["進捗を確認する対象プロジェクトが見つかりません。プロジェクト名またはパスを送ってください。"],
+            ["还没找到要查询的项目。请提供项目名称或路径，我马上确认。"],
+          ),
+          lang,
+        ),
+      };
+    }
+
+    const rows = loadProjectProgressTasks(target);
+    const projectName = target.projectName || target.projectPath || target.projectId || pickL(l(["(미지정)"], ["(unknown)"]), lang);
+    if (rows.length === 0) {
+      return {
+        lang,
+        projectFound: true,
+        content: pickL(
+          l(
+            [`프로젝트 '${projectName}'에 등록된 태스크가 아직 없습니다.`],
+            [`There are no tasks registered yet for project '${projectName}'.`],
+            [`プロジェクト '${projectName}' にはまだ登録されたタスクがありません。`],
+            [`项目 '${projectName}' 目前还没有已登记任务。`],
+          ),
+          lang,
+        ),
+      };
+    }
+
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+    }
+
+    const total = rows.length;
+    const done = counts.get("done") ?? 0;
+    const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
+    const statusOrder = ["inbox", "planned", "collaborating", "in_progress", "review", "pending", "done", "cancelled"];
+    const statusSummary = statusOrder
+      .map((status) => ({ status, count: counts.get(status) ?? 0 }))
+      .filter((entry) => entry.count > 0)
+      .map((entry) => {
+        const label = resolveProgressStatusLabel(entry.status, lang);
+        if (lang === "ko") return `${label} ${entry.count}건`;
+        if (lang === "ja") return `${label} ${entry.count}件`;
+        if (lang === "zh") return `${label} ${entry.count}项`;
+        return `${label} ${entry.count}`;
+      })
+      .join(lang === "ko" || lang === "ja" || lang === "zh" ? " / " : ", ");
+
+    const recentRows = rows.slice(0, 5);
+    const recentLines = recentRows.map((row, index) => {
+      const statusLabel = resolveProgressStatusLabel(row.status, lang);
+      const assignee = lang === "ko" ? normalizeTextField(row.assignee_name_ko) || normalizeTextField(row.assignee_name) : normalizeTextField(row.assignee_name);
+      if (lang === "ko") {
+        return `${index + 1}. [${statusLabel}] ${row.title}${assignee ? ` · 담당: ${assignee}` : ""}`;
+      }
+      if (lang === "ja") {
+        return `${index + 1}. [${statusLabel}] ${row.title}${assignee ? ` · 担当: ${assignee}` : ""}`;
+      }
+      if (lang === "zh") {
+        return `${index + 1}. [${statusLabel}] ${row.title}${assignee ? ` · 负责人: ${assignee}` : ""}`;
+      }
+      return `${index + 1}. [${statusLabel}] ${row.title}${assignee ? ` · owner: ${assignee}` : ""}`;
+    });
+
+    const header = pickL(
+      l(
+        [
+          `프로젝트 진행 현황입니다.\n- 프로젝트: ${projectName}\n- 전체: ${total}건 / 완료율: ${completionRate}%\n- 상태: ${statusSummary}\n\n최근 업데이트:\n${recentLines.join("\n")}`,
+        ],
+        [
+          `Here is the current project progress.\n- Project: ${projectName}\n- Total: ${total} / Completion: ${completionRate}%\n- Status: ${statusSummary}\n\nRecent updates:\n${recentLines.join("\n")}`,
+        ],
+        [
+          `現在のプロジェクト進捗です。\n- プロジェクト: ${projectName}\n- 全体: ${total}件 / 完了率: ${completionRate}%\n- 状態: ${statusSummary}\n\n最近の更新:\n${recentLines.join("\n")}`,
+        ],
+        [
+          `当前项目进度如下。\n- 项目: ${projectName}\n- 总计: ${total}项 / 完成率: ${completionRate}%\n- 状态: ${statusSummary}\n\n最近更新:\n${recentLines.join("\n")}`,
+        ],
+      ),
+      lang,
+    );
+
     return {
-      projectId: fuzzyByName.id,
-      projectPath: normalizeTextField(fuzzyByName.project_path),
-      projectContext: normalizeTextField(fuzzyByName.core_goal),
+      lang,
+      projectFound: true,
+      content: header,
     };
+  }
+
+  function sendProjectProgressReply(agent: AgentRow, ceoMessage: string, options: DelegationOptions): void {
+    const summary = buildProjectProgressSummary(agent, ceoMessage, options);
+    if (!summary.projectFound) {
+      sendInCharacterAutoMessage({
+        agent,
+        lang: summary.lang,
+        scenario: "The user asked for project progress but no project is identified. Ask for project name or path.",
+        fallback: summary.content,
+        options,
+      });
+      return;
+    }
+
+    const leadFallback = pickL(
+      l(
+        ["네 대표님, 현재 프로젝트 진행 현황 정리했습니다."],
+        ["Got it. Here's the current project progress summary."],
+        ["了解しました。現在のプロジェクト進捗をまとめました。"],
+        ["收到，以下是当前项目进度汇总。"],
+      ),
+      summary.lang,
+    );
+
+    void (async () => {
+      const lead = await composeInCharacterAutoMessage(
+        agent,
+        summary.lang,
+        "You are reporting current project task progress to the user. Keep one concise in-character sentence.",
+        leadFallback,
+      );
+      const content = `${lead}\n\n${summary.content}`;
+      sendAgentMessage(agent, content);
+      await relayReplyToMessenger(options, agent, content);
+    })().catch((err) => {
+      console.warn(`[project-progress] failed to send progress reply from ${agent.name}: ${String(err)}`);
+    });
   }
 
   function findProjectByPath(projectPath: string): { id: string; name: string | null; core_goal: string | null } | null {
@@ -982,21 +1520,36 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
 
         if (pendingBinding.state === "ask_kind") {
           const promptExistingSelection = (binding: PendingProjectBinding): void => {
+            const recentCandidates = loadRecentExistingProjects(5);
+            const recentLines = formatExistingProjectCandidateLines(recentCandidates, lang);
             pendingProjectBindingByAgent.set(agent.id, {
               ...binding,
               state: "ask_existing",
               requestedAt: nowMs(),
+              existingCandidates: recentCandidates,
             });
             const askExisting = pickL(
               l(
                 [
-                  "기존 프로젝트를 선택해주세요. 프로젝트 절대경로(예: /Users/classys/Projects/climpire) 또는 기존 프로젝트 이름을 보내주세요.",
+                  recentLines.length > 0
+                    ? `기존 프로젝트를 선택해주세요. 최근 프로젝트 5개입니다.\n${recentLines.join("\n")}\n번호(1-${recentLines.length}) 또는 프로젝트 이름/절대경로를 보내주세요.`
+                    : "기존 프로젝트 목록이 비어 있습니다. 프로젝트 절대경로(예: /Users/classys/Projects/climpire) 또는 기존 프로젝트 이름을 보내주세요.",
                 ],
                 [
-                  "Choose an existing project. Send an absolute project path (e.g. /Users/classys/Projects/climpire) or an existing project name.",
+                  recentLines.length > 0
+                    ? `Choose an existing project. Recent 5 projects:\n${recentLines.join("\n")}\nSend a number (1-${recentLines.length}) or project name/absolute path.`
+                    : "No recent existing projects found. Send an absolute project path (e.g. /Users/classys/Projects/climpire) or an existing project name.",
                 ],
-                ["既存プロジェクトを選んでください。絶対パスまたは既存プロジェクト名を送ってください。"],
-                ["请选择已有项目。请发送项目绝对路径或已有项目名称。"],
+                [
+                  recentLines.length > 0
+                    ? `既存プロジェクトを選んでください。最近の5件です:\n${recentLines.join("\n")}\n番号(1-${recentLines.length}) またはプロジェクト名/絶対パスを送ってください。`
+                    : "既存プロジェクト一覧がありません。絶対パスまたは既存プロジェクト名を送ってください。",
+                ],
+                [
+                  recentLines.length > 0
+                    ? `请选择已有项目。最近5个项目如下：\n${recentLines.join("\n")}\n请发送编号(1-${recentLines.length})，或项目名称/绝对路径。`
+                    : "当前没有最近项目列表。请发送项目绝对路径或已有项目名称。",
+                ],
               ),
               lang,
             );
@@ -1004,7 +1557,7 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
               agent,
               lang,
               scenario:
-                "You need the user to choose an existing project and send either an absolute path or project name.",
+                "You need the user to choose an existing project from a recent list. The user can answer with number, project name, or absolute path.",
               fallback: askExisting,
               options: relayOptions,
             });
@@ -1087,18 +1640,40 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
         }
 
         if (pendingBinding.state === "ask_existing") {
-          const resolvedBinding = resolveProjectBindingFromText(ceoMessage);
+          const fromRecent = selectExistingProjectFromCandidates(ceoMessage, pendingBinding.existingCandidates ?? []);
+          const resolvedBinding = fromRecent ?? resolveProjectBindingFromText(ceoMessage);
           if (!resolvedBinding) {
+            const refreshedCandidates = pendingBinding.existingCandidates?.length
+              ? pendingBinding.existingCandidates
+              : loadRecentExistingProjects(5);
+            pendingProjectBindingByAgent.set(agent.id, {
+              ...pendingBinding,
+              requestedAt: nowMs(),
+              existingCandidates: refreshedCandidates,
+            });
+            const recentLines = formatExistingProjectCandidateLines(refreshedCandidates, lang);
             const askExistingAgain = pickL(
               l(
                 [
-                  "기존 프로젝트를 찾지 못했습니다. 프로젝트 절대경로나 정확한 프로젝트 이름을 다시 보내주세요.",
+                  recentLines.length > 0
+                    ? `기존 프로젝트를 찾지 못했습니다. 아래 목록에서 번호(1-${recentLines.length}) 또는 정확한 프로젝트 이름/절대경로를 다시 보내주세요.\n${recentLines.join("\n")}`
+                    : "기존 프로젝트를 찾지 못했습니다. 프로젝트 절대경로나 정확한 프로젝트 이름을 다시 보내주세요.",
                 ],
                 [
-                  "I couldn't find that existing project. Send an absolute project path or the exact project name again.",
+                  recentLines.length > 0
+                    ? `I couldn't resolve that project. Reply with a number (1-${recentLines.length}) from the list or send the exact project name/absolute path.\n${recentLines.join("\n")}`
+                    : "I couldn't find that existing project. Send an absolute project path or the exact project name again.",
                 ],
-                ["既存プロジェクトが見つかりませんでした。絶対パスまたは正確なプロジェクト名を再送してください。"],
-                ["未找到该已有项目。请重新发送项目绝对路径或准确的项目名称。"],
+                [
+                  recentLines.length > 0
+                    ? `既存プロジェクトを特定できませんでした。番号(1-${recentLines.length}) または正確なプロジェクト名/絶対パスを再送してください。\n${recentLines.join("\n")}`
+                    : "既存プロジェクトが見つかりませんでした。絶対パスまたは正確なプロジェクト名を再送してください。",
+                ],
+                [
+                  recentLines.length > 0
+                    ? `未能定位已有项目。请回复列表编号(1-${recentLines.length})，或重新发送准确项目名称/绝对路径。\n${recentLines.join("\n")}`
+                    : "未找到该已有项目。请重新发送项目绝对路径或准确的项目名称。",
+                ],
               ),
               lang,
             );
@@ -1322,6 +1897,11 @@ export function createDirectChatHandlers(deps: DirectChatDeps) {
         return;
       }
       runTaskFlowWithResolvedProject(agent, taskMessage, options, resolveLang(ceoMessage));
+      return;
+    }
+
+    if (isProjectProgressInquiry(ceoMessage, messageType)) {
+      sendProjectProgressReply(agent, ceoMessage, options);
       return;
     }
 

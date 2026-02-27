@@ -47,7 +47,7 @@ The frontend client wraps non-2xx responses with `ApiRequestError` (`status`, `c
 
 Messenger channel settings are stored in `settings.key = "messengerChannels"` and can include:
 
-- `token`: channel bot token override (`telegram`/`discord`/`slack`)
+- `token`: channel token
 - `sessions[]`:
   - `id`
   - `name`
@@ -55,11 +55,23 @@ Messenger channel settings are stored in `settings.key = "messengerChannels"` an
   - `enabled` (default true)
   - `agentId` (optional, binds session to a specific agent for direct chat/task routing)
 
+Supported channel ids (OpenClaw parity):
+
+- `telegram`
+- `whatsapp`
+- `discord`
+- `googlechat`
+- `slack`
+- `signal`
+- `imessage`
+
 Runtime behavior highlights:
 
 - Task report relays are route-pinned to the task's originating messenger target (`[messenger-route]` audit marker in task logs).
 - Channel spread is prevented for route-pinned task reports.
-- Typing indicators are emitted during direct-chat generation for Telegram/Discord; Slack has no typing endpoint (no-op).
+- Typing indicators are emitted during direct-chat generation for Telegram/Discord; other channels are no-op.
+- Native direct send runtime exists for all OpenClaw-parity channels (`telegram`, `whatsapp`, `discord`, `googlechat`, `slack`, `signal`, `imessage`).
+- Per-channel setup requirements differ (e.g., WhatsApp Cloud API token + phone number id, Google Chat webhook URL or `key|token`, Signal RPC base URL, macOS iMessage runtime).
 - New project creation path in direct-chat escalation is restricted by `PROJECT_PATH_ALLOWED_ROOTS`.
 
 ## Core Endpoint Groups
@@ -68,7 +80,7 @@ Runtime behavior highlights:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/messenger/sessions` | List runtime messenger sessions resolved from env + persisted settings |
+| GET | `/api/messenger/sessions` | List runtime messenger sessions resolved from persisted settings |
 | GET | `/api/messenger/receiver/telegram` | Telegram webhook/poll receiver status |
 | POST | `/api/messenger/send` | Send message by `sessionKey` or (`channel` + `targetId`) |
 

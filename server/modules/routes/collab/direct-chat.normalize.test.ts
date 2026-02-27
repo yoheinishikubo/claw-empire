@@ -3,6 +3,7 @@ import {
   detectProjectKindChoice,
   isAffirmativeReply,
   isNoPathReply,
+  isProjectProgressInquiry,
   isTaskKickoffMessage,
   normalizeAgentReply,
   resolveContextualTaskMessage,
@@ -54,6 +55,8 @@ describe("task intent upgrade", () => {
 
   it("프로젝트 종류 선택 응답을 인식한다", () => {
     expect(detectProjectKindChoice("기존 프로젝트")).toBe("existing");
+    expect(detectProjectKindChoice("있던거야")).toBe("existing");
+    expect(detectProjectKindChoice("기존거로 할게")).toBe("existing");
     expect(detectProjectKindChoice("2")).toBe("new");
     expect(detectProjectKindChoice("new project")).toBe("new");
     expect(detectProjectKindChoice("새 프로젝트!")).toBe("new");
@@ -116,5 +119,13 @@ describe("task intent upgrade", () => {
       { content: "점심 뭐 먹을까요?", messageType: "chat", createdAt: 1000 },
     ]);
     expect(contextual).toBeNull();
+  });
+
+  it("프로젝트 진행현황 질의를 인식한다", () => {
+    expect(isProjectProgressInquiry("지금 프로젝트 진행상황 어디까지 왔어?")).toBe(true);
+    expect(isProjectProgressInquiry("Can you share the current project task progress?")).toBe(true);
+    expect(isProjectProgressInquiry("プロジェクト進捗どこまで？")).toBe(true);
+    expect(isProjectProgressInquiry("当前项目任务进度怎么样？")).toBe(true);
+    expect(isProjectProgressInquiry("프로젝트 디자인 검토 보고서 작성해줘")).toBe(false);
   });
 });

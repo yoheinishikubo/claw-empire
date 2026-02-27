@@ -130,7 +130,7 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 <tr>
 <td width="50%">
 
-**メッセンジャー連携** — Telegram、Discord、Slackから `$` CEOディレクティブを送信し、内蔵の直接セッション経由でタスク更新を受信
+**メッセンジャー連携** — Telegram、WhatsApp、Discord、Google Chat、Slack、Signal、iMessage セッションを設定して `$` CEOディレクティブを送信
 
 <img src="Sample_Img/telegram.png" alt="Messenger Integration" width="100%" />
 </td>
@@ -293,15 +293,15 @@ curl -s http://127.0.0.1:8790/healthz
 
 期待値: `{"ok":true,...}`
 
-`.env` の `OPENCLAW_CONFIG` は絶対パスを推奨します（ドキュメントでは引用符なし推奨）。`v1.0.5` では引用符と先頭 `~` もランタイムで正規化されます。
+メッセンジャーチャネルは設定 UI で登録され、SQLite（`settings.messengerChannels`）に保存されます。.env ベースのメッセンジャートークン/チャネル変数は現在使用しません。
 
-### ステップ4: OpenClawゲートウェイ + inbox（任意）検証
+### ステップ4: メッセンジャー + inbox（任意）検証
 
 ```bash
-curl -s http://127.0.0.1:8790/api/gateway/targets
+curl -s http://127.0.0.1:8790/api/messenger/sessions
 ```
 
-`OPENCLAW_CONFIG` が有効なら、利用可能なメッセンジャーセッションが返ります。
+設定に保存されたメッセンジャーセッション一覧が返ります。
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
@@ -445,7 +445,7 @@ pnpm setup -- --port 8790
 
 <a id="openclaw-integration"></a>
 
-### OpenClaw連携セットアップ（Telegram/Discord/Slack）
+### OpenClaw連携セットアップ（Telegram/WhatsApp/Discord/Google Chat/Slack/Signal/iMessage）
 
 `install.sh` / `install.ps1`（または `scripts/openclaw-setup.*`）は、可能な場合に `OPENCLAW_CONFIG` を自動検出して `.env` に設定します。
 

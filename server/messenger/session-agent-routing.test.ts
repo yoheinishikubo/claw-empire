@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   resolveAgentSessionRoutesFromSettings,
   resolveSessionAgentRouteFromSettings,
+  resolveSessionTargetRouteFromSettings,
+  resolveSourceChatRoute,
 } from "./session-agent-routing.ts";
 
 describe("session-agent-routing", () => {
@@ -37,6 +39,25 @@ describe("session-agent-routing", () => {
     });
 
     expect(route).toBeNull();
+  });
+
+  it("agentId가 없어도 세션 타깃 라우트는 해석할 수 있다", () => {
+    const route = resolveSessionTargetRouteFromSettings({
+      settingsValue: {
+        telegram: {
+          sessions: [{ id: "tg-ops", name: "Ops", targetId: "7028830484", enabled: true }],
+        },
+      },
+      source: "telegram",
+      chat: "telegram:7028830484",
+    });
+
+    expect(route).toEqual({
+      channel: "telegram",
+      sessionId: "tg-ops",
+      sessionName: "Ops",
+      targetId: "7028830484",
+    });
   });
 
   it("비활성 세션은 매핑하지 않는다", () => {
@@ -88,5 +109,16 @@ describe("session-agent-routing", () => {
         targetId: "1469158639695695904",
       },
     ]);
+  });
+
+  it("source/chat 만으로 기본 라우트를 해석한다", () => {
+    expect(resolveSourceChatRoute({ source: "google_chat", chat: "space:spaces/AAAABBBB" })).toEqual({
+      channel: "googlechat",
+      targetId: "spaces/AAAABBBB",
+    });
+    expect(resolveSourceChatRoute({ source: "telegram", chat: "telegram:7028830484" })).toEqual({
+      channel: "telegram",
+      targetId: "7028830484",
+    });
   });
 });

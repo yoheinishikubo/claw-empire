@@ -258,15 +258,6 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
       const detectedFromContext = detectProjectPath(contextHint);
       if (detectedFromContext) return { projectPath: detectedFromContext, source: "project_context" };
 
-      const existingProjectHint =
-        /기존\s*프로젝트|기존\s*작업|existing project|same project|current project|ongoing project|既存.*プロジェクト|現在.*プロジェクト|之前项目|当前项目/i.test(
-          contextHint,
-        );
-      if (existingProjectHint) {
-        const latest = getLatestKnownProjectPath();
-        if (latest) return { projectPath: latest, source: "recent_project" };
-      }
-
       const newProjectHint =
         /신규\s*프로젝트|새\s*프로젝트|new project|greenfield|from scratch|新規.*プロジェクト|新项目/i.test(
           contextHint,

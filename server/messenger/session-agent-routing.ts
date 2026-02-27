@@ -1,8 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
+import { MESSENGER_CHANNELS, isMessengerChannel, type MessengerChannel } from "./channels.ts";
 
 const MESSENGER_SETTINGS_KEY = "messengerChannels";
-
-type MessengerChannel = "telegram" | "discord" | "slack";
 
 type PersistedSession = {
   id?: unknown;
@@ -26,6 +25,14 @@ export type SessionAgentRoute = {
   agentId: string;
 };
 
+export type SessionTargetRoute = {
+  channel: MessengerChannel;
+  sessionId: string;
+  sessionName: string;
+  targetId: string;
+  agentId?: string;
+};
+
 export type AgentSessionRoute = {
   channel: MessengerChannel;
   sessionId: string;
@@ -33,7 +40,10 @@ export type AgentSessionRoute = {
   targetId: string;
 };
 
-const MESSENGER_CHANNELS: MessengerChannel[] = ["telegram", "discord", "slack"];
+export type SourceChatRoute = {
+  channel: MessengerChannel;
+  targetId: string;
+};
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -41,18 +51,38 @@ function normalizeText(value: unknown): string {
 
 function normalizeSource(value: unknown): MessengerChannel | null {
   const raw = normalizeText(value).toLowerCase();
-  if (raw === "telegram" || raw === "discord" || raw === "slack") return raw;
+  if (!raw) return null;
+  const aliases: Record<string, MessengerChannel> = {
+    google_chat: "googlechat",
+    "google-chat": "googlechat",
+    gchat: "googlechat",
+    i_message: "imessage",
+    "i-message": "imessage",
+  };
+  const normalized = aliases[raw] ?? raw;
+  if (isMessengerChannel(normalized)) return normalized;
   return null;
 }
 
 function stripKnownPrefix(channel: MessengerChannel, value: string): string {
   const lower = value.toLowerCase();
-  const prefixes =
-    channel === "telegram"
-      ? ["telegram:"]
-      : channel === "discord"
-        ? ["discord:", "channel:"]
-        : ["slack:", "channel:"];
+  const prefixes = new Set<string>([
+    `${channel}:`,
+    "channel:",
+    "chat:",
+  ]);
+  if (channel === "googlechat") {
+    prefixes.add("googlechat:");
+    prefixes.add("google_chat:");
+    prefixes.add("google-chat:");
+    prefixes.add("gchat:");
+    prefixes.add("space:");
+  }
+  if (channel === "imessage") {
+    prefixes.add("imessage:");
+    prefixes.add("i_message:");
+    prefixes.add("i-message:");
+  }
 
   for (const prefix of prefixes) {
     if (lower.startsWith(prefix)) {
@@ -83,11 +113,19 @@ function isSessionEnabled(value: unknown): boolean {
   return value !== false;
 }
 
-export function resolveSessionAgentRouteFromSettings(params: {
+export function resolveSourceChatRoute(params: { source: unknown; chat: unknown }): SourceChatRoute | null {
+  const channel = normalizeSource(params.source);
+  if (!channel) return null;
+  const targetId = normalizeTargetId(channel, params.chat);
+  if (!targetId) return null;
+  return { channel, targetId };
+}
+
+export function resolveSessionTargetRouteFromSettings(params: {
   settingsValue: unknown;
   source: unknown;
   chat: unknown;
-}): SessionAgentRoute | null {
+}): SessionTargetRoute | null {
   const { settingsValue, source, chat } = params;
   const channel = normalizeSource(source);
   if (!channel) return null;
@@ -111,24 +149,37 @@ export function resolveSessionAgentRouteFromSettings(params: {
 
     const targetId = normalizeTargetId(channel, session.targetId);
     if (!targetId) continue;
-
-    const agentId = normalizeText(session.agentId);
-    if (!agentId) continue;
-
     if (!candidates.has(targetId)) continue;
 
     const sessionId = normalizeText(session.id) || `${channel}-${targetId}`;
     const sessionName = normalizeText(session.name) || sessionId;
+    const agentId = normalizeText(session.agentId) || undefined;
     return {
       channel,
       sessionId,
       sessionName,
       targetId,
-      agentId,
+      ...(agentId ? { agentId } : {}),
     };
   }
 
   return null;
+}
+
+export function resolveSessionAgentRouteFromSettings(params: {
+  settingsValue: unknown;
+  source: unknown;
+  chat: unknown;
+}): SessionAgentRoute | null {
+  const route = resolveSessionTargetRouteFromSettings(params);
+  if (!route?.agentId) return null;
+  return {
+    channel: route.channel,
+    sessionId: route.sessionId,
+    sessionName: route.sessionName,
+    targetId: route.targetId,
+    agentId: route.agentId,
+  };
 }
 
 export function resolveAgentSessionRoutesFromSettings(params: {
@@ -192,6 +243,29 @@ export function resolveSessionAgentRouteFromDb(params: {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     return resolveSessionAgentRouteFromSettings({
+      settingsValue: parsed,
+      source,
+      chat,
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function resolveSessionTargetRouteFromDb(params: {
+  db: DatabaseSync;
+  source: unknown;
+  chat: unknown;
+}): SessionTargetRoute | null {
+  const { db, source, chat } = params;
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(MESSENGER_SETTINGS_KEY) as
+      | { value?: unknown }
+      | undefined;
+    const raw = normalizeText(row?.value);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return resolveSessionTargetRouteFromSettings({
       settingsValue: parsed,
       source,
       chat,

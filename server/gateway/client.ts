@@ -1,24 +1,28 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { promisify } from "node:util";
 
+import { DEFAULT_DB_PATH } from "../config/runtime.ts";
 import {
-  DEFAULT_DB_PATH,
-  DISCORD_BOT_TOKEN,
-  DISCORD_CHANNEL_IDS,
-  SLACK_BOT_TOKEN,
-  SLACK_CHANNEL_IDS,
-  TELEGRAM_BOT_TOKEN,
-  TELEGRAM_CHAT_IDS,
-} from "../config/runtime.ts";
+  MESSENGER_CHANNELS,
+  NATIVE_MESSENGER_CHANNELS,
+  isNativeMessengerChannel,
+  type MessengerChannel,
+} from "../messenger/channels.ts";
 
 const WAKE_DEBOUNCE_DEFAULT_MS = 12_000;
 const SETTINGS_CACHE_TTL_MS = 3_000;
 const MESSENGER_SETTINGS_KEY = "messengerChannels";
+const SIGNAL_RPC_TIMEOUT_MS = 10_000;
+
+const execFileAsync = promisify(execFile);
 
 const wakeDebounce = new Map<string, number>();
 let cachedMessengerConfig: { loadedAt: number; value: MessengerRuntimeConfig } | null = null;
 
 type GatewayLang = "ko" | "en" | "ja" | "zh";
-export type MessengerChannel = "telegram" | "discord" | "slack";
+export type { MessengerChannel };
 
 type PersistedSession = {
   id?: string;
@@ -79,37 +83,14 @@ function normalizeSession(session: PersistedSession, channel: MessengerChannel, 
   };
 }
 
-function makeEnvSessions(channel: MessengerChannel, targetIds: string[]): MessengerSession[] {
-  return targetIds.reduce<MessengerSession[]>((acc, targetId, index) => {
-    const normalized = normalizeText(targetId);
-    if (!normalized) {
+function buildEmptyConfig(): MessengerRuntimeConfig {
+  return MESSENGER_CHANNELS.reduce(
+    (acc, channel) => {
+      acc[channel] = { token: "", sessions: [] };
       return acc;
-    }
-    acc.push({
-      id: `${channel}-env-${index + 1}`,
-      name: `${channel.toUpperCase()} ENV ${index + 1}`,
-      targetId: normalized,
-      enabled: true,
-    });
-    return acc;
-  }, []);
-}
-
-function buildEnvConfig(): MessengerRuntimeConfig {
-  return {
-    telegram: {
-      token: normalizeText(TELEGRAM_BOT_TOKEN),
-      sessions: makeEnvSessions("telegram", TELEGRAM_CHAT_IDS),
     },
-    discord: {
-      token: normalizeText(DISCORD_BOT_TOKEN),
-      sessions: makeEnvSessions("discord", DISCORD_CHANNEL_IDS),
-    },
-    slack: {
-      token: normalizeText(SLACK_BOT_TOKEN),
-      sessions: makeEnvSessions("slack", SLACK_CHANNEL_IDS),
-    },
-  };
+    {} as MessengerRuntimeConfig,
+  );
 }
 
 function hasOwn(obj: object, key: string): boolean {
@@ -176,13 +157,15 @@ function loadMessengerConfig(): MessengerRuntimeConfig {
     return cachedMessengerConfig.value;
   }
 
-  const envConfig = buildEnvConfig();
   const persistedChannels = readPersistedMessengerChannels();
-  const merged: MessengerRuntimeConfig = {
-    telegram: mergeChannelConfig("telegram", envConfig.telegram, persistedChannels),
-    discord: mergeChannelConfig("discord", envConfig.discord, persistedChannels),
-    slack: mergeChannelConfig("slack", envConfig.slack, persistedChannels),
-  };
+  const defaults = buildEmptyConfig();
+  const merged = MESSENGER_CHANNELS.reduce(
+    (acc, channel) => {
+      acc[channel] = mergeChannelConfig(channel, defaults[channel], persistedChannels);
+      return acc;
+    },
+    {} as MessengerRuntimeConfig,
+  );
 
   cachedMessengerConfig = { loadedAt: now, value: merged };
   return merged;
@@ -205,6 +188,157 @@ function shouldSendWake(key: string, debounceMs: number): boolean {
   }
 
   return true;
+}
+
+function splitPipeParts(raw: string): string[] {
+  return raw
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function removeChannelPrefix(channel: MessengerChannel, value: string): string {
+  const lower = value.toLowerCase();
+  const prefixes: string[] = [`${channel}:`, "channel:", "chat:"];
+  if (channel === "googlechat") {
+    prefixes.push("googlechat:", "google-chat:", "google_chat:", "gchat:");
+  }
+  if (channel === "imessage") {
+    prefixes.push("imessage:", "i-message:", "i_message:");
+  }
+  for (const prefix of prefixes) {
+    if (lower.startsWith(prefix)) {
+      return value.slice(prefix.length).trim();
+    }
+  }
+  return value.trim();
+}
+
+function normalizeSignalBaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, "");
+  }
+  return `http://${trimmed}`.replace(/\/+$/, "");
+}
+
+function parseWhatsAppTransport(tokenRaw: string, targetRaw: string): {
+  accessToken: string;
+  phoneNumberId: string;
+  recipient: string;
+} {
+  let accessToken = normalizeText(tokenRaw);
+  const target = removeChannelPrefix("whatsapp", targetRaw);
+  const targetMatch = target.match(/^(\d+)\s*[:|/]\s*(.+)$/);
+  let phoneNumberId = targetMatch?.[1]?.trim() ?? "";
+  const recipient = (targetMatch?.[2] ?? target).trim();
+
+  const tokenParts = splitPipeParts(accessToken);
+  if (!phoneNumberId && tokenParts.length >= 2) {
+    const first = tokenParts[0];
+    const last = tokenParts[tokenParts.length - 1];
+    if (/^\d+$/.test(first)) {
+      phoneNumberId = first;
+      accessToken = tokenParts.slice(1).join("|");
+    } else if (/^\d+$/.test(last)) {
+      phoneNumberId = last;
+      accessToken = tokenParts.slice(0, -1).join("|");
+    }
+  }
+
+  if (!accessToken) {
+    throw new Error("whatsapp token missing");
+  }
+  if (!phoneNumberId) {
+    throw new Error(
+      "whatsapp phone_number_id missing (targetId: `<phone_number_id>:<recipient>` or include numeric id in token)",
+    );
+  }
+  if (!recipient) {
+    throw new Error("whatsapp recipient missing");
+  }
+
+  return { accessToken, phoneNumberId, recipient };
+}
+
+function parseGoogleChatTransport(tokenRaw: string, targetRaw: string): { url: string } {
+  const token = normalizeText(tokenRaw);
+  const target = removeChannelPrefix("googlechat", targetRaw).replace(/^\/+/, "");
+  if (!token) {
+    throw new Error("googlechat token missing");
+  }
+
+  if (/^https?:\/\//i.test(token)) {
+    return { url: token };
+  }
+
+  const tokenParts = splitPipeParts(token);
+  if (tokenParts.length >= 2 && target) {
+    const apiKey = tokenParts[0];
+    const webhookToken = tokenParts.slice(1).join("|");
+    if (!apiKey || !webhookToken) {
+      throw new Error("googlechat token format invalid");
+    }
+    return {
+      url: `https://chat.googleapis.com/v1/${target}/messages?key=${encodeURIComponent(
+        apiKey,
+      )}&token=${encodeURIComponent(webhookToken)}`,
+    };
+  }
+
+  throw new Error("googlechat token must be webhook URL or `key|token` (with targetId `spaces/...`)");
+}
+
+function parseSignalTransport(tokenRaw: string): { baseUrl: string; account?: string } {
+  const token = normalizeText(tokenRaw);
+  if (!token) {
+    throw new Error("signal token missing");
+  }
+  const tokenParts = splitPipeParts(token);
+  const baseUrl = normalizeSignalBaseUrl(tokenParts[0] ?? token);
+  if (!baseUrl) {
+    throw new Error("signal base URL missing");
+  }
+  let account: string | undefined;
+  for (const part of tokenParts.slice(1)) {
+    const normalized = part.trim();
+    if (!normalized) continue;
+    if (/^(account|acct|accountid)\s*=/i.test(normalized)) {
+      account = normalized.replace(/^(account|acct|accountid)\s*=\s*/i, "").trim() || account;
+      continue;
+    }
+    if (!account && !normalized.includes("=")) {
+      account = normalized;
+    }
+  }
+  return { baseUrl, account };
+}
+
+function parseSignalTarget(targetRaw: string): { recipient?: string[]; groupId?: string; username?: string[] } {
+  let value = removeChannelPrefix("signal", targetRaw);
+  if (!value) {
+    throw new Error("signal target missing");
+  }
+  const lower = value.toLowerCase();
+  if (lower.startsWith("group:")) {
+    value = value.slice("group:".length).trim();
+    if (!value) throw new Error("signal group id missing");
+    return { groupId: value };
+  }
+  if (lower.startsWith("username:")) {
+    value = value.slice("username:".length).trim();
+    if (!value) throw new Error("signal username missing");
+    return { username: [value] };
+  }
+  if (lower.startsWith("u:")) {
+    value = value.slice("u:".length).trim();
+    if (!value) throw new Error("signal username missing");
+    return { username: [value] };
+  }
+  return { recipient: [value] };
 }
 
 async function sendTelegramMessage(token: string, chatId: string, text: string): Promise<void> {
@@ -286,8 +420,143 @@ async function sendSlackMessage(token: string, channelId: string, text: string):
   }
 }
 
+async function sendWhatsAppMessage(token: string, targetId: string, text: string): Promise<void> {
+  const { accessToken, phoneNumberId, recipient } = parseWhatsAppTransport(token, targetId);
+  const r = await fetch(`https://graph.facebook.com/v22.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: recipient,
+      type: "text",
+      text: {
+        body: text,
+        preview_url: false,
+      },
+    }),
+  });
+
+  const payload = (await r.json().catch(() => null)) as
+    | { error?: { message?: string } | null; messages?: Array<{ id?: string }> }
+    | null;
+  if (!r.ok || payload?.error) {
+    const message = payload?.error?.message;
+    throw new Error(message || `whatsapp send failed (${r.status})`);
+  }
+}
+
+async function sendGoogleChatMessage(token: string, targetId: string, text: string): Promise<void> {
+  const { url } = parseGoogleChatTransport(token, targetId);
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ text }),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`googlechat send failed (${r.status})${detail ? `: ${detail}` : ""}`);
+  }
+}
+
+async function signalRpcRequest(params: {
+  baseUrl: string;
+  method: "send" | "sendTyping";
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const r = await fetch(`${params.baseUrl}/api/v1/rpc`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: randomUUID(),
+      method: params.method,
+      params: params.payload,
+    }),
+    signal: AbortSignal.timeout(SIGNAL_RPC_TIMEOUT_MS),
+  });
+  if (r.status === 201) {
+    return;
+  }
+  const responseText = await r.text().catch(() => "");
+  if (!r.ok) {
+    throw new Error(`signal rpc failed (${r.status})${responseText ? `: ${responseText}` : ""}`);
+  }
+  if (!responseText.trim()) {
+    return;
+  }
+  const payload = JSON.parse(responseText) as {
+    error?: { code?: number; message?: string };
+  };
+  if (payload?.error) {
+    throw new Error(
+      `signal rpc ${payload.error.code ?? "unknown"}: ${payload.error.message ?? "unknown error"}`,
+    );
+  }
+}
+
+async function sendSignalMessage(token: string, targetId: string, text: string): Promise<void> {
+  const transport = parseSignalTransport(token);
+  const target = parseSignalTarget(targetId);
+  const payload: Record<string, unknown> = { ...target, message: text };
+  if (transport.account) {
+    payload.account = transport.account;
+  }
+  await signalRpcRequest({
+    baseUrl: transport.baseUrl,
+    method: "send",
+    payload,
+  });
+}
+
+async function sendSignalTyping(token: string, targetId: string): Promise<void> {
+  const transport = parseSignalTransport(token);
+  const target = parseSignalTarget(targetId);
+  const payload: Record<string, unknown> = { ...target };
+  if (transport.account) {
+    payload.account = transport.account;
+  }
+  await signalRpcRequest({
+    baseUrl: transport.baseUrl,
+    method: "sendTyping",
+    payload,
+  });
+}
+
+async function sendIMessageMessage(targetId: string, text: string): Promise<void> {
+  if (process.platform !== "darwin") {
+    throw new Error("imessage transport requires macOS");
+  }
+  const normalizedTarget = removeChannelPrefix("imessage", targetId);
+  if (!normalizedTarget) {
+    throw new Error("imessage target missing");
+  }
+  const script = [
+    "on run argv",
+    "set targetHandle to item 1 of argv",
+    "set targetMessage to item 2 of argv",
+    "tell application \"Messages\"",
+    "set targetService to 1st service whose service type = iMessage",
+    "set targetBuddy to buddy targetHandle of targetService",
+    "send targetMessage to targetBuddy",
+    "end tell",
+    "end run",
+  ].join("\n");
+  await execFileAsync("osascript", ["-e", script, normalizedTarget, text], {
+    timeout: 20_000,
+    maxBuffer: 1024 * 1024,
+  });
+}
+
 async function sendByChannel(channel: MessengerChannel, token: string, targetId: string, text: string): Promise<void> {
-  if (!token) {
+  if (!isNativeMessengerChannel(channel)) {
+    throw new Error(`channel transport not implemented: ${channel}`);
+  }
+  const normalizedToken = normalizeText(token);
+  if (!normalizedToken && channel !== "imessage") {
     throw new Error(`${channel} token missing`);
   }
   const normalizedTarget = normalizeText(targetId);
@@ -296,17 +565,40 @@ async function sendByChannel(channel: MessengerChannel, token: string, targetId:
   }
 
   if (channel === "telegram") {
-    await sendTelegramMessage(token, normalizedTarget, text);
+    await sendTelegramMessage(normalizedToken, normalizedTarget, text);
     return;
   }
   if (channel === "discord") {
-    await sendDiscordMessage(token, normalizedTarget, text);
+    await sendDiscordMessage(normalizedToken, normalizedTarget, text);
     return;
   }
-  await sendSlackMessage(token, normalizedTarget, text);
+  if (channel === "slack") {
+    await sendSlackMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "whatsapp") {
+    await sendWhatsAppMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "googlechat") {
+    await sendGoogleChatMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "signal") {
+    await sendSignalMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "imessage") {
+    await sendIMessageMessage(normalizedTarget, text);
+    return;
+  }
+  throw new Error(`channel transport not implemented: ${channel}`);
 }
 
 async function sendTypingByChannel(channel: MessengerChannel, token: string, targetId: string): Promise<void> {
+  if (!isNativeMessengerChannel(channel)) {
+    return;
+  }
   if (!token) {
     throw new Error(`${channel} token missing`);
   }
@@ -323,6 +615,10 @@ async function sendTypingByChannel(channel: MessengerChannel, token: string, tar
     await sendDiscordTyping(token, normalizedTarget);
     return;
   }
+  if (channel === "signal") {
+    await sendSignalTyping(token, normalizedTarget);
+    return;
+  }
   // Slack bot API has no native typing indicator endpoint.
 }
 
@@ -330,7 +626,7 @@ export function listMessengerSessions(): MessengerRuntimeSession[] {
   const config = loadMessengerConfig();
   const sessions: MessengerRuntimeSession[] = [];
 
-  for (const channel of ["telegram", "discord", "slack"] as MessengerChannel[]) {
+  for (const channel of MESSENGER_CHANNELS) {
     const channelConfig = config[channel];
     for (const session of channelConfig.sessions) {
       const sessionKey = `${channel}:${session.id}`;
@@ -375,7 +671,13 @@ export async function sendMessengerTyping(params: {
   if (!channelConfig) {
     throw new Error(`unsupported channel: ${params.channel}`);
   }
-  if (params.channel === "slack") {
+  if (
+    !isNativeMessengerChannel(params.channel) ||
+    params.channel === "slack" ||
+    params.channel === "whatsapp" ||
+    params.channel === "googlechat" ||
+    params.channel === "imessage"
+  ) {
     return;
   }
   await sendTypingByChannel(params.channel, channelConfig.token, params.targetId);
@@ -410,9 +712,9 @@ async function sendMessengerWake(text: string): Promise<void> {
 
   const config = loadMessengerConfig();
   const targets: Array<{ channel: MessengerChannel; targetId: string }> = [];
-  for (const channel of ["telegram", "discord", "slack"] as MessengerChannel[]) {
+  for (const channel of NATIVE_MESSENGER_CHANNELS) {
     const token = config[channel]?.token;
-    if (!token) continue;
+    if (channel !== "imessage" && !token) continue;
     for (const session of config[channel].sessions) {
       if (!session.enabled) continue;
       if (session.agentId) continue;
