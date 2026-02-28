@@ -43,6 +43,60 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
     processSubtaskDelegations,
   } = deps;
 
+  function reconcileVideoRenderDelegationState(taskId: string, pendingRender: Array<{ id: string; status: string; delegated_task_id: string | null }>): {
+    staleResetCount: number;
+    recoveredDoneCount: number;
+  } {
+    const delegatedIds = [...new Set(
+      pendingRender
+        .map((sub) => String(sub.delegated_task_id ?? "").trim())
+        .filter((id) => id.length > 0),
+    )];
+    const delegatedStatusById = new Map<string, string>();
+    if (delegatedIds.length > 0) {
+      const placeholders = delegatedIds.map(() => "?").join(", ");
+      const delegatedRows = db
+        .prepare(`SELECT id, status FROM tasks WHERE id IN (${placeholders})`)
+        .all(...delegatedIds) as Array<{ id: string; status: string }>;
+      for (const row of delegatedRows) {
+        delegatedStatusById.set(row.id, String(row.status ?? ""));
+      }
+    }
+
+    let staleResetCount = 0;
+    let recoveredDoneCount = 0;
+    const doneAt = nowMs();
+    for (const sub of pendingRender) {
+      const delegatedTaskId = String(sub.delegated_task_id ?? "").trim();
+      if (!delegatedTaskId) continue;
+      const delegatedStatus = delegatedStatusById.get(delegatedTaskId);
+      if (!delegatedStatus || delegatedStatus === "cancelled" || delegatedStatus === "inbox") {
+        db.prepare(
+          `
+          UPDATE subtasks
+          SET delegated_task_id = NULL,
+              status = CASE WHEN status = 'blocked' THEN 'pending' ELSE status END,
+              blocked_reason = CASE WHEN status = 'blocked' THEN NULL ELSE blocked_reason END
+          WHERE id = ?
+        `,
+        ).run(sub.id);
+        broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id));
+        staleResetCount += 1;
+        continue;
+      }
+      if (delegatedStatus === "review" || delegatedStatus === "done") {
+        db.prepare("UPDATE subtasks SET status = 'done', completed_at = ?, blocked_reason = NULL WHERE id = ?").run(
+          doneAt,
+          sub.id,
+        );
+        broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id));
+        recoveredDoneCount += 1;
+      }
+    }
+
+    return { staleResetCount, recoveredDoneCount };
+  }
+
   function reconcileDelegatedSubtasksAfterRun(taskId: string, exitCode: number): void {
     const linked = db
       .prepare(
@@ -82,7 +136,7 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
           | undefined;
         if (!parent) continue;
         const remaining = db
-          .prepare("SELECT COUNT(*) AS cnt FROM subtasks WHERE task_id = ? AND status != 'done'")
+          .prepare("SELECT COUNT(*) AS cnt FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled')")
           .get(parentTaskId) as { cnt: number } | undefined;
         if ((remaining?.cnt ?? 0) === 0 && parent.status === "review") {
           appendTaskLog(
@@ -210,20 +264,44 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
       );
     }
 
-    const remainingSubtasks = db
-      .prepare("SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status != 'done'")
-      .get(taskId) as { cnt: number };
-    if (remainingSubtasks.cnt > 0) {
+    let remainingSubtaskCount = (
+      db.prepare("SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled')").get(
+        taskId,
+      ) as { cnt: number }
+    ).cnt;
+    if (remainingSubtaskCount > 0) {
       // Check if only VIDEO_FINAL_RENDER subtask(s) remain — trigger delegation instead of blocking forever
-      const pendingRender = db
+      let pendingRender = db
         .prepare(
-          "SELECT * FROM subtasks WHERE task_id = ? AND status != 'done' AND title LIKE '%[VIDEO_FINAL_RENDER]%'",
+          "SELECT * FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled') AND title LIKE '%[VIDEO_FINAL_RENDER]%'",
         )
         .all(taskId) as Array<{ id: string; status: string; delegated_task_id: string | null }>;
-      const nonRenderRemaining = remainingSubtasks.cnt - pendingRender.length;
+      let nonRenderRemaining = remainingSubtaskCount - pendingRender.length;
 
       if (nonRenderRemaining === 0 && pendingRender.length > 0) {
-        const undelegated = pendingRender.filter((s) => !s.delegated_task_id);
+        const repair = reconcileVideoRenderDelegationState(taskId, pendingRender);
+        if (repair.staleResetCount > 0 || repair.recoveredDoneCount > 0) {
+          appendTaskLog(
+            taskId,
+            "system",
+            `Review hold repair: VIDEO_FINAL_RENDER delegation reconciled (stale_reset=${repair.staleResetCount}, recovered_done=${repair.recoveredDoneCount})`,
+          );
+          remainingSubtaskCount = (
+            db
+              .prepare("SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled')")
+              .get(taskId) as { cnt: number }
+          ).cnt;
+          pendingRender = db
+            .prepare(
+              "SELECT * FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled') AND title LIKE '%[VIDEO_FINAL_RENDER]%'",
+            )
+            .all(taskId) as Array<{ id: string; status: string; delegated_task_id: string | null }>;
+          nonRenderRemaining = remainingSubtaskCount - pendingRender.length;
+        }
+      }
+
+      if (nonRenderRemaining === 0 && pendingRender.length > 0) {
+        const undelegated = pendingRender.filter((s) => !String(s.delegated_task_id ?? "").trim());
         if (undelegated.length > 0) {
           // Unblock and delegate render subtasks
           for (const sub of undelegated) {
@@ -243,16 +321,16 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
       notifyCeo(
         pickL(
           l(
-            [`'${taskTitle}' 는 아직 ${remainingSubtasks.cnt}개 서브태스크가 남아 있어 Review 단계에서 대기합니다.`],
-            [`'${taskTitle}' is waiting in Review because ${remainingSubtasks.cnt} subtasks are still unfinished.`],
-            [`'${taskTitle}' は未完了サブタスクが${remainingSubtasks.cnt}件あるため、Reviewで待機しています。`],
-            [`'${taskTitle}' 仍有 ${remainingSubtasks.cnt} 个 SubTask 未完成，当前在 Review 阶段等待。`],
+            [`'${taskTitle}' 는 아직 ${remainingSubtaskCount}개 서브태스크가 남아 있어 Review 단계에서 대기합니다.`],
+            [`'${taskTitle}' is waiting in Review because ${remainingSubtaskCount} subtasks are still unfinished.`],
+            [`'${taskTitle}' は未完了サブタスクが${remainingSubtaskCount}件あるため、Reviewで待機しています。`],
+            [`'${taskTitle}' 仍有 ${remainingSubtaskCount} 个 SubTask 未完成，当前在 Review 阶段等待。`],
           ),
           lang,
         ),
         taskId,
       );
-      appendTaskLog(taskId, "system", `Review hold: waiting for ${remainingSubtasks.cnt} unfinished subtasks`);
+      appendTaskLog(taskId, "system", `Review hold: waiting for ${remainingSubtaskCount} unfinished subtasks`);
       return;
     }
 

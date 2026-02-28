@@ -19,10 +19,11 @@ export function useWebSocket() {
 
     async function connect() {
       if (!alive) return;
+      const forceBootstrap = forceSessionBootstrap;
       try {
         const bootstrapped = await bootstrapSession({
           promptOnUnauthorized: false,
-          force: forceSessionBootstrap,
+          force: forceBootstrap,
         });
         if (!bootstrapped) {
           reconnectTimer = setTimeout(() => {
@@ -32,6 +33,8 @@ export function useWebSocket() {
         }
         forceSessionBootstrap = false;
       } catch {
+        // Avoid force bootstrap busy-loop when unauthorized recovery itself fails.
+        if (forceBootstrap) forceSessionBootstrap = false;
         // ignore bootstrap errors; ws connect result will drive retry
         reconnectTimer = setTimeout(() => {
           void connect();

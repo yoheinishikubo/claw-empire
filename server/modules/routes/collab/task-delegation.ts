@@ -47,7 +47,7 @@ interface TaskDelegationDeps {
   notifyCeo: (content: string, taskId?: string | null, messageType?: string) => void;
   isTaskWorkflowInterrupted: (taskId: string) => boolean;
   hasOpenForeignSubtasks: (taskId: string, targetDeptIds?: string[]) => boolean;
-  processSubtaskDelegations: (taskId: string) => void;
+  processSubtaskDelegations: (taskId: string, opts?: { includeRender?: boolean }) => void;
   startCrossDeptCooperation: (
     mentionedDepts: string[],
     index: number,

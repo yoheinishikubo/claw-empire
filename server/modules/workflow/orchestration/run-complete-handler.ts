@@ -121,7 +121,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
     // Auto-complete own-department subtasks on CLI success; foreign ones get delegated
     if (exitCode === 0) {
       const pendingSubtasks = db
-        .prepare("SELECT id, target_department_id FROM subtasks WHERE task_id = ? AND status != 'done'")
+        .prepare("SELECT id, target_department_id FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled')")
         .all(taskId) as Array<{ id: string; target_department_id: string | null }>;
       if (pendingSubtasks.length > 0) {
         const now = nowMs();
@@ -158,7 +158,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
       let videoArtifactReady = true;
       if (task.workflow_pack_key === "video_preprod" && !task.source_task_id) {
         const openSubtasksRow = db
-          .prepare("SELECT COUNT(*) AS cnt FROM subtasks WHERE task_id = ? AND status != 'done'")
+          .prepare("SELECT COUNT(*) AS cnt FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled')")
           .get(taskId) as { cnt?: number } | undefined;
         const openChildTasksRow = db
           .prepare(

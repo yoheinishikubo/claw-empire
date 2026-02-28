@@ -19,6 +19,7 @@ const RETRYABLE_DECISION_ERRORS = new Set<string>([
   "meeting_not_pending",
   "task_not_in_review",
 ]);
+const RETRYABLE_ERROR_MAX_ATTEMPTS_PER_DECISION = 6;
 
 function normalizeBooleanLike(value: unknown): boolean | null {
   if (typeof value === "boolean") return value;
@@ -125,6 +126,7 @@ export function runYoloDecisionAutopilot(input: {
 }): number {
   const maxSteps = Math.max(1, Math.min(Math.trunc(input.maxSteps ?? 24), 120));
   const failedDecisionIds = new Set<string>();
+  const retryableAttemptCountByDecisionId = new Map<string, number>();
   let appliedCount = 0;
 
   for (let step = 0; step < maxSteps; step += 1) {
@@ -149,12 +151,21 @@ export function runYoloDecisionAutopilot(input: {
     if (result.status >= 400) {
       const errorCode = String((result.payload as { error?: unknown } | null | undefined)?.error ?? "").trim();
       if (errorCode && RETRYABLE_DECISION_ERRORS.has(errorCode)) {
+        const attempt = (retryableAttemptCountByDecisionId.get(chosen.id) ?? 0) + 1;
+        if (attempt >= RETRYABLE_ERROR_MAX_ATTEMPTS_PER_DECISION) {
+          failedDecisionIds.add(chosen.id);
+          retryableAttemptCountByDecisionId.delete(chosen.id);
+        } else {
+          retryableAttemptCountByDecisionId.set(chosen.id, attempt);
+        }
         continue;
       }
+      retryableAttemptCountByDecisionId.delete(chosen.id);
       failedDecisionIds.add(chosen.id);
       continue;
     }
 
+    retryableAttemptCountByDecisionId.delete(chosen.id);
     appliedCount += 1;
   }
 

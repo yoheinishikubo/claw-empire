@@ -193,4 +193,42 @@ describe("useWebSocket", () => {
       force: true,
     });
   });
+
+  it("강제 bootstrap이 에러나면 다음 재시도에서는 force를 해제한다", async () => {
+    vi.useFakeTimers();
+    bootstrapSessionMock
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new Error("bootstrap failed"))
+      .mockResolvedValueOnce(true);
+    const onTaskUpdate = vi.fn();
+
+    render(<Harness onTaskUpdate={onTaskUpdate} />);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(MockWebSocket.instances).toHaveLength(1);
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      ws.emitClose(1008);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+      await flushMicrotasks();
+    });
+    expect(bootstrapSessionMock.mock.calls[1]?.[0]).toEqual({
+      promptOnUnauthorized: false,
+      force: true,
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+      await flushMicrotasks();
+    });
+    expect(bootstrapSessionMock.mock.calls[2]?.[0]).toEqual({
+      promptOnUnauthorized: false,
+      force: false,
+    });
+  });
 });

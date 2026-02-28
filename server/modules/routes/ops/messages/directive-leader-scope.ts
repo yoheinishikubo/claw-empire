@@ -48,11 +48,38 @@ export function resolveDirectiveWorkflowPackKey(db: DbLike, projectId: string | 
   return activePack;
 }
 
-export function resolveDirectiveLeaderCandidateScope(db: DbLike, projectId: string | null): string[] | null {
+export function resolveDirectiveLeaderCandidateScope(
+  db: DbLike,
+  projectId: string | null,
+  departmentId: string | null = "planning",
+): string[] | null {
   const workflowPackKey = resolveDirectiveWorkflowPackKey(db, projectId);
-  return resolveConstrainedAgentScopeForTask(db, {
+  const normalizedDeptId = normalizeText(departmentId) || "planning";
+  const scopedCandidateIds = resolveConstrainedAgentScopeForTask(db, {
     project_id: normalizeText(projectId) || null,
     workflow_pack_key: workflowPackKey,
-    department_id: "planning",
+    department_id: normalizedDeptId,
   });
+  if (!Array.isArray(scopedCandidateIds) || scopedCandidateIds.length <= 0) return scopedCandidateIds;
+
+  try {
+    const placeholders = scopedCandidateIds.map(() => "?").join(", ");
+    const deptRows = db
+      .prepare(
+        `
+        SELECT id
+        FROM agents
+        WHERE id IN (${placeholders})
+          AND department_id = ?
+      `,
+      )
+      .all(...scopedCandidateIds, normalizedDeptId) as Array<{ id?: unknown }>;
+    const deptScopedIds = deptRows
+      .map((row) => normalizeText(row.id))
+      .filter((id): id is string => id.length > 0);
+    // If no candidate exists for the requested department, keep the broader scope as fallback.
+    return deptScopedIds.length > 0 ? deptScopedIds : scopedCandidateIds;
+  } catch {
+    return scopedCandidateIds;
+  }
 }

@@ -301,12 +301,12 @@ export function createDecisionInboxMessengerBridge(deps: DecisionBridgeDeps) {
     return null;
   }
 
-function buildDecisionReplyAck(
-  item: DecisionInboxRouteItem,
-  optionNumber: number,
-  status: number,
-  payload: Record<string, unknown>,
-): string {
+  function buildDecisionReplyAck(
+    item: DecisionInboxRouteItem,
+    optionNumber: number,
+    status: number,
+    payload: Record<string, unknown>,
+  ): string {
     if (status >= 400) {
       const reason = normalizeTextField(payload.error) || `status_${status}`;
       return pickDecisionL10n(
@@ -315,22 +315,22 @@ function buildDecisionReplyAck(
         `⚠️ 意思決定返信に失敗しました (${reason})`,
         `⚠️ 决策回复失败（${reason}）`,
       );
-  }
-  if (String(payload.action ?? "") === "start_project_review_blocked") {
-    const blockedTasks = Array.isArray(payload.blocked_tasks) ? payload.blocked_tasks : [];
-    const firstBlocked = blockedTasks[0] as { title?: unknown; reason?: unknown } | undefined;
-    const blockedLabel = String(firstBlocked?.title ?? "").trim() || "task";
-    const reasonLabel = String(firstBlocked?.reason ?? "").trim() || "review_gate_hold";
-    return pickDecisionL10n(
-      `⚠️ 팀장 회의 시작이 보류되었습니다. (${blockedLabel}, ${reasonLabel})`,
-      `⚠️ Team-lead meeting start is on hold. (${blockedLabel}, ${reasonLabel})`,
-      `⚠️ チームリーダー会議の開始は保留です。(${blockedLabel}, ${reasonLabel})`,
-      `⚠️ 组长评审会议暂缓启动。(${blockedLabel}, ${reasonLabel})`,
-    );
-  }
-  const optionLabel = item.options.find((option) => option.number === optionNumber)?.label || `option ${optionNumber}`;
-  const resolved = payload.resolved === true;
-  if (resolved) {
+    }
+    if (String(payload.action ?? "") === "start_project_review_blocked") {
+      const blockedTasks = Array.isArray(payload.blocked_tasks) ? payload.blocked_tasks : [];
+      const firstBlocked = blockedTasks[0] as { title?: unknown; reason?: unknown } | undefined;
+      const blockedLabel = String(firstBlocked?.title ?? "").trim() || "task";
+      const reasonLabel = String(firstBlocked?.reason ?? "").trim() || "review_gate_hold";
+      return pickDecisionL10n(
+        `⚠️ 팀장 회의 시작이 보류되었습니다. (${blockedLabel}, ${reasonLabel})`,
+        `⚠️ Team-lead meeting start is on hold. (${blockedLabel}, ${reasonLabel})`,
+        `⚠️ チームリーダー会議の開始は保留です。(${blockedLabel}, ${reasonLabel})`,
+        `⚠️ 组长评审会议暂缓启动。(${blockedLabel}, ${reasonLabel})`,
+      );
+    }
+    const optionLabel = item.options.find((option) => option.number === optionNumber)?.label || `option ${optionNumber}`;
+    const resolved = payload.resolved === true;
+    if (resolved) {
       return pickDecisionL10n(
         `✅ 의사결정 반영 완료: ${optionLabel}`,
         `✅ Decision applied: ${optionLabel}`,

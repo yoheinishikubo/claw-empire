@@ -61,10 +61,15 @@ export function createMeetingLeaderSelectionTools(deps: LeaderSelectionDeps) {
       .all(...(scopedIds ?? [])) as unknown as AgentRow[];
   }
 
-  function getTaskRelatedDepartmentIds(taskId: string, fallbackDeptId: string | null): string[] {
-    const task = db.prepare("SELECT title, description, department_id FROM tasks WHERE id = ?").get(taskId) as
+  function getTaskRelatedDepartmentIds(
+    taskId: string,
+    fallbackDeptId: string | null,
+    preloadedTask?: { title: string; description: string | null; department_id: string | null } | null,
+  ): string[] {
+    const task = (preloadedTask ??
+      (db.prepare("SELECT title, description, department_id FROM tasks WHERE id = ?").get(taskId) as
       | { title: string; description: string | null; department_id: string | null }
-      | undefined;
+      | undefined)) as { title: string; description: string | null; department_id: string | null } | undefined;
 
     const deptSet = new Set<string>();
     if (fallbackDeptId) deptSet.add(fallbackDeptId);
@@ -97,9 +102,15 @@ export function createMeetingLeaderSelectionTools(deps: LeaderSelectionDeps) {
     const fallbackAll = opts?.fallbackAll ?? true;
 
     const taskMeta = db
-      .prepare("SELECT project_id, workflow_pack_key, department_id FROM tasks WHERE id = ?")
+      .prepare("SELECT project_id, workflow_pack_key, department_id, title, description FROM tasks WHERE id = ?")
       .get(taskId) as
-      | { project_id: string | null; workflow_pack_key: string | null; department_id: string | null }
+      | {
+          project_id: string | null;
+          workflow_pack_key: string | null;
+          department_id: string | null;
+          title: string;
+          description: string | null;
+        }
       | undefined;
     const constrainedAgentIds = resolveConstrainedAgentScopeForTask(db as any, {
       project_id: taskMeta?.project_id ?? null,
@@ -113,11 +124,8 @@ export function createMeetingLeaderSelectionTools(deps: LeaderSelectionDeps) {
     });
 
     // 프로젝트 manual 모드 확인 — 지정 직원의 부서 팀장만 참석
-    const taskRow = db.prepare("SELECT project_id FROM tasks WHERE id = ?").get(taskId) as
-      | { project_id: string | null }
-      | undefined;
-    if (taskRow?.project_id) {
-      const proj = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(taskRow.project_id) as
+    if (taskMeta?.project_id) {
+      const proj = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(taskMeta.project_id) as
         | { assignment_mode: string }
         | undefined;
       if (proj?.assignment_mode === "manual") {
@@ -125,9 +133,9 @@ export function createMeetingLeaderSelectionTools(deps: LeaderSelectionDeps) {
           .prepare(
             "SELECT DISTINCT a.department_id FROM project_agents pa JOIN agents a ON a.id = pa.agent_id WHERE pa.project_id = ?",
           )
-          .all(taskRow.project_id) as Array<{ department_id: string | null }>;
+          .all(taskMeta.project_id) as Array<{ department_id: string | null }>;
         const manualDeptIds = assignedAgents.map((r) => r.department_id).filter(Boolean) as string[];
-        const relatedDeptIds = getTaskRelatedDepartmentIds(taskId, fallbackDeptId);
+        const relatedDeptIds = getTaskRelatedDepartmentIds(taskId, fallbackDeptId, taskMeta);
         const desiredDeptIds = [...new Set([...manualDeptIds, ...relatedDeptIds])];
 
         const leaders = getLeadersByDepartmentIds(desiredDeptIds, constrainedAgentIds);
@@ -166,7 +174,7 @@ export function createMeetingLeaderSelectionTools(deps: LeaderSelectionDeps) {
       }
     }
 
-    const deptIds = getTaskRelatedDepartmentIds(taskId, fallbackDeptId);
+    const deptIds = getTaskRelatedDepartmentIds(taskId, fallbackDeptId, taskMeta);
     const leaders = getLeadersByDepartmentIds(deptIds, constrainedAgentIds);
 
     const seen = new Set(leaders.map((l) => l.id));

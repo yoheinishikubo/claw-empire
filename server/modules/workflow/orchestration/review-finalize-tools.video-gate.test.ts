@@ -21,6 +21,7 @@ function createDb(): DatabaseSync {
     CREATE TABLE subtasks (
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL,
+      title TEXT,
       status TEXT NOT NULL,
       delegated_task_id TEXT,
       blocked_reason TEXT,
@@ -101,4 +102,3 @@ describe("review finalize video gate", () => {
     }
   });
 });
-

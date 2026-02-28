@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import * as api from "../api";
 import { buildDecisionInboxItems } from "../components/chat/decision-inbox";
@@ -57,6 +57,10 @@ export function useAppActions({
   setDecisionReplyBusyKey,
   setCliStatus,
 }: UseAppActionsParams) {
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const settingsSaveRequestSeqRef = useRef(0);
+
   const handleSendMessage = useCallback(
     async (
       content: string,
@@ -227,9 +231,17 @@ export function useAppActions({
 
   const handleSaveSettings = useCallback(
     async (nextInput: CompanySettings) => {
+      const previousSettings = settings;
+      const nextSettings = mergeSettingsWithDefaults(nextInput);
+      const autoUpdateChanged = Boolean(nextSettings.autoUpdateEnabled) !== Boolean(settings.autoUpdateEnabled);
+      const saveRequestSeq = (settingsSaveRequestSeqRef.current += 1);
+      const attemptedSnapshot = JSON.stringify(nextSettings);
+      setSettings(nextSettings);
+      syncClientLanguage(nextSettings.language);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LANGUAGE_USER_SET_STORAGE_KEY, "1");
+      }
       try {
-        const nextSettings = mergeSettingsWithDefaults(nextInput);
-        const autoUpdateChanged = Boolean(nextSettings.autoUpdateEnabled) !== Boolean(settings.autoUpdateEnabled);
         await api.saveSettings(nextSettings);
         if (autoUpdateChanged) {
           try {
@@ -238,16 +250,17 @@ export function useAppActions({
             console.error("Auto update runtime sync failed:", syncErr);
           }
         }
-        setSettings(nextSettings);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(LANGUAGE_USER_SET_STORAGE_KEY, "1");
-        }
-        syncClientLanguage(nextSettings.language);
       } catch (error) {
+        const isLatestRequest = settingsSaveRequestSeqRef.current === saveRequestSeq;
+        const currentSnapshot = JSON.stringify(settingsRef.current);
+        if (isLatestRequest && currentSnapshot === attemptedSnapshot) {
+          setSettings(previousSettings);
+          syncClientLanguage(previousSettings.language);
+        }
         console.error("Save settings failed:", error);
       }
     },
-    [settings.autoUpdateEnabled, setSettings],
+    [settings, setSettings],
   );
 
   const handleDismissAutoUpdateNotice = useCallback(async () => {

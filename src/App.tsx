@@ -113,9 +113,15 @@ export default function App() {
   activeChatRef.current = { showChat, agentId: chatAgent?.id ?? null };
 
   const handleOfficeWorkflowPackChange = (packKey: WorkflowPackKey) => {
+    const previousPack = settings.officeWorkflowPack ?? "development";
     setSettings((prev) => ({ ...prev, officeWorkflowPack: packKey }));
     api.saveSettingsPatch({ officeWorkflowPack: packKey }).catch((error) => {
       console.error("Save office workflow pack failed:", error);
+      setSettings((prev) =>
+        prev.officeWorkflowPack === packKey
+          ? { ...prev, officeWorkflowPack: previousPack }
+          : prev,
+      );
     });
   };
 

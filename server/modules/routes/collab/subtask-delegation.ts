@@ -139,6 +139,9 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
     startTaskExecutionForAgent,
     activeProcesses,
   } = deps;
+  const pendingDelegationOptionsByTask = new Map<string, { includeRender?: boolean }>();
+  const autoResumeRetryTimers = new Map<string, NodeJS.Timeout>();
+  const autoResumeRetryAttempts = new Map<string, number>();
 
   // ---------------------------------------------------------------------------
   // Subtask cross-department delegation: sequential by department,
@@ -159,6 +162,87 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
     hasExplicitWarningFixRequest,
   });
 
+  function clearAutoResumeRetry(taskId: string): void {
+    const timer = autoResumeRetryTimers.get(taskId);
+    if (timer) {
+      clearTimeout(timer);
+      autoResumeRetryTimers.delete(taskId);
+    }
+    autoResumeRetryAttempts.delete(taskId);
+  }
+
+  function scheduleAutoResumeRetry(taskId: string, reason: string): void {
+    if (autoResumeRetryTimers.has(taskId)) return;
+    const nextAttempt = (autoResumeRetryAttempts.get(taskId) ?? 0) + 1;
+    autoResumeRetryAttempts.set(taskId, nextAttempt);
+    const delayMs = Math.min(15_000 * nextAttempt, 120_000);
+    appendTaskLog(
+      taskId,
+      "system",
+      `Auto-resume retry scheduled in ${Math.round(delayMs / 1000)}s (attempt ${nextAttempt}; reason=${reason})`,
+    );
+    const timer = setTimeout(() => {
+      autoResumeRetryTimers.delete(taskId);
+      maybeNotifyAllSubtasksComplete(taskId);
+    }, delayMs);
+    timer.unref?.();
+    autoResumeRetryTimers.set(taskId, timer);
+  }
+
+  function reconcileVideoRenderDelegationState(taskId: string, pendingRender: SubtaskRow[]): {
+    staleResetCount: number;
+    recoveredDoneCount: number;
+  } {
+    const delegatedIds = [...new Set(
+      pendingRender
+        .map((sub) => String(sub.delegated_task_id ?? "").trim())
+        .filter((id) => id.length > 0),
+    )];
+    const delegatedStatusById = new Map<string, string>();
+    if (delegatedIds.length > 0) {
+      const placeholders = delegatedIds.map(() => "?").join(", ");
+      const delegatedRows = db
+        .prepare(`SELECT id, status FROM tasks WHERE id IN (${placeholders})`)
+        .all(...delegatedIds) as Array<{ id: string; status: string }>;
+      for (const row of delegatedRows) {
+        delegatedStatusById.set(row.id, String(row.status ?? ""));
+      }
+    }
+
+    let staleResetCount = 0;
+    let recoveredDoneCount = 0;
+    const doneAt = nowMs();
+    for (const sub of pendingRender) {
+      const delegatedTaskId = String(sub.delegated_task_id ?? "").trim();
+      if (!delegatedTaskId) continue;
+      const delegatedStatus = delegatedStatusById.get(delegatedTaskId);
+      if (!delegatedStatus || delegatedStatus === "cancelled" || delegatedStatus === "inbox") {
+        db.prepare(
+          `
+          UPDATE subtasks
+          SET delegated_task_id = NULL,
+              status = CASE WHEN status = 'blocked' THEN 'pending' ELSE status END,
+              blocked_reason = CASE WHEN status = 'blocked' THEN NULL ELSE blocked_reason END
+          WHERE id = ?
+        `,
+        ).run(sub.id);
+        broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id));
+        staleResetCount += 1;
+        continue;
+      }
+      if (delegatedStatus === "review" || delegatedStatus === "done") {
+        db.prepare("UPDATE subtasks SET status = 'done', completed_at = ?, blocked_reason = NULL WHERE id = ?").run(
+          doneAt,
+          sub.id,
+        );
+        broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id));
+        recoveredDoneCount += 1;
+      }
+    }
+
+    return { staleResetCount, recoveredDoneCount };
+  }
+
   function hasOpenForeignSubtasks(taskId: string, targetDeptIds: string[] = []): boolean {
     const uniqueDeptIds = [...new Set(targetDeptIds.filter(Boolean))];
     if (uniqueDeptIds.length > 0) {
@@ -171,7 +255,7 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
     WHERE task_id = ?
       AND target_department_id IN (${placeholders})
       AND target_department_id IS NOT NULL
-      AND status != 'done'
+      AND status NOT IN ('done', 'cancelled')
       AND (delegated_task_id IS NULL OR delegated_task_id = '')
     LIMIT 1
   `,
@@ -187,7 +271,7 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
   FROM subtasks
   WHERE task_id = ?
     AND target_department_id IS NOT NULL
-    AND status != 'done'
+    AND status NOT IN ('done', 'cancelled')
     AND (delegated_task_id IS NULL OR delegated_task_id = '')
   LIMIT 1
 `,
@@ -197,11 +281,20 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
   }
 
   function processSubtaskDelegations(taskId: string, opts?: { includeRender?: boolean }): void {
-    if (subtaskDelegationDispatchInFlight.has(taskId)) return;
+    if (subtaskDelegationDispatchInFlight.has(taskId)) {
+      const previous = pendingDelegationOptionsByTask.get(taskId);
+      pendingDelegationOptionsByTask.set(taskId, {
+        includeRender: Boolean(previous?.includeRender || opts?.includeRender),
+      });
+      if (opts?.includeRender) {
+        appendTaskLog(taskId, "system", "Subtask delegation queued: includeRender request deferred until in-flight batch completes");
+      }
+      return;
+    }
 
     const foreignSubtasks = db
       .prepare(
-        "SELECT * FROM subtasks WHERE task_id = ? AND target_department_id IS NOT NULL AND (delegated_task_id IS NULL OR delegated_task_id = '') ORDER BY created_at",
+        "SELECT * FROM subtasks WHERE task_id = ? AND target_department_id IS NOT NULL AND status NOT IN ('done', 'cancelled') AND (delegated_task_id IS NULL OR delegated_task_id = '') ORDER BY created_at",
       )
       .all(taskId) as unknown as SubtaskRow[];
 
@@ -275,6 +368,20 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
     const runQueue = (index: number) => {
       if (index >= queues.length) {
         subtaskDelegationDispatchInFlight.delete(taskId);
+        const pending = pendingDelegationOptionsByTask.get(taskId);
+        if (pending) {
+          pendingDelegationOptionsByTask.delete(taskId);
+          appendTaskLog(
+            taskId,
+            "system",
+            `Subtask delegation draining deferred request (includeRender=${pending.includeRender === true})`,
+          );
+          setTimeout(() => {
+            processSubtaskDelegations(taskId, pending);
+            maybeNotifyAllSubtasksComplete(parentTask.id);
+          }, 150);
+          return;
+        }
         maybeNotifyAllSubtasksComplete(parentTask.id);
         return;
       }
@@ -302,8 +409,21 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
       const nonRenderRemaining = remaining.cnt - pendingRender.length;
 
       if (nonRenderRemaining === 0 && pendingRender.length > 0) {
-        // All non-render subtasks complete — trigger VIDEO_FINAL_RENDER delegation
-        const undelegated = pendingRender.filter((s) => !s.delegated_task_id);
+        const repair = reconcileVideoRenderDelegationState(parentTaskId, pendingRender);
+        if (repair.staleResetCount > 0 || repair.recoveredDoneCount > 0) {
+          appendTaskLog(
+            parentTaskId,
+            "system",
+            `VIDEO_FINAL_RENDER delegation state repaired (stale_reset=${repair.staleResetCount}, recovered_done=${repair.recoveredDoneCount})`,
+          );
+        }
+
+        const refreshedPendingRender = db
+          .prepare(
+            "SELECT * FROM subtasks WHERE task_id = ? AND status NOT IN ('done', 'cancelled') AND title LIKE '%[VIDEO_FINAL_RENDER]%'",
+          )
+          .all(parentTaskId) as unknown as SubtaskRow[];
+        const undelegated = refreshedPendingRender.filter((s) => !String(s.delegated_task_id ?? "").trim());
         if (undelegated.length > 0) {
           // Unblock render subtasks so delegation can proceed
           for (const sub of undelegated) {
@@ -322,8 +442,6 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
         }
       }
     }
-
-    if (remaining.cnt !== 0 || subtaskDelegationCompletionNoticeSent.has(parentTaskId)) return;
 
     const parentTask = db
       .prepare(
@@ -345,6 +463,76 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
         }
       | undefined;
     if (!parentTask) return;
+
+    // Auto-resume retry should continue even after completion notice was already sent.
+    if (remaining.cnt === 0) {
+      if (
+        !(
+          parentTask.status === "pending" &&
+          parentTask.workflow_pack_key === "video_preprod" &&
+          !parentTask.source_task_id &&
+          parentTask.assigned_agent_id
+        )
+      ) {
+        clearAutoResumeRetry(parentTaskId);
+      } else {
+        const recentLogs = db
+          .prepare(
+            `
+            SELECT message
+            FROM task_logs
+            WHERE task_id = ?
+              AND kind = 'system'
+            ORDER BY created_at DESC
+            LIMIT 12
+          `,
+          )
+          .all(parentTaskId) as Array<{ message: string | null }>;
+        const heldForRenderOrdering = recentLogs.some((row) =>
+          String(row.message ?? "").includes(
+            "Video render hold: waiting for documentation/planning completion before final render",
+          ),
+        );
+        if (!heldForRenderOrdering) {
+          clearAutoResumeRetry(parentTaskId);
+        } else {
+          const assignedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(parentTask.assigned_agent_id) as
+            | AgentRow
+            | undefined;
+          if (!assignedAgent) {
+            appendTaskLog(parentTaskId, "system", "Auto-resume skipped: assigned agent not found");
+            clearAutoResumeRetry(parentTaskId);
+          } else if (activeProcesses.has(parentTaskId)) {
+            appendTaskLog(parentTaskId, "system", "Auto-resume skipped: task process already active");
+            clearAutoResumeRetry(parentTaskId);
+          } else if (
+            assignedAgent.status === "working" &&
+            assignedAgent.current_task_id &&
+            assignedAgent.current_task_id !== parentTaskId &&
+            activeProcesses.has(assignedAgent.current_task_id)
+          ) {
+            appendTaskLog(
+              parentTaskId,
+              "system",
+              `Auto-resume deferred: assigned agent busy on ${assignedAgent.current_task_id}`,
+            );
+            scheduleAutoResumeRetry(parentTaskId, `agent_busy:${assignedAgent.current_task_id}`);
+          } else {
+            const deptId = assignedAgent.department_id ?? parentTask.department_id ?? null;
+            const deptName = deptId ? getDeptName(deptId) : "Unassigned";
+            appendTaskLog(
+              parentTaskId,
+              "system",
+              "Video render hold cleared: all subtasks completed. Auto-resuming final render run.",
+            );
+            startTaskExecutionForAgent(parentTaskId, assignedAgent, deptId, deptName);
+            clearAutoResumeRetry(parentTaskId);
+          }
+        }
+      }
+    }
+
+    if (remaining.cnt !== 0 || subtaskDelegationCompletionNoticeSent.has(parentTaskId)) return;
 
     const lang = resolveLang(parentTask.description ?? parentTask.title);
     subtaskDelegationCompletionNoticeSent.add(parentTaskId);
@@ -371,68 +559,6 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
         bypassProjectDecisionGate: true,
         trigger: "subtask_completion",
       }), 1200);
-    }
-
-    // Auto-resume only for root video_preprod tasks that were explicitly held for final render ordering.
-    if (
-      parentTask.status === "pending" &&
-      parentTask.workflow_pack_key === "video_preprod" &&
-      !parentTask.source_task_id &&
-      parentTask.assigned_agent_id
-    ) {
-      const recentLogs = db
-        .prepare(
-          `
-          SELECT message
-          FROM task_logs
-          WHERE task_id = ?
-            AND kind = 'system'
-          ORDER BY created_at DESC
-          LIMIT 12
-        `,
-        )
-        .all(parentTaskId) as Array<{ message: string | null }>;
-      const heldForRenderOrdering = recentLogs.some((row) =>
-        String(row.message ?? "").includes(
-          "Video render hold: waiting for documentation/planning completion before final render",
-        ),
-      );
-      if (!heldForRenderOrdering) return;
-
-      const assignedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(parentTask.assigned_agent_id) as
-        | AgentRow
-        | undefined;
-      if (!assignedAgent) {
-        appendTaskLog(parentTaskId, "system", "Auto-resume skipped: assigned agent not found");
-        return;
-      }
-
-      if (activeProcesses.has(parentTaskId)) {
-        appendTaskLog(parentTaskId, "system", "Auto-resume skipped: task process already active");
-        return;
-      }
-      if (
-        assignedAgent.status === "working" &&
-        assignedAgent.current_task_id &&
-        assignedAgent.current_task_id !== parentTaskId &&
-        activeProcesses.has(assignedAgent.current_task_id)
-      ) {
-        appendTaskLog(
-          parentTaskId,
-          "system",
-          `Auto-resume deferred: assigned agent busy on ${assignedAgent.current_task_id}`,
-        );
-        return;
-      }
-
-      const deptId = assignedAgent.department_id ?? parentTask.department_id ?? null;
-      const deptName = deptId ? getDeptName(deptId) : "Unassigned";
-      appendTaskLog(
-        parentTaskId,
-        "system",
-        "Video render hold cleared: all subtasks completed. Auto-resuming final render run.",
-      );
-      startTaskExecutionForAgent(parentTaskId, assignedAgent, deptId, deptName);
     }
   }
 

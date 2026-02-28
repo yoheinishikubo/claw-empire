@@ -10,6 +10,7 @@ type ReviewStartBlockedTask = {
 
 function classifyReviewHoldReason(message: string): string {
   if (message.includes("video artifact gate blocked approval")) return "video_artifact_missing";
+  if (message.includes("VIDEO_FINAL_RENDER")) return "unfinished_subtasks";
   if (message.includes("unfinished subtasks")) return "unfinished_subtasks";
   if (message.includes("collaboration children")) return "collaboration_children_pending";
   return "review_gate_hold";
@@ -317,7 +318,7 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
           FROM task_logs
           WHERE task_id = ?
             AND kind = 'system'
-            AND created_at > ?
+            AND created_at >= ?
             AND message LIKE 'Review hold:%'
           ORDER BY created_at DESC
           LIMIT 1

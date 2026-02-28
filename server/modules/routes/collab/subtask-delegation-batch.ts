@@ -405,9 +405,32 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
       if (onBatchDone) {
         subtaskDelegationCallbacks.set(delegatedTaskId, onBatchDone);
       }
+      const failDelegatedLaunch = (error: unknown, stage: string) => {
+        const message = error instanceof Error ? error.message : String(error);
+        appendTaskLog(delegatedTaskId, "error", `Delegated launch failed (${stage}): ${message}`);
+        try {
+          finalizeDelegatedSubtasks(delegatedTaskId, subtaskIds, 1);
+        } catch {
+          const doneAt = nowMs();
+          for (const sid of subtaskIds) {
+            db.prepare("UPDATE subtasks SET status = 'blocked', blocked_reason = ? WHERE id = ?").run(
+              "Delegated task failed",
+              sid,
+            );
+            broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sid));
+          }
+          db.prepare("UPDATE tasks SET status = 'inbox', updated_at = ? WHERE id = ?").run(doneAt, delegatedTaskId);
+          const pending = subtaskDelegationCallbacks.get(delegatedTaskId);
+          subtaskDelegationCallbacks.delete(delegatedTaskId);
+          delegatedTaskToSubtask.delete(delegatedTaskId);
+          if (pending) pending();
+        }
+      };
 
       const execProvider = execAgent.cli_provider || "claude";
       if (["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "api"].includes(execProvider)) {
+        let delegatedProcessStarted = false;
+        try {
         const projPath = resolveProjectPath({
           project_id: parentTask.project_id,
           project_path: parentTask.project_path,
@@ -490,33 +513,45 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
         };
 
         if (execProvider === "api") {
-          wrapCallbackForHttpProvider();
-          const controller = new AbortController();
-          const fakePid = getNextHttpAgentPid();
-          launchApiProviderAgent(
-            delegatedTaskId,
-            execAgent.api_provider_id ?? null,
-            execAgent.api_model ?? null,
-            sessionPrompt,
-            agentCwd,
-            logFilePath,
-            controller,
-            fakePid,
-          );
+          try {
+            wrapCallbackForHttpProvider();
+            const controller = new AbortController();
+            const fakePid = getNextHttpAgentPid();
+            launchApiProviderAgent(
+              delegatedTaskId,
+              execAgent.api_provider_id ?? null,
+              execAgent.api_model ?? null,
+              sessionPrompt,
+              agentCwd,
+              logFilePath,
+              controller,
+              fakePid,
+            );
+            delegatedProcessStarted = true;
+          } catch (error) {
+            failDelegatedLaunch(error, "api_provider_bootstrap");
+            return;
+          }
         } else if (execProvider === "copilot" || execProvider === "antigravity") {
-          wrapCallbackForHttpProvider();
-          const controller = new AbortController();
-          const fakePid = getNextHttpAgentPid();
-          launchHttpAgent(
-            delegatedTaskId,
-            execProvider,
-            sessionPrompt,
-            agentCwd,
-            logFilePath,
-            controller,
-            fakePid,
-            execAgent.oauth_account_id ?? null,
-          );
+          try {
+            wrapCallbackForHttpProvider();
+            const controller = new AbortController();
+            const fakePid = getNextHttpAgentPid();
+            launchHttpAgent(
+              delegatedTaskId,
+              execProvider,
+              sessionPrompt,
+              agentCwd,
+              logFilePath,
+              controller,
+              fakePid,
+              execAgent.oauth_account_id ?? null,
+            );
+            delegatedProcessStarted = true;
+          } catch (error) {
+            failDelegatedLaunch(error, "http_provider_bootstrap");
+            return;
+          }
         } else {
           const delegateModelConfig = getProviderModelConfig();
           const delegateModel = execAgent.cli_model || delegateModelConfig[execProvider]?.model || undefined;
@@ -524,18 +559,33 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
             execProvider === "codex"
               ? execAgent.cli_reasoning_level || delegateModelConfig[execProvider]?.reasoningLevel || undefined
               : delegateModelConfig[execProvider]?.reasoningLevel || undefined;
-          const child = spawnCliAgent(
-            delegatedTaskId,
-            execProvider,
-            sessionPrompt,
-            agentCwd,
-            logFilePath,
-            delegateModel,
-            delegateReasoningLevel,
-          );
+          let child:
+            | {
+                on: (event: "close", listener: (code: number | null) => void) => void;
+              }
+            | null = null;
+          try {
+            child = spawnCliAgent(
+              delegatedTaskId,
+              execProvider,
+              sessionPrompt,
+              agentCwd,
+              logFilePath,
+              delegateModel,
+              delegateReasoningLevel,
+            );
+          } catch (error) {
+            failDelegatedLaunch(error, "cli_spawn");
+            return;
+          }
+          if (!child) {
+            failDelegatedLaunch("spawn returned no child process", "cli_spawn_empty");
+            return;
+          }
           child.on("close", (code: number | null) => {
             finalizeDelegatedSubtasks(delegatedTaskId, subtaskIds, code ?? 1);
           });
+          delegatedProcessStarted = true;
         }
 
         const worktreeCeoNote = buildWorktreeCeoNote({ l, pickL }, lang, delegatedTaskId, Boolean(worktreePath));
@@ -552,6 +602,19 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
           delegatedTaskId,
         );
         startProgressTimer(delegatedTaskId, delegatedTitle, targetDeptId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (delegatedProcessStarted) {
+            appendTaskLog(
+              delegatedTaskId,
+              "system",
+              `Delegated post-launch warning: ${message}`,
+            );
+          } else {
+            failDelegatedLaunch(error, "delegated_bootstrap");
+          }
+          return;
+        }
       } else {
         onBatchDone?.();
       }
