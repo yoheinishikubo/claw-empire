@@ -196,7 +196,7 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
     return !!row;
   }
 
-  function processSubtaskDelegations(taskId: string): void {
+  function processSubtaskDelegations(taskId: string, opts?: { includeRender?: boolean }): void {
     if (subtaskDelegationDispatchInFlight.has(taskId)) return;
 
     const foreignSubtasks = db
@@ -205,7 +205,14 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
       )
       .all(taskId) as unknown as SubtaskRow[];
 
-    if (foreignSubtasks.length === 0) return;
+    // VIDEO_FINAL_RENDER must wait for other subtasks — exclude from initial batch
+    const eligible = opts?.includeRender
+      ? foreignSubtasks
+      : foreignSubtasks.filter(
+          (s) => !String(s.title ?? "").includes("[VIDEO_FINAL_RENDER]"),
+        );
+
+    if (eligible.length === 0) return;
 
     const parentTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as
       | {
@@ -219,7 +226,7 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
       | undefined;
     if (!parentTask) return;
     const lang = resolveLang(parentTask.description ?? parentTask.title);
-    const queues = orderSubtaskQueuesByDepartment(groupSubtasksByTargetDepartment(foreignSubtasks));
+    const queues = orderSubtaskQueuesByDepartment(groupSubtasksByTargetDepartment(eligible));
     const deptCount = queues.length;
     subtaskDelegationDispatchInFlight.add(taskId);
     subtaskDelegationCompletionNoticeSent.delete(parentTask.id);
@@ -228,15 +235,15 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
       pickL(
         l(
           [
-            `'${parentTask.title}' 의 외부 부서 서브태스크 ${foreignSubtasks.length}건을 부서별 배치로 순차 위임합니다.`,
+            `'${parentTask.title}' 의 외부 부서 서브태스크 ${eligible.length}건을 부서별 배치로 순차 위임합니다.`,
           ],
           [
-            `Delegating ${foreignSubtasks.length} external-department subtasks for '${parentTask.title}' sequentially by department, one batched request at a time.`,
+            `Delegating ${eligible.length} external-department subtasks for '${parentTask.title}' sequentially by department, one batched request at a time.`,
           ],
           [
-            `'${parentTask.title}' の他部門サブタスク${foreignSubtasks.length}件を、部門ごとにバッチ化して順次委任します。`,
+            `'${parentTask.title}' の他部門サブタスク${eligible.length}件を、部門ごとにバッチ化して順次委任します。`,
           ],
-          [`将把'${parentTask.title}'的${foreignSubtasks.length}个外部门 SubTask 按部门批量后顺序委派。`],
+          [`将把'${parentTask.title}'的${eligible.length}个外部门 SubTask 按部门批量后顺序委派。`],
         ),
         lang,
       ),
@@ -245,7 +252,7 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
     appendTaskLog(
       taskId,
       "system",
-      `Subtask delegation mode: sequential_by_department_batched (queues=${deptCount}, items=${foreignSubtasks.length})`,
+      `Subtask delegation mode: sequential_by_department_batched (queues=${deptCount}, items=${eligible.length})`,
     );
     const runQueue = (index: number) => {
       if (index >= queues.length) {
@@ -265,6 +272,32 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
     const remaining = db
       .prepare("SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status != 'done'")
       .get(parentTaskId) as { cnt: number };
+
+    // Check if VIDEO_FINAL_RENDER is the only incomplete subtask(s)
+    if (remaining.cnt > 0) {
+      const pendingRender = db
+        .prepare(
+          "SELECT * FROM subtasks WHERE task_id = ? AND status != 'done' AND title LIKE '%[VIDEO_FINAL_RENDER]%'",
+        )
+        .all(parentTaskId) as unknown as SubtaskRow[];
+
+      const nonRenderRemaining = remaining.cnt - pendingRender.length;
+
+      if (nonRenderRemaining === 0 && pendingRender.length > 0) {
+        // All non-render subtasks complete — trigger VIDEO_FINAL_RENDER delegation
+        const undelegated = pendingRender.filter((s) => !s.delegated_task_id);
+        if (undelegated.length > 0) {
+          appendTaskLog(
+            parentTaskId,
+            "system",
+            "All non-render subtasks completed. Triggering VIDEO_FINAL_RENDER delegation.",
+          );
+          processSubtaskDelegations(parentTaskId, { includeRender: true });
+          return; // Not all done yet — don't call finishReview
+        }
+      }
+    }
+
     if (remaining.cnt !== 0 || subtaskDelegationCompletionNoticeSent.has(parentTaskId)) return;
 
     const parentTask = db
