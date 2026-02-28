@@ -60,6 +60,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
           description: string | null;
           status: string;
           task_type: string | null;
+          workflow_pack_key: string | null;
           project_id: string | null;
           project_path: string | null;
           source_task_id: string | null;
@@ -150,6 +151,34 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
     }
 
     if (exitCode === 0 && task) {
+      if (task.workflow_pack_key === "video_preprod") {
+        const wtInfo = taskWorktrees.get(taskId) as
+          | { worktreePath?: string; projectPath?: string }
+          | undefined;
+        if (wtInfo?.worktreePath) {
+          const srcVideo = path.join(wtInfo.worktreePath, "video_output", "final.mp4");
+          if (fs.existsSync(srcVideo)) {
+            try {
+              const outputRoot = task.project_path || wtInfo.projectPath || process.cwd();
+              const destVideo = path.join(outputRoot, "video_output", "final.mp4");
+              fs.mkdirSync(path.dirname(destVideo), { recursive: true });
+              fs.copyFileSync(srcVideo, destVideo);
+              const size = fs.statSync(destVideo).size;
+              appendTaskLog(
+                taskId,
+                "system",
+                `Video artifact synchronized: ${destVideo} (${size} bytes, source=worktree)`,
+              );
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              appendTaskLog(taskId, "system", `Video artifact sync failed: ${msg}`);
+            }
+          } else {
+            appendTaskLog(taskId, "system", "Video artifact not found in worktree (expected: video_output/final.mp4)");
+          }
+        }
+      }
+
       if (isReportDesignCheckpointTask(task)) {
         const parentTaskId = extractReportDesignParentTaskId(task);
         completeTaskWithoutReview(

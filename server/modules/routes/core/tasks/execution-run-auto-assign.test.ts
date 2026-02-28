@@ -31,6 +31,7 @@ function setupDb(): DatabaseSync {
       department_id TEXT,
       role TEXT NOT NULL,
       cli_provider TEXT,
+      oauth_account_id TEXT,
       avatar_emoji TEXT NOT NULL DEFAULT '🤖',
       personality TEXT,
       status TEXT NOT NULL,
@@ -38,6 +39,11 @@ function setupDb(): DatabaseSync {
       stats_tasks_done INTEGER NOT NULL DEFAULT 0,
       stats_xp INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
+    );
+    CREATE TABLE oauth_accounts (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      status TEXT NOT NULL
     );
     CREATE TABLE projects (
       id TEXT PRIMARY KEY,
@@ -59,6 +65,7 @@ function insertAgent(
     department_id: string | null;
     role?: string;
     cli_provider?: string | null;
+    oauth_account_id?: string | null;
     status?: string;
     current_task_id?: string | null;
     stats_tasks_done?: number;
@@ -68,8 +75,8 @@ function insertAgent(
   db.prepare(
     `
       INSERT INTO agents (
-        id, name, department_id, role, cli_provider, status, current_task_id, stats_tasks_done, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, name, department_id, role, cli_provider, oauth_account_id, status, current_task_id, stats_tasks_done, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     input.id,
@@ -77,6 +84,7 @@ function insertAgent(
     input.department_id,
     input.role ?? "senior",
     input.cli_provider ?? "codex",
+    input.oauth_account_id ?? null,
     input.status ?? "idle",
     input.current_task_id ?? null,
     input.stats_tasks_done ?? 0,
@@ -327,6 +335,73 @@ describe("selectAutoAssignableAgentForTask", () => {
 
       expect(scope).toEqual(["pack-b"]);
       expect(selected?.agent.id).toBe("pack-b");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("copilot 계정이 없으면 OAuth 없는 provider를 건너뛰고 다른 후보를 선택한다", () => {
+    const db = setupDb();
+    try {
+      insertAgent(db, {
+        id: "agent-copilot",
+        name: "Copilot Agent",
+        department_id: "dev",
+        cli_provider: "copilot",
+        created_at: 1,
+      });
+      insertAgent(db, {
+        id: "agent-codex",
+        name: "Codex Agent",
+        department_id: "planning",
+        cli_provider: "codex",
+        created_at: 2,
+      });
+
+      const selected = selectAutoAssignableAgentForTask(db, {
+        workflow_pack_key: "web_research_report",
+        department_id: null,
+        project_id: null,
+      });
+
+      expect(selected?.agent.id).toBe("agent-codex");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("copilot 활성 계정이 있으면 copilot 후보를 정상 선택한다", () => {
+    const db = setupDb();
+    try {
+      db.prepare("INSERT INTO oauth_accounts (id, provider, status) VALUES (?, ?, ?)").run(
+        "oauth-gh-1",
+        "github",
+        "active",
+      );
+
+      insertAgent(db, {
+        id: "agent-copilot",
+        name: "Copilot Agent",
+        department_id: "dev",
+        cli_provider: "copilot",
+        oauth_account_id: "oauth-gh-1",
+        created_at: 1,
+      });
+      insertAgent(db, {
+        id: "agent-codex",
+        name: "Codex Agent",
+        department_id: "planning",
+        cli_provider: "codex",
+        created_at: 2,
+      });
+
+      const selected = selectAutoAssignableAgentForTask(db, {
+        workflow_pack_key: "web_research_report",
+        department_id: null,
+        project_id: null,
+      });
+
+      expect(selected?.agent.id).toBe("agent-copilot");
     } finally {
       db.close();
     }

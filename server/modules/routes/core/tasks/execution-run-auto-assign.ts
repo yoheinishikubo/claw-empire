@@ -21,6 +21,7 @@ export type AutoAssignableAgent = {
   department_id: string | null;
   role: string;
   cli_provider: string | null;
+  oauth_account_id: string | null;
   status: string;
   current_task_id: string | null;
   stats_tasks_done: number;
@@ -289,6 +290,47 @@ function combineAgentScopes(primary: string[] | null, secondary: string[] | null
   return null;
 }
 
+function loadActiveOAuthAccountIdsByProvider(db: DbLike): Map<string, Set<string>> | null {
+  try {
+    const rows = db.prepare("SELECT id, provider FROM oauth_accounts WHERE status = 'active'").all() as Array<{
+      id?: unknown;
+      provider?: unknown;
+    }>;
+    const out = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const id = normalizeText(row?.id);
+      const provider = normalizeText(row?.provider).toLowerCase();
+      if (!id || !provider) continue;
+      const current = out.get(provider) ?? new Set<string>();
+      current.add(id);
+      out.set(provider, current);
+    }
+    return out;
+  } catch {
+    // Some tests or legacy databases may not have oauth_accounts yet.
+    return null;
+  }
+}
+
+function isOAuthBackedProviderReady(agent: AutoAssignableAgent, activeOAuthByProvider: Map<string, Set<string>> | null): boolean {
+  const provider = normalizeText(agent.cli_provider).toLowerCase();
+  const requiredOAuthProvider =
+    provider === "copilot"
+      ? "github"
+      : provider === "antigravity"
+        ? "google_antigravity"
+        : null;
+  if (!requiredOAuthProvider) return true;
+  if (!activeOAuthByProvider) return true;
+
+  const activeAccounts = activeOAuthByProvider.get(requiredOAuthProvider);
+  if (!activeAccounts || activeAccounts.size <= 0) return false;
+
+  const preferredAccountId = normalizeText(agent.oauth_account_id);
+  if (preferredAccountId && !activeAccounts.has(preferredAccountId)) return false;
+  return true;
+}
+
 function selectCandidate(
   db: DbLike,
   preferredDeptIds: string[],
@@ -319,7 +361,7 @@ function selectCandidate(
   const rows = db
     .prepare(
       `
-      SELECT id, name, department_id, role, cli_provider, status, current_task_id, stats_tasks_done, created_at
+      SELECT id, name, department_id, role, cli_provider, oauth_account_id, status, current_task_id, stats_tasks_done, created_at
       FROM agents
       ${where}
       ORDER BY created_at ASC
@@ -327,6 +369,10 @@ function selectCandidate(
     )
     .all(...params) as AutoAssignableAgent[];
   if (rows.length === 0) return null;
+
+  const activeOAuthByProvider = loadActiveOAuthAccountIdsByProvider(db);
+  const runnableRows = rows.filter((row) => isOAuthBackedProviderReady(row, activeOAuthByProvider));
+  if (runnableRows.length === 0) return null;
 
   const deptRank = (deptId: string | null): number => {
     if (!deptId) return preferredDeptIds.length + 1;
@@ -336,7 +382,7 @@ function selectCandidate(
   const statusRank = (status: string): number => (status === "idle" ? 0 : status === "break" ? 1 : 2);
   const leaderRank = (role: string): number => (role === "team_leader" ? 1 : 0);
 
-  rows.sort((a, b) => {
+  runnableRows.sort((a, b) => {
     const byDept = deptRank(a.department_id) - deptRank(b.department_id);
     if (byDept !== 0) return byDept;
 
@@ -352,7 +398,7 @@ function selectCandidate(
     return (a.created_at ?? 0) - (b.created_at ?? 0);
   });
 
-  return rows[0] ?? null;
+  return runnableRows[0] ?? null;
 }
 
 export function resolveConstrainedAgentScopeForTask(db: DbLike, task: CandidateTaskShape): string[] | null {

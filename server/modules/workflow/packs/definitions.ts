@@ -122,9 +122,10 @@ export const DEFAULT_WORKFLOW_PACK_SEEDS: WorkflowPackSeed[] = [
     qaRules: {
       requireShotList: true,
       requireScript: true,
+      requireRenderedVideo: true,
     },
     outputTemplate: {
-      sections: ["concept", "script", "shot_list", "editing_notes"],
+      sections: ["concept", "script", "shot_list", "editing_notes", "video_file"],
     },
     routingKeywords: ["video", "shorts", "reel", "콘티", "영상", "대본", "샷리스트"],
     costProfile: {

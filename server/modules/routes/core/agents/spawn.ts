@@ -1,6 +1,7 @@
 import path from "node:path";
 import { notifyTaskStatus } from "../../../../gateway/client.ts";
 import type { RuntimeContext } from "../../../../types/runtime-context.ts";
+import { buildWorkflowPackExecutionGuidance } from "../../../workflow/packs/execution-guidance.ts";
 
 export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
   const {
@@ -76,6 +77,7 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
           id: string;
           title: string;
           description: string | null;
+          workflow_pack_key: string | null;
           project_path: string | null;
         }
       | undefined;
@@ -95,6 +97,7 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
       : "";
     const departmentPrompt = normalizeTextField(agent.department_prompt);
     const departmentPromptBlock = departmentPrompt ? `[Department Shared Prompt]\n${departmentPrompt}` : "";
+    const workflowPackGuidance = buildWorkflowPackExecutionGuidance(task.workflow_pack_key, taskLang);
 
     const prompt = buildTaskExecutionPrompt(
       [
@@ -103,6 +106,7 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
         "This session is scoped to this task only.",
         `[Task] ${task.title}`,
         task.description ? `\n${task.description}` : "",
+        workflowPackGuidance ? `\n[Workflow Pack Execution Rules]\n${workflowPackGuidance}` : "",
         `Agent: ${agent.name} (${roleLabel}, ${agent.department_name || "Unassigned"})`,
         agent.personality ? `Personality: ${agent.personality}` : "",
         deptConstraint,
