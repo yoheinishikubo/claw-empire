@@ -418,14 +418,15 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
       });
       db.prepare(
         `
-      INSERT INTO tasks (id, title, description, department_id, project_id, status, priority, task_type, workflow_pack_key, project_path, source_task_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, title, description, department_id, assigned_agent_id, project_id, status, priority, task_type, workflow_pack_key, project_path, source_task_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?, ?)
     `,
       ).run(
         crossTaskId,
         crossTaskTitle,
         `[Cross-dept from ${leaderDeptName}] ${ceoMessage}`,
         crossDeptId,
+        crossCoordinator.id,
         parentTaskPath?.project_id ?? null,
         crossWorkflowPackKey,
         crossDetectedPath,
@@ -438,6 +439,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
         taskTitle: crossTaskTitle,
         taskStatus: "planned",
         departmentId: crossDeptId,
+        assignedAgentId: crossCoordinator.id,
         sourceTaskId: taskId,
         taskType: "general",
         projectPath: crossDetectedPath ?? null,

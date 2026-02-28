@@ -4,6 +4,7 @@ import type { RuntimeContext } from "../../../../types/runtime-context.ts";
 import type { AgentRow } from "../../shared/types.ts";
 import { resolveConstrainedAgentScopeForTask, selectAutoAssignableAgentForTask } from "./execution-run-auto-assign.ts";
 import { buildWorkflowPackExecutionGuidance } from "../../../workflow/packs/execution-guidance.ts";
+import { resolveVideoArtifactSpecForTask } from "../../../workflow/packs/video-artifact.ts";
 import {
   buildInterruptPromptBlock,
   consumeInterruptPrompts,
@@ -362,7 +363,17 @@ Whenever you complete a subtask, report it in this format:
       ),
       taskLang,
     );
-    const workflowPackGuidance = buildWorkflowPackExecutionGuidance(task.workflow_pack_key, taskLang);
+    const videoArtifactSpec =
+      task.workflow_pack_key === "video_preprod"
+        ? resolveVideoArtifactSpecForTask(db as any, {
+            project_id: task.project_id,
+            project_path: task.project_path,
+            department_id: task.department_id,
+          })
+        : null;
+    const workflowPackGuidance = buildWorkflowPackExecutionGuidance(task.workflow_pack_key, taskLang, {
+      videoArtifactRelativePath: videoArtifactSpec?.relativePath,
+    });
 
     const prompt = buildTaskExecutionPrompt(
       [

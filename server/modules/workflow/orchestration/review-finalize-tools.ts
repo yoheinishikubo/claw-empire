@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  resolveVideoArtifactRelativeCandidates,
+  resolveVideoArtifactSpecForTask,
+} from "../packs/video-artifact.ts";
 
 type CreateReviewFinalizeToolsDeps = Record<string, any>;
 
@@ -272,9 +276,17 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
         | { worktreePath?: string; projectPath?: string; branchName?: string }
         | undefined;
       const outputRoot = currentTask.project_path || wtInfo?.projectPath || process.cwd();
+      const videoArtifactSpec = resolveVideoArtifactSpecForTask(db as any, {
+        project_id: currentTask.project_id,
+        project_path: currentTask.project_path,
+        department_id: currentTask.department_id,
+      });
+      const candidateRelativePaths = resolveVideoArtifactRelativeCandidates(videoArtifactSpec);
       const candidatePaths = [
-        wtInfo?.worktreePath ? path.join(wtInfo.worktreePath, "video_output", "final.mp4") : null,
-        outputRoot ? path.join(outputRoot, "video_output", "final.mp4") : null,
+        ...candidateRelativePaths.map((relative) =>
+          wtInfo?.worktreePath ? path.join(wtInfo.worktreePath, relative) : null,
+        ),
+        ...candidateRelativePaths.map((relative) => (outputRoot ? path.join(outputRoot, relative) : null)),
       ].filter((entry): entry is string => Boolean(entry));
 
       let verifiedPath: string | null = null;
@@ -297,21 +309,21 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
         appendTaskLog(
           taskId,
           "system",
-          `Review hold: video artifact gate blocked approval (missing/empty final.mp4). checked=${candidatePaths.join(", ")}`,
+          `Review hold: video artifact gate blocked approval (missing/empty video file). checked=${candidatePaths.join(", ")}`,
         );
         notifyCeo(
           pickL(
             l(
               [
-                `'${taskTitle}' 는 영상 산출물(final.mp4)이 확인되지 않아 팀장회의 승인/머지가 보류되었습니다. 렌더 결과를 확인한 뒤 다시 승인해 주세요.`,
+                `'${taskTitle}' 는 영상 산출물(\`${videoArtifactSpec.relativePath}\`)이 확인되지 않아 팀장회의 승인/머지가 보류되었습니다. 렌더 결과를 확인한 뒤 다시 승인해 주세요.`,
               ],
               [
-                `'${taskTitle}' approval/merge is on hold because final.mp4 is not verified. Verify rendered output first, then approve again.`,
+                `'${taskTitle}' approval/merge is on hold because \`${videoArtifactSpec.relativePath}\` is not verified. Verify rendered output first, then approve again.`,
               ],
               [
-                `'${taskTitle}' は final.mp4 未確認のため承認/マージが保留されました。レンダー結果確認後に再承認してください。`,
+                `'${taskTitle}' は \`${videoArtifactSpec.relativePath}\` 未確認のため承認/マージが保留されました。レンダー結果確認後に再承認してください。`,
               ],
-              [`'${taskTitle}' 因 final.mp4 未验证，审批/合并已暂停。请先确认渲染结果后再审批。`],
+              [`'${taskTitle}' 因 \`${videoArtifactSpec.relativePath}\` 未验证，审批/合并已暂停。请先确认渲染结果后再审批。`],
             ),
             lang,
           ),

@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  resolveVideoArtifactRelativeCandidates,
+  resolveVideoArtifactSpecForTask,
+} from "../packs/video-artifact.ts";
 
 type CreateRunCompleteHandlerDeps = Record<string, any>;
 
@@ -153,25 +157,112 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
     if (exitCode === 0 && task) {
       let videoArtifactReady = true;
       if (task.workflow_pack_key === "video_preprod") {
+        const rollbackAgentStatsForHold = () => {
+          if (!task.assigned_agent_id) return;
+          db.prepare(
+            `
+              UPDATE agents
+              SET stats_tasks_done = MAX(0, stats_tasks_done - 1),
+                  stats_xp = MAX(0, stats_xp - 10)
+              WHERE id = ?
+            `,
+          ).run(task.assigned_agent_id);
+          const correctedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(task.assigned_agent_id) as
+            | Record<string, unknown>
+            | undefined;
+          broadcast("agent_status", correctedAgent);
+        };
+
+        const openSubtasksRow = db
+          .prepare("SELECT COUNT(*) AS cnt FROM subtasks WHERE task_id = ? AND status != 'done'")
+          .get(taskId) as { cnt?: number } | undefined;
+        const openChildTasksRow = db
+          .prepare(
+            `
+            SELECT COUNT(*) AS cnt
+            FROM tasks
+            WHERE source_task_id = ?
+              AND status NOT IN ('done', 'cancelled')
+          `,
+          )
+          .get(taskId) as { cnt?: number } | undefined;
+        const openSubtasks = Number(openSubtasksRow?.cnt ?? 0);
+        const openChildTasks = Number(openChildTasksRow?.cnt ?? 0);
+
+        if (openSubtasks > 0 || openChildTasks > 0) {
+          rollbackAgentStatsForHold();
+          db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?").run(t, taskId);
+          appendTaskLog(
+            taskId,
+            "system",
+            `Video render hold: waiting for documentation/planning completion before final render (open_subtasks=${openSubtasks}, open_collab_tasks=${openChildTasks})`,
+          );
+          const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
+          broadcast("task_update", updatedTask);
+          notifyTaskStatus(taskId, task.title, "pending", resolveLang(task.description ?? task.title));
+          notifyCeo(
+            pickL(
+              l(
+                [
+                  `'${task.title}' 작업은 문서화/협업 정리가 아직 끝나지 않아 영상 최종 렌더 단계로 넘어가지 않았습니다. (미완료 subtask ${openSubtasks}건, 협업 task ${openChildTasks}건)`,
+                ],
+                [
+                  `'${task.title}' is still waiting for documentation/collaboration closure, so final video rendering did not proceed yet. (open subtasks: ${openSubtasks}, open collaboration tasks: ${openChildTasks})`,
+                ],
+                [
+                  `'${task.title}' は文書化/協業の整理が未完了のため、最終動画レンダリング段階へ進みませんでした。（未完了 subtask: ${openSubtasks}件、協業 task: ${openChildTasks}件）`,
+                ],
+                [
+                  `'${task.title}' 仍在等待文档与协作收口，尚未进入最终视频渲染阶段。（未完成 subtask：${openSubtasks}，协作 task：${openChildTasks}）`,
+                ],
+              ),
+              resolveLang(task.description ?? task.title),
+            ),
+            taskId,
+          );
+          return;
+        }
+
         videoArtifactReady = false;
+        const videoArtifactSpec = resolveVideoArtifactSpecForTask(db as any, {
+          project_id: task.project_id,
+          project_path: task.project_path,
+          department_id: task.department_id,
+        });
+        const candidateRelativePaths = resolveVideoArtifactRelativeCandidates(videoArtifactSpec);
         const wtInfo = taskWorktrees.get(taskId) as
           | { worktreePath?: string; projectPath?: string }
           | undefined;
+        const outputRoot = task.project_path || wtInfo?.projectPath || process.cwd();
+        const projectCandidates = candidateRelativePaths.map((relative) => path.join(outputRoot, relative));
+
         if (wtInfo?.worktreePath) {
-          const srcVideo = path.join(wtInfo.worktreePath, "video_output", "final.mp4");
-          if (fs.existsSync(srcVideo)) {
+          const worktreeCandidates = candidateRelativePaths.map((relative) => path.join(wtInfo.worktreePath!, relative));
+          let sourceVideo: string | null = null;
+          for (const candidate of worktreeCandidates) {
+            if (!fs.existsSync(candidate)) continue;
             try {
-              const outputRoot = task.project_path || wtInfo.projectPath || process.cwd();
-              const destVideo = path.join(outputRoot, "video_output", "final.mp4");
+              if (fs.statSync(candidate).size > 0) {
+                sourceVideo = candidate;
+                break;
+              }
+            } catch {
+              // Ignore stat errors and continue searching candidates.
+            }
+          }
+
+          if (sourceVideo) {
+            try {
+              const destVideo = path.join(outputRoot, videoArtifactSpec.relativePath);
               fs.mkdirSync(path.dirname(destVideo), { recursive: true });
-              fs.copyFileSync(srcVideo, destVideo);
+              fs.copyFileSync(sourceVideo, destVideo);
               const size = fs.statSync(destVideo).size;
               if (size > 0) {
                 videoArtifactReady = true;
                 appendTaskLog(
                   taskId,
                   "system",
-                  `Video artifact synchronized: ${destVideo} (${size} bytes, source=worktree)`,
+                  `Video artifact synchronized: ${destVideo} (${size} bytes, source=${sourceVideo})`,
                 );
               } else {
                 appendTaskLog(taskId, "system", `Video artifact sync failed: rendered file is empty (${destVideo})`);
@@ -181,19 +272,23 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
               appendTaskLog(taskId, "system", `Video artifact sync failed: ${msg}`);
             }
           } else {
-            appendTaskLog(taskId, "system", "Video artifact not found in worktree (expected: video_output/final.mp4)");
+            appendTaskLog(
+              taskId,
+              "system",
+              `Video artifact not found in worktree (checked: ${worktreeCandidates.join(", ")})`,
+            );
           }
         }
 
         if (!videoArtifactReady) {
-          const outputRoot = task.project_path || wtInfo?.projectPath || process.cwd();
-          const projectVideo = path.join(outputRoot, "video_output", "final.mp4");
-          if (fs.existsSync(projectVideo)) {
+          for (const projectVideo of projectCandidates) {
+            if (!fs.existsSync(projectVideo)) continue;
             try {
               const size = fs.statSync(projectVideo).size;
               if (size > 0) {
                 videoArtifactReady = true;
                 appendTaskLog(taskId, "system", `Video artifact verified at project path: ${projectVideo} (${size} bytes)`);
+                break;
               }
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
@@ -203,26 +298,13 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
         }
 
         if (!videoArtifactReady) {
-          if (task.assigned_agent_id) {
-            db.prepare(
-              `
-                UPDATE agents
-                SET stats_tasks_done = MAX(0, stats_tasks_done - 1),
-                    stats_xp = MAX(0, stats_xp - 10)
-                WHERE id = ?
-              `,
-            ).run(task.assigned_agent_id);
-            const correctedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(task.assigned_agent_id) as
-              | Record<string, unknown>
-              | undefined;
-            broadcast("agent_status", correctedAgent);
-          }
+          rollbackAgentStatsForHold();
 
           db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?").run(t, taskId);
           appendTaskLog(
             taskId,
             "system",
-            "Video artifact gate: final.mp4 missing or empty. Task remains pending until render output is verified.",
+            `Video artifact gate: missing/empty render output. checked=${projectCandidates.join(", ")}`,
           );
           const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
           broadcast("task_update", updatedTask);
@@ -231,15 +313,17 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
             pickL(
               l(
                 [
-                  `'${task.title}' 작업은 영상 산출물(final.mp4) 확인 전이라 자동 완료되지 않았습니다. video_output/final.mp4 생성 후 재개해 주세요.`,
+                  `'${task.title}' 작업은 영상 산출물 확인 전이라 자동 완료되지 않았습니다. \`${videoArtifactSpec.relativePath}\` (또는 legacy \`${videoArtifactSpec.legacyRelativePath}\`) 생성 후 재개해 주세요.`,
                 ],
                 [
-                  `Task '${task.title}' was not auto-completed because final.mp4 is not verified yet. Generate video_output/final.mp4 and resume.`,
+                  `Task '${task.title}' was not auto-completed because the video artifact is not verified yet. Generate \`${videoArtifactSpec.relativePath}\` (or legacy \`${videoArtifactSpec.legacyRelativePath}\`) and resume.`,
                 ],
                 [
-                  `'${task.title}' は final.mp4 未確認のため自動完了されませんでした。video_output/final.mp4 を生成して再開してください。`,
+                  `'${task.title}' は動画成果物未確認のため自動完了されませんでした。 \`${videoArtifactSpec.relativePath}\`（または legacy \`${videoArtifactSpec.legacyRelativePath}\`）を生成して再開してください。`,
                 ],
-                [`任务 '${task.title}' 因 final.mp4 未验证，未自动完成。请先生成 video_output/final.mp4 后再继续。`],
+                [
+                  `任务 '${task.title}' 因视频产物未验证，未自动完成。请先生成 \`${videoArtifactSpec.relativePath}\`（或兼容路径 \`${videoArtifactSpec.legacyRelativePath}\`）后再继续。`,
+                ],
               ),
               resolveLang(task.description ?? task.title),
             ),

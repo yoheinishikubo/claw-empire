@@ -173,14 +173,15 @@ export function createTaskDelegationHandler(deps: TaskDelegationDeps) {
       }
       db.prepare(
         `
-      INSERT INTO tasks (id, title, description, department_id, project_id, status, priority, task_type, workflow_pack_key, project_path, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?)
+      INSERT INTO tasks (id, title, description, department_id, assigned_agent_id, project_id, status, priority, task_type, workflow_pack_key, project_path, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?)
     `,
       ).run(
         taskId,
         taskTitle,
         taskDescriptionLines.join("\n"),
         leaderDeptId,
+        teamLeader.id,
         selectedProject.id,
         workflowPackKey,
         detectedPath,
@@ -193,6 +194,7 @@ export function createTaskDelegationHandler(deps: TaskDelegationDeps) {
         taskTitle,
         taskStatus: "planned",
         departmentId: leaderDeptId,
+        assignedAgentId: teamLeader.id,
         taskType: "general",
         projectPath: detectedPath ?? null,
         trigger: "workflow.delegation.ceo_message",

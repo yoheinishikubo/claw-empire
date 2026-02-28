@@ -2,6 +2,7 @@ import path from "node:path";
 import { notifyTaskStatus } from "../../../../gateway/client.ts";
 import type { RuntimeContext } from "../../../../types/runtime-context.ts";
 import { buildWorkflowPackExecutionGuidance } from "../../../workflow/packs/execution-guidance.ts";
+import { resolveVideoArtifactSpecForTask } from "../../../workflow/packs/video-artifact.ts";
 
 export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
   const {
@@ -78,6 +79,8 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
           title: string;
           description: string | null;
           workflow_pack_key: string | null;
+          project_id: string | null;
+          department_id: string | null;
           project_path: string | null;
         }
       | undefined;
@@ -97,7 +100,17 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
       : "";
     const departmentPrompt = normalizeTextField(agent.department_prompt);
     const departmentPromptBlock = departmentPrompt ? `[Department Shared Prompt]\n${departmentPrompt}` : "";
-    const workflowPackGuidance = buildWorkflowPackExecutionGuidance(task.workflow_pack_key, taskLang);
+    const videoArtifactSpec =
+      task.workflow_pack_key === "video_preprod"
+        ? resolveVideoArtifactSpecForTask(db as any, {
+            project_id: task.project_id,
+            project_path: task.project_path,
+            department_id: task.department_id,
+          })
+        : null;
+    const workflowPackGuidance = buildWorkflowPackExecutionGuidance(task.workflow_pack_key, taskLang, {
+      videoArtifactRelativePath: videoArtifactSpec?.relativePath,
+    });
 
     const prompt = buildTaskExecutionPrompt(
       [
