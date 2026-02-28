@@ -282,6 +282,33 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
       targetDepartmentId: null,
     });
 
+    // video_preprod일 경우 최종 영상 렌더링 서브태스크 추가
+    if (task.workflow_pack_key === "video_preprod") {
+      const devLeader = findTeamLeader("dev", constrainedAgentIds);
+      const devDeptName = getDeptName("dev");
+      items.push({
+        title: "[VIDEO_FINAL_RENDER] 최종 영상 렌더링",
+        description: [
+          "[VIDEO_FINAL_RENDER]",
+          `상위 업무: ${task.title}`,
+          "모든 문서/협업 산출물을 취합해 최종 소개 영상을 1회 렌더링하세요.",
+          "산출물 경로 규칙(project_department_final.mp4)을 지키고, 결과 파일 경로/용량 검증을 보고하세요.",
+        ].join("\n"),
+        status: "blocked",
+        assignedAgentId: devLeader?.id ?? null,
+        blockedReason: pickL(
+          l(
+            [`${devDeptName} 협업 대기`],
+            [`Waiting for ${devDeptName} collaboration`],
+            [`${devDeptName}の協業待ち`],
+            [`等待${devDeptName}协作`],
+          ),
+          lang,
+        ),
+        targetDepartmentId: "dev",
+      });
+    }
+
     for (const st of items) {
       const sid = randomUUID();
       db.prepare(

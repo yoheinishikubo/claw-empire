@@ -89,7 +89,10 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
             "system",
             "All delegated subtasks completed after resume; retrying review completion",
           );
-          setTimeout(() => finishReview(parentTaskId, parent.title), 1200);
+          setTimeout(() => finishReview(parentTaskId, parent.title, {
+            bypassProjectDecisionGate: true,
+            trigger: "delegated_subtask_completion",
+          }), 1200);
         }
       }
       return;

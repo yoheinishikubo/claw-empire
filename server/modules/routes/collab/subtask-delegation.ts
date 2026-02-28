@@ -31,7 +31,7 @@ interface SubtaskDelegationDeps {
     taskId?: string | null,
   ) => void;
   appendTaskLog: (taskId: string, source: string, message: string) => void;
-  finishReview: (taskId: string, taskTitle: string) => void;
+  finishReview: (taskId: string, taskTitle: string, options?: { bypassProjectDecisionGate?: boolean; trigger?: string }) => void;
   findTeamLeader: (deptId: string | null, candidateAgentIds?: string[] | null) => AgentRow | null;
   findBestSubordinate: (deptId: string, excludeId: string, candidateAgentIds?: string[] | null) => AgentRow | null;
   nowMs: () => number;
@@ -309,7 +309,10 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
       parentTaskId,
     );
     if (parentTask.status === "review") {
-      setTimeout(() => finishReview(parentTaskId, parentTask.title), 1200);
+      setTimeout(() => finishReview(parentTaskId, parentTask.title, {
+        bypassProjectDecisionGate: true,
+        trigger: "subtask_completion",
+      }), 1200);
     }
 
     // Auto-resume only for root video_preprod tasks that were explicitly held for final render ordering.
