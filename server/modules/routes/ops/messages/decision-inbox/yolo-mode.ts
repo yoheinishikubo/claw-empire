@@ -11,6 +11,15 @@ export type YoloDecisionReplyPayload = {
   selected_option_numbers?: number[];
 };
 
+const RETRYABLE_DECISION_ERRORS = new Set<string>([
+  "decision_options_not_ready",
+  "option_not_found",
+  "project_task_options_pending",
+  "project_not_ready_for_review_meeting",
+  "meeting_not_pending",
+  "task_not_in_review",
+]);
+
 function normalizeBooleanLike(value: unknown): boolean | null {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;
@@ -74,17 +83,18 @@ export function buildYoloDecisionReplyPayload(item: DecisionInboxRouteItem): Yol
   }
 
   if (item.kind === "project_review_ready") {
+    const representativeOptions = item.options.filter((option) => option.action.startsWith("approve_task_review:"));
+    if (representativeOptions.length > 0) {
+      const validNumbers = new Set(representativeOptions.map((option) => option.number));
+      const suggested = extractSummarySuggestedOptionNumbers(item.summary, validNumbers);
+      const pickedNumber = suggested[0] ?? representativeOptions[0]?.number;
+      if (!pickedNumber) return null;
+      return { option_number: pickedNumber };
+    }
+
     const startReview = item.options.find((option) => option.action === "start_project_review");
     if (startReview) return { option_number: startReview.number };
-
-    const representativeOptions = item.options.filter((option) => option.action.startsWith("approve_task_review:"));
-    if (representativeOptions.length <= 0) return null;
-
-    const validNumbers = new Set(representativeOptions.map((option) => option.number));
-    const suggested = extractSummarySuggestedOptionNumbers(item.summary, validNumbers);
-    const pickedNumber = suggested[0] ?? representativeOptions[0]?.number;
-    if (!pickedNumber) return null;
-    return { option_number: pickedNumber };
+    return null;
   }
 
   if (item.kind === "review_round_pick") {
@@ -135,6 +145,10 @@ export function runYoloDecisionAutopilot(input: {
 
     const result = input.applyDecisionReply(chosen.id, chosen.payload);
     if (result.status >= 400) {
+      const errorCode = String((result.payload as { error?: unknown } | null | undefined)?.error ?? "").trim();
+      if (errorCode && RETRYABLE_DECISION_ERRORS.has(errorCode)) {
+        continue;
+      }
       failedDecisionIds.add(chosen.id);
       continue;
     }

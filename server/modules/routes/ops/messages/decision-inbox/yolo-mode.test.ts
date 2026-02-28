@@ -61,6 +61,19 @@ describe("buildYoloDecisionReplyPayload", () => {
     expect(payload).toEqual({ option_number: 1 });
   });
 
+  it("project_review_ready에 대표선택과 start가 함께 있으면 대표선택을 우선한다", () => {
+    const payload = buildYoloDecisionReplyPayload(
+      createItem({
+        kind: "project_review_ready",
+        options: [
+          { number: 1, action: "start_project_review", label: "Start" },
+          { number: 2, action: "approve_task_review:task-a", label: "A" },
+        ],
+      }),
+    );
+    expect(payload).toEqual({ option_number: 2 });
+  });
+
   it("review_round_pick에서 summary 권장 번호를 다중 선택으로 반영한다", () => {
     const payload = buildYoloDecisionReplyPayload(
       createItem({
@@ -160,5 +173,38 @@ describe("runYoloDecisionAutopilot", () => {
     expect(applied).toBe(3);
     expect(selected.size).toBe(2);
     expect(started).toBe(true);
+  });
+
+  it("일시적 409 오류(project_not_ready_for_review_meeting)는 같은 사이클에서 재시도한다", () => {
+    let attempts = 0;
+    let resolved = false;
+    const getDecisionInboxItems = (): DecisionInboxRouteItem[] =>
+      resolved
+        ? []
+        : [
+            createItem({
+              id: "project-review-ready:retry",
+              kind: "project_review_ready",
+              options: [{ number: 1, action: "start_project_review", label: "Start" }],
+            }),
+          ];
+
+    const applyDecisionReply = (): DecisionApplyResult => {
+      attempts += 1;
+      if (attempts < 3) {
+        return { status: 409, payload: { error: "project_not_ready_for_review_meeting" } };
+      }
+      resolved = true;
+      return { status: 200, payload: { ok: true, resolved: true } };
+    };
+
+    const applied = runYoloDecisionAutopilot({
+      getDecisionInboxItems,
+      applyDecisionReply,
+      maxSteps: 5,
+    });
+
+    expect(attempts).toBe(3);
+    expect(applied).toBe(1);
   });
 });
