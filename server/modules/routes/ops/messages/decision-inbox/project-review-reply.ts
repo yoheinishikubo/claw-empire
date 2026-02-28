@@ -1,6 +1,29 @@
 import { randomUUID } from "node:crypto";
 import type { ProjectReviewReplyInput, ProjectReviewTaskChoice } from "./types.ts";
 
+type ReviewStartBlockedTask = {
+  id: string;
+  title: string;
+  reason: string;
+  detail: string;
+};
+
+function classifyReviewHoldReason(message: string): string {
+  if (message.includes("video artifact gate blocked approval")) return "video_artifact_missing";
+  if (message.includes("unfinished subtasks")) return "unfinished_subtasks";
+  if (message.includes("collaboration children")) return "collaboration_children_pending";
+  return "review_gate_hold";
+}
+
+function buildVideoFinalRenderRequestDescription(taskTitle: string): string {
+  return [
+    "[VIDEO_FINAL_RENDER]",
+    `상위 업무: ${taskTitle}`,
+    "모든 문서/협업 산출물을 취합해 최종 소개 영상을 1회 렌더링하세요.",
+    "산출물 경로 규칙(project_department_final.mp4)을 지키고, 결과 파일 경로/용량 검증을 보고하세요.",
+  ].join("\n");
+}
+
 export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput): boolean {
   const { req, res, currentItem, selectedOption, optionNumber, deps } = input;
   if (currentItem.kind !== "project_review_ready") return false;
@@ -19,6 +42,7 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
     recordProjectReviewDecisionEvent,
     getProjectReviewTaskChoices,
     openSupplementRound,
+    processSubtaskDelegations,
     PROJECT_REVIEW_TASK_SELECTED_LOG_PREFIX,
   } = deps;
 
@@ -252,7 +276,7 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
     const reviewTasks = db
       .prepare(
         `
-        SELECT id, title
+        SELECT id, title, workflow_pack_key, assigned_agent_id, department_id
         FROM tasks
         WHERE project_id = ?
           AND status = 'review'
@@ -260,15 +284,124 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
         ORDER BY updated_at ASC
       `,
       )
-      .all(projectId) as Array<{ id: string; title: string }>;
+      .all(projectId) as Array<{
+      id: string;
+      title: string;
+      workflow_pack_key: string | null;
+      assigned_agent_id: string | null;
+      department_id: string | null;
+    }>;
 
+    const blockedTasks: ReviewStartBlockedTask[] = [];
+    const startedTaskIds: string[] = [];
     for (const task of reviewTasks) {
+      const beforeLog = db
+        .prepare("SELECT COALESCE(MAX(created_at), 0) AS max_created_at FROM task_logs WHERE task_id = ?")
+        .get(task.id) as { max_created_at?: number } | undefined;
+      const baselineLogTs = Number(beforeLog?.max_created_at ?? 0);
       appendTaskLog(task.id, "system", "Decision inbox: project-level review meeting approved by CEO");
       finishReview(task.id, task.title, {
         bypassProjectDecisionGate: true,
         trigger: "decision_inbox",
       });
+
+      const afterTask = db.prepare("SELECT status FROM tasks WHERE id = ?").get(task.id) as { status?: string } | undefined;
+      if (afterTask?.status !== "review") {
+        startedTaskIds.push(task.id);
+        continue;
+      }
+      const holdLog = db
+        .prepare(
+          `
+          SELECT message
+          FROM task_logs
+          WHERE task_id = ?
+            AND kind = 'system'
+            AND created_at > ?
+            AND message LIKE 'Review hold:%'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+        )
+        .get(task.id, baselineLogTs) as { message?: string | null } | undefined;
+      const holdMessage = String(holdLog?.message ?? "").trim();
+      if (!holdMessage) {
+        // Consensus meeting starts asynchronously; keep as started unless a hold signal is emitted.
+        startedTaskIds.push(task.id);
+        continue;
+      }
+      blockedTasks.push({
+        id: task.id,
+        title: task.title,
+        reason: classifyReviewHoldReason(holdMessage),
+        detail: holdMessage,
+      });
     }
+
+    if (blockedTasks.length > 0) {
+      for (const blocked of blockedTasks) {
+        if (blocked.reason !== "video_artifact_missing") continue;
+        const taskRow = reviewTasks.find((task) => task.id === blocked.id);
+        if (!taskRow || taskRow.workflow_pack_key !== "video_preprod") continue;
+        const existingActiveRenderSubtask = db
+          .prepare(
+            `
+            SELECT id
+            FROM subtasks
+            WHERE task_id = ?
+              AND title LIKE '[VIDEO_FINAL_RENDER]%'
+              AND status IN ('pending', 'in_progress', 'blocked')
+            ORDER BY created_at DESC
+            LIMIT 1
+          `,
+          )
+          .get(taskRow.id) as { id?: string } | undefined;
+        if (existingActiveRenderSubtask?.id) continue;
+
+        const subtaskId = randomUUID();
+        const createdAt = nowMs();
+        const renderTitle = "[VIDEO_FINAL_RENDER] 최종 영상 렌더링";
+        const renderDescription = buildVideoFinalRenderRequestDescription(taskRow.title);
+        db.prepare(
+          `
+            INSERT INTO subtasks (id, task_id, title, description, status, target_department_id, created_at)
+            VALUES (?, ?, ?, ?, 'pending', 'dev', ?)
+          `,
+        ).run(subtaskId, taskRow.id, renderTitle, renderDescription, createdAt);
+        appendTaskLog(taskRow.id, "system", "Decision inbox: auto-created final render subtask (target=dev)");
+        const insertedSubtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subtaskId);
+        broadcast("subtask_update", insertedSubtask);
+        processSubtaskDelegations?.(taskRow.id);
+      }
+
+      const blockedSummary = `팀장 회의 시작 보류 (${blockedTasks.length}건): ${blockedTasks.map((task) => task.title).join(", ")}`;
+      recordProjectReviewDecisionEvent({
+        project_id: projectId,
+        snapshot_hash: decisionSnapshotHash,
+        event_type: "start_review_meeting_blocked",
+        summary: blockedSummary,
+        selected_options_json: JSON.stringify([
+          {
+            number: optionNumber,
+            action: selectedAction,
+            label: selectedOption.label || "start_project_review",
+            task_count: reviewTasks.length,
+            blocked_count: blockedTasks.length,
+          },
+        ]),
+        note: blockedTasks.map((task) => `${task.title}: ${task.detail}`).join("\n"),
+      });
+      res.json({
+        ok: true,
+        resolved: false,
+        kind: "project_review_ready",
+        action: "start_project_review_blocked",
+        started_task_ids: startedTaskIds,
+        blocked_tasks: blockedTasks,
+      });
+      return true;
+    }
+
     recordProjectReviewDecisionEvent({
       project_id: projectId,
       snapshot_hash: decisionSnapshotHash,
@@ -289,7 +422,7 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
       resolved: true,
       kind: "project_review_ready",
       action: "start_project_review",
-      started_task_ids: reviewTasks.map((task) => task.id),
+      started_task_ids: startedTaskIds,
     });
     return true;
   }

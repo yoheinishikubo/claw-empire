@@ -305,7 +305,12 @@ export interface ProjectReportHistoryItem {
 export interface ProjectDecisionEventItem {
   id: number;
   snapshot_hash: string | null;
-  event_type: "planning_summary" | "representative_pick" | "followup_request" | "start_review_meeting";
+  event_type:
+    | "planning_summary"
+    | "representative_pick"
+    | "followup_request"
+    | "start_review_meeting"
+    | "start_review_meeting_blocked";
   summary: string;
   selected_options_json: string | null;
   note: string | null;

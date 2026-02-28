@@ -377,6 +377,28 @@ export function useAppActions({
             };
           }
           const replyResult = await api.replyDecisionInbox(item.id, optionNumber, payload);
+          if (replyResult.action === "start_project_review_blocked") {
+            const blockedLines = (replyResult.blocked_tasks ?? [])
+              .slice(0, 3)
+              .map((entry) => `- ${entry.title} (${entry.reason})`);
+            const blockedSummary =
+              blockedLines.length > 0
+                ? `\n\n${blockedLines.join("\n")}`
+                : pickLang(locale, {
+                    ko: "\n\n세부 사유는 태스크 로그를 확인해 주세요.",
+                    en: "\n\nCheck task logs for details.",
+                    ja: "\n\n詳細はタスクログを確認してください。",
+                    zh: "\n\n请查看任务日志了解详情。",
+                  });
+            window.alert(
+              pickLang(locale, {
+                ko: `팀장 회의 시작이 보류되었습니다. 필요한 게이트를 먼저 해소해 주세요.${blockedSummary}`,
+                en: `Team-lead meeting start is on hold. Resolve required gates first.${blockedSummary}`,
+                ja: `チームリーダー会議の開始は保留です。先に必要なゲートを解消してください。${blockedSummary}`,
+                zh: `组长评审会议暂缓启动。请先解决必要门禁。${blockedSummary}`,
+              }),
+            );
+          }
           if (replyResult.resolved) {
             setDecisionInboxItems((prev) => prev.filter((entry) => entry.id !== item.id));
             scheduleLiveSync(40);
