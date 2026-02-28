@@ -11,6 +11,7 @@ import { safeSecretEquals } from "../../../../security/auth.ts";
 import type { RuntimeContext } from "../../../../types/runtime-context.ts";
 import type { AgentRow, DelegationOptions, StoredMessage } from "../../shared/types.ts";
 import type { DecisionReplyBridgeInput, DecisionReplyBridgeResult } from "./decision-inbox-routes.ts";
+import { resolveDirectiveLeaderCandidateScope } from "./directive-leader-scope.ts";
 
 type DirectiveAndInboxRouteCtx = Pick<RuntimeContext, "app" | "db" | "broadcast">;
 
@@ -127,6 +128,19 @@ export function registerDirectiveAndInboxRoutes(
     detectMentions,
     tryHandleInboxDecisionReply,
   } = deps;
+
+  const findDirectiveLeader = (
+    departmentId: string,
+    projectId: string | null,
+    scopedCandidateAgentIds: string[] | null,
+  ): AgentRow | null => {
+    if (!departmentId) return null;
+    const scopedLeader = findTeamLeader(departmentId, scopedCandidateAgentIds);
+    if (scopedLeader) return scopedLeader;
+    if (Array.isArray(scopedCandidateAgentIds)) return null;
+    if (projectId) return null;
+    return findTeamLeader(departmentId);
+  };
 
   app.post("/api/directives", async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -281,10 +295,11 @@ export function registerDirectiveAndInboxRoutes(
         ? `${directiveSessionRoute.channel}:${directiveSessionRoute.sessionId}`
         : null,
     };
+    const directiveLeaderScope = resolveDirectiveLeaderCandidateScope(db as any, explicitProjectId ?? null);
 
     if (shouldDelegate) {
       // 4. Auto-delegate to planning team leader
-      const planningLeader = findTeamLeader("planning");
+      const planningLeader = findDirectiveLeader("planning", explicitProjectId ?? null, directiveLeaderScope);
       if (planningLeader) {
         const delegationDelay = 3000 + Math.random() * 2000;
         setTimeout(() => {
@@ -302,7 +317,7 @@ export function registerDirectiveAndInboxRoutes(
           for (const deptId of mentions.deptIds) {
             if (processedDepts.has(deptId)) continue;
             processedDepts.add(deptId);
-            const leader = findTeamLeader(deptId);
+            const leader = findDirectiveLeader(deptId, explicitProjectId ?? null, directiveLeaderScope);
             if (leader) {
               handleTaskDelegation(leader, content, "", delegationOptions);
             }
@@ -312,7 +327,11 @@ export function registerDirectiveAndInboxRoutes(
             const mentioned = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId) as AgentRow | undefined;
             if (mentioned?.department_id && !processedDepts.has(mentioned.department_id)) {
               processedDepts.add(mentioned.department_id);
-              const leader = findTeamLeader(mentioned.department_id);
+              const leader = findDirectiveLeader(
+                mentioned.department_id,
+                explicitProjectId ?? null,
+                directiveLeaderScope,
+              );
               if (leader) {
                 handleTaskDelegation(leader, content, "", delegationOptions);
               }
@@ -684,10 +703,14 @@ export function registerDirectiveAndInboxRoutes(
         ? `${directiveSessionRoute.channel}:${directiveSessionRoute.sessionId}`
         : null,
     };
+    const directiveLeaderScope =
+      shouldDelegateDirective || isDirective
+        ? resolveDirectiveLeaderCandidateScope(db as any, inboxProjectId ?? null)
+        : null;
 
     if (shouldDelegateDirective) {
       // Auto-delegate to planning team leader
-      const planningLeader = findTeamLeader("planning");
+      const planningLeader = findDirectiveLeader("planning", inboxProjectId ?? null, directiveLeaderScope);
       if (planningLeader) {
         const delegationDelay = 3000 + Math.random() * 2000;
         setTimeout(() => {
@@ -707,7 +730,9 @@ export function registerDirectiveAndInboxRoutes(
         for (const deptId of mentions.deptIds) {
           if (processedDepts.has(deptId)) continue;
           processedDepts.add(deptId);
-          const leader = findTeamLeader(deptId);
+          const leader = isDirective
+            ? findDirectiveLeader(deptId, inboxProjectId ?? null, directiveLeaderScope)
+            : findTeamLeader(deptId);
           if (leader) {
             handleTaskDelegation(leader, content, "", isDirective ? directiveDelegationOptions : {});
           }
@@ -717,7 +742,10 @@ export function registerDirectiveAndInboxRoutes(
           const mentioned = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId) as AgentRow | undefined;
           if (mentioned?.department_id && !processedDepts.has(mentioned.department_id)) {
             processedDepts.add(mentioned.department_id);
-            const leader = findTeamLeader(mentioned.department_id);
+            const leader =
+              isDirective && mentioned.department_id
+                ? findDirectiveLeader(mentioned.department_id, inboxProjectId ?? null, directiveLeaderScope)
+                : findTeamLeader(mentioned.department_id);
             if (leader) {
               handleTaskDelegation(leader, content, "", isDirective ? directiveDelegationOptions : {});
             }

@@ -8,6 +8,7 @@ const TELEGRAM_RECEIVER_OFFSET_KEY = "telegramReceiverOffset";
 const TELEGRAM_ACTIVE_DELAY_MS = 1_500;
 const TELEGRAM_IDLE_DELAY_MS = 5_000;
 const TELEGRAM_POLL_TIMEOUT_SECONDS = 20;
+const TELEGRAM_CONFLICT_BACKOFF_MS = 90_000;
 
 type PersistedSession = {
   targetId?: unknown;
@@ -292,6 +293,16 @@ function buildAuthor(message: TelegramUpdateMessage): string {
   return username ? `${display}(@${username})` : display;
 }
 
+function isTelegramConflictError(message: string): boolean {
+  const normalized = normalizeText(message).toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("terminated by other getupdates request") ||
+    normalized.includes("conflict") ||
+    normalized.includes("409")
+  );
+}
+
 async function forwardTelegramUpdate(params: {
   update: TelegramUpdate;
   source: string;
@@ -471,6 +482,8 @@ export function startTelegramReceiver(options: StartTelegramReceiverOptions): Re
   let stopped = false;
   let busy = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let conflictPauseUntil = 0;
+  let conflictWarnedInPause = false;
 
   const schedule = (delayMs: number) => {
     if (stopped) return;
@@ -486,12 +499,38 @@ export function startTelegramReceiver(options: StartTelegramReceiverOptions): Re
 
   const tick = async () => {
     if (stopped || busy) return;
+    const now = Date.now();
+    if (conflictPauseUntil > 0 && now < conflictPauseUntil) {
+      status.enabled = false;
+      schedule(Math.min(TELEGRAM_IDLE_DELAY_MS, Math.max(500, conflictPauseUntil - now)));
+      return;
+    }
+    if (conflictPauseUntil > 0 && now >= conflictPauseUntil) {
+      conflictPauseUntil = 0;
+      conflictWarnedInPause = false;
+    }
     busy = true;
     try {
       await pollTelegramReceiverOnce({ db, status, fetchImpl });
+      conflictWarnedInPause = false;
     } catch (err) {
       status.lastError = err instanceof Error ? err.message : String(err);
-      console.warn(`[Claw-Empire] telegram receiver error: ${status.lastError}`);
+      if (isTelegramConflictError(status.lastError)) {
+        conflictPauseUntil = Date.now() + TELEGRAM_CONFLICT_BACKOFF_MS;
+        status.enabled = false;
+        if (!conflictWarnedInPause) {
+          console.warn(`[Claw-Empire] telegram receiver paused: ${status.lastError}`);
+          console.warn(
+            `[Claw-Empire] telegram receiver hint: another bot instance is polling this token. retry in ${Math.round(
+              TELEGRAM_CONFLICT_BACKOFF_MS / 1000,
+            )}s`,
+          );
+          conflictWarnedInPause = true;
+        }
+      } else {
+        conflictWarnedInPause = false;
+        console.warn(`[Claw-Empire] telegram receiver error: ${status.lastError}`);
+      }
     } finally {
       busy = false;
       schedule(status.enabled ? TELEGRAM_ACTIVE_DELAY_MS : TELEGRAM_IDLE_DELAY_MS);

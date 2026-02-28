@@ -6,6 +6,8 @@ import type { Lang } from "../../../types/lang.ts";
 import type { L10n } from "./language-policy.ts";
 import type { RuntimeContext } from "../../../types/runtime-context.ts";
 import { resolveWorkflowPackKeyForTask } from "../../workflow/packs/task-pack-resolver.ts";
+import { isWorkflowPackKey } from "../../workflow/packs/definitions.ts";
+import { resolveConstrainedAgentScopeForTask } from "../core/tasks/execution-run-auto-assign.ts";
 import {
   buildDelegateMessage,
   buildLeaderAckMessage,
@@ -83,6 +85,15 @@ interface TaskDelegationDeps {
 }
 
 export function createTaskDelegationHandler(deps: TaskDelegationDeps) {
+  function inferPackKeyFromAgentId(agentId: string | null | undefined): string | null {
+    const normalized = String(agentId ?? "").trim();
+    if (!normalized) return null;
+    const matched = normalized.match(/^([a-z0-9_]+)-seed-\d+$/i);
+    if (!matched?.[1]) return null;
+    const candidate = matched[1].toLowerCase();
+    return isWorkflowPackKey(candidate) ? candidate : null;
+  }
+
   const {
     db,
     nowMs,
@@ -127,31 +138,24 @@ export function createTaskDelegationHandler(deps: TaskDelegationDeps) {
     // --- Step 1: Team leader acknowledges (1~2 sec) ---
     const ackDelay = 1000 + Math.random() * 1000;
     setTimeout(() => {
-      // 프로젝트 manual 모드 시 지정된 직원만 후보로 사용
-      let projectCandidateAgentIds: string[] | null = null;
-      if (options.projectId) {
-        const proj = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(options.projectId) as
-          | { assignment_mode?: string }
-          | undefined;
-        if (proj?.assignment_mode === "manual") {
-          projectCandidateAgentIds = (
-            db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?").all(options.projectId) as Array<{
-              agent_id: string;
-            }>
-          ).map((r) => r.agent_id);
-        }
-      }
+      const selectedProject = resolveProjectFromOptions(options);
+      const explicitPackKey = inferPackKeyFromAgentId(teamLeader.id);
+      const workflowPackKey = resolveWorkflowPackKeyForTask({
+        db: db as any,
+        explicitPackKey,
+        projectId: selectedProject.id,
+      });
+      const projectCandidateAgentIds = resolveConstrainedAgentScopeForTask(db as any, {
+        workflow_pack_key: workflowPackKey,
+        department_id: leaderDeptId,
+        project_id: selectedProject.id,
+      });
       const subordinate = findBestSubordinate(leaderDeptId, teamLeader.id, projectCandidateAgentIds);
       const manualFallbackToLeader = Array.isArray(projectCandidateAgentIds) && subordinate === null;
 
       const taskId = randomUUID();
       const t = nowMs();
       const taskTitle = ceoMessage.length > 60 ? ceoMessage.slice(0, 57) + "..." : ceoMessage;
-      const selectedProject = resolveProjectFromOptions(options);
-      const workflowPackKey = resolveWorkflowPackKeyForTask({
-        db: db as any,
-        projectId: selectedProject.id,
-      });
       const projectContextHint = normalizeTextField(options.projectContext) || selectedProject.coreGoal;
       const roundGoal = buildRoundGoal(selectedProject.coreGoal, ceoMessage);
       const { projectPath: detectedPathRaw, source: projectPathSource } = resolveDirectiveProjectPath(ceoMessage, {
@@ -232,7 +236,8 @@ export function createTaskDelegationHandler(deps: TaskDelegationDeps) {
       broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
 
       const mentionedDepts = [...new Set(detectTargetDepartments(ceoMessage).filter((d) => d !== leaderDeptId))];
-      const isPlanningLead = leaderDeptId === "planning";
+      const isPlanningLead =
+        leaderDeptId === "planning" || Number((teamLeader as unknown as { acts_as_planning_leader?: unknown }).acts_as_planning_leader ?? 0) === 1;
 
       if (isPlanningLead) {
         const relatedLabel =

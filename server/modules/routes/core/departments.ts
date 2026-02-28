@@ -10,12 +10,20 @@ export function registerDepartmentRoutes(deps: DepartmentRouteDeps): void {
 
   const PROTECTED_DEPARTMENT_IDS = new Set(["planning", "dev", "design", "qa", "devsecops", "operations"]);
 
-  app.get("/api/departments", (_req, res) => {
+  function parseIncludeSeedParam(input: unknown): boolean {
+    if (Array.isArray(input)) input = input[0];
+    const raw = String(input ?? "").trim().toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes";
+  }
+
+  app.get("/api/departments", (req, res) => {
+    const includeSeed = parseIncludeSeedParam(req.query?.include_seed);
+    const seedFilterClause = includeSeed ? "" : " AND a.id NOT LIKE '%-seed-%'";
     const departments = db
       .prepare(
         `
     SELECT d.*,
-      (SELECT COUNT(*) FROM agents a WHERE a.department_id = d.id) AS agent_count
+      (SELECT COUNT(*) FROM agents a WHERE a.department_id = d.id${seedFilterClause}) AS agent_count
     FROM departments d
     ORDER BY d.sort_order ASC
   `,
@@ -26,10 +34,14 @@ export function registerDepartmentRoutes(deps: DepartmentRouteDeps): void {
 
   app.get("/api/departments/:id", (req, res) => {
     const id = String(req.params.id);
+    const includeSeed = parseIncludeSeedParam(req.query?.include_seed);
+    const seedFilterClause = includeSeed ? "" : " AND id NOT LIKE '%-seed-%'";
     const department = db.prepare("SELECT * FROM departments WHERE id = ?").get(id);
     if (!department) return res.status(404).json({ error: "not_found" });
 
-    const agents = db.prepare("SELECT * FROM agents WHERE department_id = ? ORDER BY role, name").all(id);
+    const agents = db
+      .prepare(`SELECT * FROM agents WHERE department_id = ?${seedFilterClause} ORDER BY role, name`)
+      .all(id);
     res.json({ department, agents });
   });
 

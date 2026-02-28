@@ -32,7 +32,7 @@ interface SubtaskDelegationDeps {
   ) => void;
   appendTaskLog: (taskId: string, source: string, message: string) => void;
   finishReview: (taskId: string, taskTitle: string) => void;
-  findTeamLeader: (deptId: string | null) => AgentRow | null;
+  findTeamLeader: (deptId: string | null, candidateAgentIds?: string[] | null) => AgentRow | null;
   findBestSubordinate: (deptId: string, excludeId: string, candidateAgentIds?: string[] | null) => AgentRow | null;
   nowMs: () => number;
   broadcast: (event: string, payload: unknown) => void;

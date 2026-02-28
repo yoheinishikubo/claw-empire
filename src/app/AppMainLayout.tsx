@@ -238,6 +238,7 @@ export default function AppMainLayout({
       name_zh: draft.name_zh,
       department_id: draft.department_id,
       role: draft.role,
+      acts_as_planning_leader: draft.acts_as_planning_leader,
       cli_provider: fallbackProvider,
       avatar_emoji: draft.avatar_emoji,
       sprite_number: draft.sprite_number,

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Lang } from "../../../types/lang.ts";
 import { resolveWorkflowPackKeyForTask } from "../../workflow/packs/task-pack-resolver.ts";
+import { isWorkflowPackKey } from "../../workflow/packs/definitions.ts";
 import type { DelegationOptions } from "./project-resolution.ts";
 import type { AgentRow, DirectChatDeps } from "./direct-chat-types.ts";
 
@@ -38,14 +39,25 @@ type TaskFlowDeps = Pick<
 };
 
 export function createDirectTaskFlow(deps: TaskFlowDeps) {
+  function inferPackKeyFromAgentId(agentId: string | null | undefined): string | null {
+    const normalized = String(agentId ?? "").trim();
+    if (!normalized) return null;
+    const matched = normalized.match(/^([a-z0-9_]+)-seed-\d+$/i);
+    if (!matched?.[1]) return null;
+    const candidate = matched[1].toLowerCase();
+    return isWorkflowPackKey(candidate) ? candidate : null;
+  }
+
   function createDirectAgentTaskAndRun(agent: AgentRow, ceoMessage: string, options: DelegationOptions = {}): void {
     const lang = deps.resolveLang(ceoMessage);
     const taskId = randomUUID();
     const t = deps.nowMs();
     const taskTitle = ceoMessage.length > 60 ? `${ceoMessage.slice(0, 57)}...` : ceoMessage;
     const selectedProject = deps.resolveProjectFromOptions(options);
+    const explicitPackKey = inferPackKeyFromAgentId(agent.id);
     const workflowPackKey = resolveWorkflowPackKeyForTask({
       db: deps.db as any,
+      explicitPackKey,
       projectId: selectedProject.id,
     });
     const projectCoreGoal = selectedProject.coreGoal || "";

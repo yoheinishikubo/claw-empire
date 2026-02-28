@@ -161,6 +161,23 @@ export function applyDefaultSeeds(db: DbLike): void {
   // Migrate: add sort_order column & set correct ordering for existing DBs
   {
     try {
+      db.exec("ALTER TABLE agents ADD COLUMN acts_as_planning_leader INTEGER NOT NULL DEFAULT 0");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec(`
+        UPDATE agents
+        SET acts_as_planning_leader = CASE
+          WHEN role = 'team_leader' AND department_id = 'planning' THEN 1
+          ELSE COALESCE(acts_as_planning_leader, 0)
+        END
+      `);
+    } catch {
+      /* best effort */
+    }
+
+    try {
       db.exec("ALTER TABLE departments ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 99");
     } catch {
       /* already exists */

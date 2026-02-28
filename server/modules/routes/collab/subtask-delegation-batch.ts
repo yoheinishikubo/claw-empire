@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Lang } from "../../../types/lang.ts";
 import { resolveWorkflowPackKeyForTask } from "../../workflow/packs/task-pack-resolver.ts";
+import { resolveConstrainedAgentScopeForTask } from "../core/tasks/execution-run-auto-assign.ts";
 import type { AgentRow } from "./direct-chat.ts";
 import type { L10n } from "./language-policy.ts";
 import type { SubtaskRow } from "./subtask-summary.ts";
@@ -34,7 +35,7 @@ interface BatchDeps {
   resolveLang: (text?: string, fallback?: Lang) => Lang;
   getDeptName: (deptId: string) => string;
   getAgentDisplayName: (agent: AgentRow, lang: string) => string;
-  findTeamLeader: (deptId: string | null) => AgentRow | null;
+  findTeamLeader: (deptId: string | null, candidateAgentIds?: string[] | null) => AgentRow | null;
   findBestSubordinate: (deptId: string, excludeId: string, candidateAgentIds?: string[] | null) => AgentRow | null;
   nowMs: () => number;
   broadcast: (event: string, payload: unknown) => void;
@@ -148,20 +149,12 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
     buildSubtaskDelegationPrompt,
   } = deps;
 
-  function getProjectCandidateAgentIds(projectId: string | null | undefined): string[] | null {
-    const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
-    if (!normalizedProjectId) return null;
-
-    const project = db.prepare("SELECT assignment_mode FROM projects WHERE id = ?").get(normalizedProjectId) as
-      | { assignment_mode?: string }
-      | undefined;
-    if (project?.assignment_mode !== "manual") return null;
-
-    return (
-      db.prepare("SELECT agent_id FROM project_agents WHERE project_id = ?").all(normalizedProjectId) as Array<{
-        agent_id: string;
-      }>
-    ).map((row) => row.agent_id);
+  function getConstrainedAgentIds(parentTask: ParentTaskRow, targetDeptId: string | null): string[] | null {
+    return resolveConstrainedAgentScopeForTask(db as any, {
+      workflow_pack_key: parentTask.workflow_pack_key ?? null,
+      department_id: targetDeptId ?? parentTask.department_id ?? null,
+      project_id: parentTask.project_id,
+    });
   }
 
   function pickManualPoolAgent(
@@ -212,10 +205,10 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
     const subtaskIds = subtasks.map((st) => st.id);
     const firstTitle = subtasks[0].title;
     const batchTitle = subtasks.length > 1 ? `${firstTitle} +${subtasks.length - 1}` : firstTitle;
-    const projectCandidateAgentIds = getProjectCandidateAgentIds(parentTask.project_id);
+    const projectCandidateAgentIds = getConstrainedAgentIds(parentTask, targetDeptId);
     const manualScoped = Array.isArray(projectCandidateAgentIds);
 
-    const crossLeader = findTeamLeader(targetDeptId);
+    const crossLeader = findTeamLeader(targetDeptId, projectCandidateAgentIds);
     if (!crossLeader) {
       const doneAt = nowMs();
       for (const sid of subtaskIds) {
@@ -230,7 +223,7 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
       return;
     }
 
-    const originLeader = findTeamLeader(parentTask.department_id);
+    const originLeader = findTeamLeader(parentTask.department_id, projectCandidateAgentIds);
     const crossSub = manualScoped
       ? findBestSubordinate(targetDeptId, crossLeader.id, projectCandidateAgentIds)
       : findBestSubordinate(targetDeptId, crossLeader.id);

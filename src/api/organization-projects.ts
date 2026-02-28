@@ -80,7 +80,7 @@ export async function getMeetingPresence(): Promise<MeetingPresence[]> {
 
 export async function updateAgent(
   id: string,
-  data: Partial<
+  data: (Partial<
     Pick<
       Agent,
       | "name"
@@ -91,6 +91,7 @@ export async function updateAgent(
       | "current_task_id"
       | "department_id"
       | "role"
+      | "acts_as_planning_leader"
       | "cli_provider"
       | "oauth_account_id"
       | "api_provider_id"
@@ -101,7 +102,10 @@ export async function updateAgent(
       | "sprite_number"
       | "personality"
     >
-  >,
+  > & {
+      workflow_pack_key?: WorkflowPackKey;
+      force_planning_leader_override?: boolean;
+    }),
 ): Promise<void> {
   await patch(`/api/agents/${id}`, data);
 }

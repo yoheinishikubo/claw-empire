@@ -13,6 +13,7 @@ type DeptPreset = {
 type StaffPreset = {
   nonLeaderDeptCycle: string[];
   roleTitles?: Partial<Record<AgentRole, Localized>>;
+  planningLeadDeptIds?: string[];
 };
 
 type SeedProfile = {
@@ -43,6 +44,7 @@ export type OfficePackStarterAgentDraft = {
   name_zh: string;
   department_id: string | null;
   role: AgentRole;
+  acts_as_planning_leader: number;
   avatar_emoji: string;
   sprite_number: number;
   personality: string | null;
@@ -592,6 +594,8 @@ export function buildOfficePackStarterAgents(params: {
 
   const nonLeaderCycle =
     (preset.staff?.nonLeaderDeptCycle ?? []).filter((deptId) => departmentById.has(deptId)) || [];
+  const planningLeadDeptIds =
+    (preset.staff?.planningLeadDeptIds ?? ["planning"]).filter((deptId) => departmentById.has(deptId)) || [];
   const workerCycle = nonLeaderCycle.length > 0 ? nonLeaderCycle : baseDeptOrder;
   const rolePool: AgentRole[] = ["senior", "junior", "intern"];
   const desiredCount = Math.max(baseDeptOrder.length + 2, params.targetCount ?? Math.min(10, baseDeptOrder.length * 2));
@@ -638,6 +642,7 @@ export function buildOfficePackStarterAgents(params: {
       ...localizedNames,
       department_id: deptId,
       role,
+      acts_as_planning_leader: role === "team_leader" && planningLeadDeptIds.includes(deptId) ? 1 : 0,
       avatar_emoji: resolveAvatar(deptId, nextOrder),
       sprite_number: resolveSeedSpriteNumber({
         packKey,

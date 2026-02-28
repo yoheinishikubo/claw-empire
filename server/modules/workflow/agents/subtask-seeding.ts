@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Lang } from "../../../types/lang.ts";
+import { resolveConstrainedAgentScopeForTask } from "../../routes/core/tasks/execution-run-auto-assign.ts";
 
 type SubtaskSeedingDeps = {
   db: any;
@@ -11,7 +12,7 @@ type SubtaskSeedingDeps = {
     ownerDeptId: string | null,
     phase: "planned" | "review",
   ) => Promise<void>;
-  findTeamLeader: (departmentId: string) => any;
+  findTeamLeader: (departmentId: string, candidateAgentIds?: string[] | null) => any;
   getDeptName: (departmentId: string) => string;
   getPreferredLanguage: () => Lang;
   resolveLang: (text: string) => Lang;
@@ -97,19 +98,28 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
     if (existing.cnt > 0) return;
 
     const task = db
-      .prepare("SELECT title, description, assigned_agent_id, department_id FROM tasks WHERE id = ?")
+      .prepare(
+        "SELECT title, description, assigned_agent_id, department_id, project_id, workflow_pack_key FROM tasks WHERE id = ?",
+      )
       .get(taskId) as
       | {
           title: string;
           description: string | null;
           assigned_agent_id: string | null;
           department_id: string | null;
+          project_id: string | null;
+          workflow_pack_key: string | null;
         }
       | undefined;
     if (!task) return;
 
     const baseDeptId = ownerDeptId ?? task.department_id;
     const lang = resolveLang(task.description ?? task.title);
+    const constrainedAgentIds = resolveConstrainedAgentScopeForTask(db as any, {
+      project_id: task.project_id,
+      workflow_pack_key: task.workflow_pack_key,
+      department_id: baseDeptId,
+    });
 
     const now = nowMs();
     const baseAssignee = task.assigned_agent_id;
@@ -168,7 +178,7 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
       const clippedTitle = titleCore.length > 54 ? `${titleCore.slice(0, 53).trimEnd()}…` : titleCore;
       const targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
       const targetDeptName = targetDeptId ? getDeptName(targetDeptId) : "";
-      const targetLeader = targetDeptId ? findTeamLeader(targetDeptId) : null;
+      const targetLeader = targetDeptId ? findTeamLeader(targetDeptId, constrainedAgentIds) : null;
       if (targetDeptId && targetDeptId !== baseDeptId) {
         noteDetectedDeptSet.add(targetDeptId);
       }
@@ -212,7 +222,7 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
     const relatedDepts = [...noteDetectedDeptSet];
     for (const deptId of relatedDepts) {
       const deptName = getDeptName(deptId);
-      const crossLeader = findTeamLeader(deptId);
+      const crossLeader = findTeamLeader(deptId, constrainedAgentIds);
       items.push({
         title: pickL(
           l(
@@ -326,13 +336,17 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
     revisionNotes: string[] = [],
   ): number {
     const task = db
-      .prepare("SELECT title, description, assigned_agent_id, department_id FROM tasks WHERE id = ?")
+      .prepare(
+        "SELECT title, description, assigned_agent_id, department_id, project_id, workflow_pack_key FROM tasks WHERE id = ?",
+      )
       .get(taskId) as
       | {
           title: string;
           description: string | null;
           assigned_agent_id: string | null;
           department_id: string | null;
+          project_id: string | null;
+          workflow_pack_key: string | null;
         }
       | undefined;
     if (!task) return 0;
@@ -340,6 +354,11 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
     const baseDeptId = ownerDeptId ?? task.department_id;
     const baseAssignee = task.assigned_agent_id;
     const lang = resolveLang(task.description ?? task.title);
+    const constrainedAgentIds = resolveConstrainedAgentScopeForTask(db as any, {
+      project_id: task.project_id,
+      workflow_pack_key: task.workflow_pack_key,
+      department_id: baseDeptId,
+    });
     const now = nowMs();
     const uniqueNotes: string[] = [];
     const seen = new Set<string>();
@@ -370,7 +389,7 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
       const clippedTitle = titleCore.length > 54 ? `${titleCore.slice(0, 53).trimEnd()}…` : titleCore;
       const targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
       const targetDeptName = targetDeptId ? getDeptName(targetDeptId) : "";
-      const targetLeader = targetDeptId ? findTeamLeader(targetDeptId) : null;
+      const targetLeader = targetDeptId ? findTeamLeader(targetDeptId, constrainedAgentIds) : null;
 
       items.push({
         title: pickL(

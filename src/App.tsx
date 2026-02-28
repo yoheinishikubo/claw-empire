@@ -250,7 +250,17 @@ export default function App() {
       onOpenActiveMeetingMinutes={(taskId) => setTaskPanel({ taskId, tab: "minutes" })}
       onSelectAgent={setSelectedAgent}
       onSelectDepartment={(department) => {
-        const leader = agents.find((agent) => agent.department_id === department.id && agent.role === "team_leader");
+        const activePack = settings.officeWorkflowPack ?? "development";
+        const packProfileAgents =
+          activePack !== "development" ? settings.officePackProfiles?.[activePack]?.agents ?? [] : [];
+        const candidateAgents = activePack === "development" || packProfileAgents.length === 0 ? agents : packProfileAgents;
+        const leader =
+          candidateAgents.find((agent) => agent.department_id === department.id && agent.role === "team_leader") ??
+          (department.id === "planning"
+            ? candidateAgents.find(
+                (agent) => agent.role === "team_leader" && Number(agent.acts_as_planning_leader ?? 0) === 1,
+              )
+            : undefined);
         if (leader) actions.handleOpenChat(leader);
       }}
       onCreateTask={actions.handleCreateTask}
@@ -306,6 +316,7 @@ export default function App() {
         onReplyDecisionOption={actions.handleReplyDecisionOption}
         onOpenDecisionChat={actions.handleOpenDecisionChat}
         selectedAgent={selectedAgent}
+        activeOfficeWorkflowPack={settings.officeWorkflowPack ?? "development"}
         departments={departments}
         tasks={tasks}
         subAgents={subAgents}
@@ -324,13 +335,25 @@ export default function App() {
           setTaskPanel({ taskId, tab: "terminal" });
         }}
         onAgentUpdated={() => {
-          api
-            .getAgents()
-            .then((nextAgents) => {
+          Promise.all([api.getAgents(), api.getSettings()])
+            .then(([nextAgents, nextSettingsRaw]) => {
+              const nextSettings = mergeSettingsWithDefaults(nextSettingsRaw);
               setAgents(nextAgents);
-              if (selectedAgent) {
-                const updated = nextAgents.find((agent) => agent.id === selectedAgent.id);
-                if (updated) setSelectedAgent(updated);
+              setSettings(nextSettings);
+
+              if (!selectedAgent) return;
+              const fromAgents = nextAgents.find((agent) => agent.id === selectedAgent.id);
+              if (fromAgents) {
+                setSelectedAgent(fromAgents);
+                return;
+              }
+
+              const activePack = nextSettings.officeWorkflowPack ?? "development";
+              const fromPackProfile = nextSettings.officePackProfiles?.[activePack]?.agents?.find(
+                (agent) => agent.id === selectedAgent.id,
+              );
+              if (fromPackProfile) {
+                setSelectedAgent(fromPackProfile);
               }
             })
             .catch(console.error);

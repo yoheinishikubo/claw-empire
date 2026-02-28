@@ -33,6 +33,7 @@ export interface Agent {
   department_id: string | null;
   department?: Department;
   role: AgentRole;
+  acts_as_planning_leader?: number | null;
   cli_provider: CliProvider;
   oauth_account_id?: string | null;
   api_provider_id?: string | null;
@@ -191,6 +192,8 @@ export interface Message {
   sender_type: SenderType;
   sender_id: string | null;
   sender_agent?: Agent;
+  sender_name?: string | null;
+  sender_avatar?: string | null;
   receiver_type: ReceiverType;
   receiver_id: string | null;
   content: string;

@@ -3,8 +3,12 @@ import {
   decryptMessengerChannelsForClient,
   encryptMessengerChannelsForStorage,
 } from "../../../messenger/token-crypto.ts";
+import { syncOfficePackAgentsForPack } from "../collab/office-pack-agent-hydration.ts";
 
 const MESSENGER_SETTINGS_KEY = "messengerChannels";
+const OFFICE_PACK_PROFILES_KEY = "officePackProfiles";
+const OFFICE_PACK_SEED_INIT_KEY = "officePackSeedAgentsInitialized";
+const OFFICE_PACK_HYDRATED_PACKS_KEY = "officePackHydratedPacks";
 
 function safeJsonParse(raw: string): unknown {
   try {
@@ -15,7 +19,89 @@ function safeJsonParse(raw: string): unknown {
 }
 
 export function registerOpsSettingsStatsRoutes(ctx: RuntimeContext): void {
-  const { app, db } = ctx;
+  const { app, db, nowMs } = ctx;
+
+  const readBooleanLikeSetting = (key: string): boolean => {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ? LIMIT 1").get(key) as
+      | { value?: unknown }
+      | undefined;
+    if (!row) return false;
+    const raw = String(row.value ?? "").trim().toLowerCase();
+    if (!raw) return false;
+    if (raw === "true" || raw === "1") return true;
+    try {
+      const parsed = JSON.parse(String(row.value));
+      return parsed === true || parsed === 1;
+    } catch {
+      return false;
+    }
+  };
+
+  const markSeedInitDone = (): void => {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'").run(
+      OFFICE_PACK_SEED_INIT_KEY,
+    );
+  };
+
+  const maybeRunOfficePackSeedInit = (): void => {
+    if (readBooleanLikeSetting(OFFICE_PACK_SEED_INIT_KEY)) return;
+
+    // Do not bulk-insert office-pack seed agents into global agents table.
+    // Pack agents are loaded from settings profiles and hydrated on-demand only.
+    markSeedInitDone();
+  };
+
+  const normalizePackKey = (value: unknown): string | null => {
+    if (typeof value === "string") {
+      const trimmed = value.trim().replace(/^["']|["']$/g, "");
+      return trimmed.length > 0 ? trimmed : null;
+    }
+    return null;
+  };
+
+  const readHydratedPackSet = (): Set<string> => {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ? LIMIT 1").get(OFFICE_PACK_HYDRATED_PACKS_KEY) as
+      | { value?: unknown }
+      | undefined;
+    if (!row) return new Set<string>();
+    const parsed = safeJsonParse(String(row.value ?? ""));
+    if (!Array.isArray(parsed)) return new Set<string>();
+    return new Set(parsed.map((entry) => normalizePackKey(entry)).filter((entry): entry is string => !!entry));
+  };
+
+  const saveHydratedPackSet = (packSet: Set<string>): void => {
+    const serialized = JSON.stringify([...packSet].sort());
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(OFFICE_PACK_HYDRATED_PACKS_KEY, serialized);
+  };
+
+  const maybeHydratePackOnFirstSelection = (selectedPackRaw: unknown, profilesOverride?: unknown): void => {
+    const selectedPack = normalizePackKey(selectedPackRaw);
+    if (!selectedPack || selectedPack === "development") return;
+
+    const hydratedPacks = readHydratedPackSet();
+    if (hydratedPacks.has(selectedPack)) return;
+
+    const profilesValue =
+      profilesOverride ??
+      (db.prepare("SELECT value FROM settings WHERE key = ? LIMIT 1").get(OFFICE_PACK_PROFILES_KEY) as
+        | { value?: unknown }
+        | undefined)?.value;
+    if (profilesValue === undefined) return;
+
+    const result = syncOfficePackAgentsForPack(db, profilesValue, selectedPack, nowMs);
+    if (result.departmentsSynced > 0 || result.agentsSynced > 0) {
+      hydratedPacks.add(selectedPack);
+      saveHydratedPackSet(hydratedPacks);
+    }
+  };
+
+  try {
+    maybeRunOfficePackSeedInit();
+  } catch {
+    // best-effort sync only
+  }
 
   app.get("/api/settings", (_req, res) => {
     const rows = db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
@@ -33,6 +119,8 @@ export function registerOpsSettingsStatsRoutes(ctx: RuntimeContext): void {
 
   app.put("/api/settings", (req, res) => {
     const body = req.body ?? {};
+    const officePackProfilesInPayload = (body as Record<string, unknown>)[OFFICE_PACK_PROFILES_KEY];
+    const selectedOfficePackInPayload = (body as Record<string, unknown>)["officeWorkflowPack"];
 
     const upsert = db.prepare(
       "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -47,7 +135,13 @@ export function registerOpsSettingsStatsRoutes(ctx: RuntimeContext): void {
           continue;
         }
 
+        if (key === OFFICE_PACK_PROFILES_KEY && !readBooleanLikeSetting(OFFICE_PACK_SEED_INIT_KEY)) {
+          markSeedInitDone();
+        }
         upsert.run(key, typeof value === "string" ? value : JSON.stringify(value));
+      }
+      if (selectedOfficePackInPayload !== undefined) {
+        maybeHydratePackOnFirstSelection(selectedOfficePackInPayload, officePackProfilesInPayload);
       }
     } catch (err: any) {
       const detail = err?.message || String(err);

@@ -591,12 +591,99 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
     return agents[0] ?? null;
   }
 
-  function findTeamLeader(deptId: string | null): AgentRow | null {
+  function findTeamLeader(deptId: string | null, candidateAgentIds?: string[] | null): AgentRow | null {
     if (!deptId) return null;
+    const isPlanningLookup = deptId === "planning";
+    if (Array.isArray(candidateAgentIds)) {
+      const scopedIds = [...new Set(candidateAgentIds.map((id) => String(id || "").trim()).filter(Boolean))];
+      if (scopedIds.length === 0) return null;
+      const placeholders = scopedIds.map(() => "?").join(", ");
+      if (isPlanningLookup) {
+        try {
+          return (
+            (db
+              .prepare(
+                `
+              SELECT *
+              FROM agents
+              WHERE role = 'team_leader'
+                AND id IN (${placeholders})
+                AND (
+                  department_id = ?
+                  OR COALESCE(acts_as_planning_leader, 0) = 1
+                )
+              ORDER BY
+                CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
+                CASE WHEN COALESCE(acts_as_planning_leader, 0) = 1 THEN 0 ELSE 1 END,
+                created_at ASC
+              LIMIT 1
+            `,
+              )
+              .get(...scopedIds, deptId) as AgentRow | undefined) ?? null
+          );
+        } catch {
+          // Older test schemas may not have acts_as_planning_leader.
+        }
+      }
+      return (
+        (db
+          .prepare(
+            `
+          SELECT *
+          FROM agents
+          WHERE department_id = ?
+            AND role = 'team_leader'
+            AND id IN (${placeholders})
+          ORDER BY
+            CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
+            created_at ASC
+          LIMIT 1
+        `,
+          )
+          .get(deptId, ...scopedIds) as AgentRow | undefined) ?? null
+      );
+    }
+    if (isPlanningLookup) {
+      try {
+        return (
+          (db
+            .prepare(
+              `
+            SELECT *
+            FROM agents
+            WHERE role = 'team_leader'
+              AND (
+                department_id = ?
+                OR COALESCE(acts_as_planning_leader, 0) = 1
+              )
+            ORDER BY
+              CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
+              CASE WHEN COALESCE(acts_as_planning_leader, 0) = 1 THEN 0 ELSE 1 END,
+              created_at ASC
+            LIMIT 1
+          `,
+            )
+            .get(deptId) as AgentRow | undefined) ?? null
+        );
+      } catch {
+        // Older test schemas may not have acts_as_planning_leader.
+      }
+    }
     return (
-      (db.prepare("SELECT * FROM agents WHERE department_id = ? AND role = 'team_leader' LIMIT 1").get(deptId) as
-        | AgentRow
-        | undefined) ?? null
+      (db
+        .prepare(
+          `
+        SELECT *
+        FROM agents
+        WHERE department_id = ?
+          AND role = 'team_leader'
+        ORDER BY
+          CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
+          created_at ASC
+        LIMIT 1
+      `,
+        )
+        .get(deptId) as AgentRow | undefined) ?? null
     );
   }
 
