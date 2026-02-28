@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 type CreateReviewFinalizeToolsDeps = Record<string, any>;
 
 export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
@@ -111,13 +114,15 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
   ): void {
     const lang = resolveLang(taskTitle);
     const currentTask = db
-      .prepare("SELECT status, department_id, source_task_id, project_id FROM tasks WHERE id = ?")
+      .prepare("SELECT status, department_id, source_task_id, project_id, workflow_pack_key, project_path FROM tasks WHERE id = ?")
       .get(taskId) as
       | {
           status: string;
           department_id: string | null;
           source_task_id: string | null;
           project_id: string | null;
+          workflow_pack_key: string | null;
+          project_path: string | null;
         }
       | undefined;
     if (!currentTask || currentTask.status !== "review") return; // Already moved or cancelled
@@ -260,6 +265,66 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
         );
         return;
       }
+    }
+
+    if (currentTask.workflow_pack_key === "video_preprod") {
+      const wtInfo = taskWorktrees.get(taskId) as
+        | { worktreePath?: string; projectPath?: string; branchName?: string }
+        | undefined;
+      const outputRoot = currentTask.project_path || wtInfo?.projectPath || process.cwd();
+      const candidatePaths = [
+        wtInfo?.worktreePath ? path.join(wtInfo.worktreePath, "video_output", "final.mp4") : null,
+        outputRoot ? path.join(outputRoot, "video_output", "final.mp4") : null,
+      ].filter((entry): entry is string => Boolean(entry));
+
+      let verifiedPath: string | null = null;
+      let verifiedSize = 0;
+      for (const candidate of candidatePaths) {
+        if (!fs.existsSync(candidate)) continue;
+        try {
+          const stat = fs.statSync(candidate);
+          if (stat.size > 0) {
+            verifiedPath = candidate;
+            verifiedSize = stat.size;
+            break;
+          }
+        } catch {
+          // best effort
+        }
+      }
+
+      if (!verifiedPath) {
+        appendTaskLog(
+          taskId,
+          "system",
+          `Review hold: video artifact gate blocked approval (missing/empty final.mp4). checked=${candidatePaths.join(", ")}`,
+        );
+        notifyCeo(
+          pickL(
+            l(
+              [
+                `'${taskTitle}' 는 영상 산출물(final.mp4)이 확인되지 않아 팀장회의 승인/머지가 보류되었습니다. 렌더 결과를 확인한 뒤 다시 승인해 주세요.`,
+              ],
+              [
+                `'${taskTitle}' approval/merge is on hold because final.mp4 is not verified. Verify rendered output first, then approve again.`,
+              ],
+              [
+                `'${taskTitle}' は final.mp4 未確認のため承認/マージが保留されました。レンダー結果確認後に再承認してください。`,
+              ],
+              [`'${taskTitle}' 因 final.mp4 未验证，审批/合并已暂停。请先确认渲染结果后再审批。`],
+            ),
+            lang,
+          ),
+          taskId,
+        );
+        return;
+      }
+
+      appendTaskLog(
+        taskId,
+        "system",
+        `Review gate: video artifact verified for approval (${verifiedPath}, ${verifiedSize} bytes)`,
+      );
     }
 
     const finalizeApprovedReview = () => {

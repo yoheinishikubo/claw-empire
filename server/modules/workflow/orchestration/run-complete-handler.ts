@@ -151,7 +151,9 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
     }
 
     if (exitCode === 0 && task) {
+      let videoArtifactReady = true;
       if (task.workflow_pack_key === "video_preprod") {
+        videoArtifactReady = false;
         const wtInfo = taskWorktrees.get(taskId) as
           | { worktreePath?: string; projectPath?: string }
           | undefined;
@@ -164,11 +166,16 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
               fs.mkdirSync(path.dirname(destVideo), { recursive: true });
               fs.copyFileSync(srcVideo, destVideo);
               const size = fs.statSync(destVideo).size;
-              appendTaskLog(
-                taskId,
-                "system",
-                `Video artifact synchronized: ${destVideo} (${size} bytes, source=worktree)`,
-              );
+              if (size > 0) {
+                videoArtifactReady = true;
+                appendTaskLog(
+                  taskId,
+                  "system",
+                  `Video artifact synchronized: ${destVideo} (${size} bytes, source=worktree)`,
+                );
+              } else {
+                appendTaskLog(taskId, "system", `Video artifact sync failed: rendered file is empty (${destVideo})`);
+              }
             } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
               appendTaskLog(taskId, "system", `Video artifact sync failed: ${msg}`);
@@ -176,6 +183,69 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
           } else {
             appendTaskLog(taskId, "system", "Video artifact not found in worktree (expected: video_output/final.mp4)");
           }
+        }
+
+        if (!videoArtifactReady) {
+          const outputRoot = task.project_path || wtInfo?.projectPath || process.cwd();
+          const projectVideo = path.join(outputRoot, "video_output", "final.mp4");
+          if (fs.existsSync(projectVideo)) {
+            try {
+              const size = fs.statSync(projectVideo).size;
+              if (size > 0) {
+                videoArtifactReady = true;
+                appendTaskLog(taskId, "system", `Video artifact verified at project path: ${projectVideo} (${size} bytes)`);
+              }
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              appendTaskLog(taskId, "system", `Video artifact verification failed: ${msg}`);
+            }
+          }
+        }
+
+        if (!videoArtifactReady) {
+          if (task.assigned_agent_id) {
+            db.prepare(
+              `
+                UPDATE agents
+                SET stats_tasks_done = MAX(0, stats_tasks_done - 1),
+                    stats_xp = MAX(0, stats_xp - 10)
+                WHERE id = ?
+              `,
+            ).run(task.assigned_agent_id);
+            const correctedAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(task.assigned_agent_id) as
+              | Record<string, unknown>
+              | undefined;
+            broadcast("agent_status", correctedAgent);
+          }
+
+          db.prepare("UPDATE tasks SET status = 'pending', updated_at = ? WHERE id = ?").run(t, taskId);
+          appendTaskLog(
+            taskId,
+            "system",
+            "Video artifact gate: final.mp4 missing or empty. Task remains pending until render output is verified.",
+          );
+          const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
+          broadcast("task_update", updatedTask);
+          notifyTaskStatus(taskId, task.title, "pending", resolveLang(task.description ?? task.title));
+          notifyCeo(
+            pickL(
+              l(
+                [
+                  `'${task.title}' 작업은 영상 산출물(final.mp4) 확인 전이라 자동 완료되지 않았습니다. video_output/final.mp4 생성 후 재개해 주세요.`,
+                ],
+                [
+                  `Task '${task.title}' was not auto-completed because final.mp4 is not verified yet. Generate video_output/final.mp4 and resume.`,
+                ],
+                [
+                  `'${task.title}' は final.mp4 未確認のため自動完了されませんでした。video_output/final.mp4 を生成して再開してください。`,
+                ],
+                [`任务 '${task.title}' 因 final.mp4 未验证，未自动完成。请先生成 video_output/final.mp4 后再继续。`],
+              ),
+              resolveLang(task.description ?? task.title),
+            ),
+            taskId,
+          );
+          return;
         }
       }
 

@@ -319,6 +319,16 @@ export function registerDecisionInboxRoutes(ctx: RuntimeContext): DecisionInboxR
       runYoloDecisionAutopilot({
         getDecisionInboxItems,
         applyDecisionReply,
+        shouldSkipItem: (item) => {
+          if (item.kind === "review_round_pick" && item.task_id) {
+            const row = db.prepare("SELECT workflow_pack_key FROM tasks WHERE id = ? LIMIT 1").get(item.task_id) as
+              | { workflow_pack_key?: string | null }
+              | undefined;
+            return row?.workflow_pack_key === "video_preprod";
+          }
+
+          return false;
+        },
       });
     } catch (err) {
       console.warn(`[decision-yolo] autopilot failed: ${String(err)}`);

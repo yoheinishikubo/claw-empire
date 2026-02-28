@@ -207,4 +207,30 @@ describe("runYoloDecisionAutopilot", () => {
     expect(attempts).toBe(3);
     expect(applied).toBe(1);
   });
+
+  it("shouldSkipItem=true 인 항목은 자동 의사결정에서 제외한다", () => {
+    let attempts = 0;
+    const getDecisionInboxItems = (): DecisionInboxRouteItem[] => [
+      createItem({
+        id: "video-review",
+        kind: "project_review_ready",
+        options: [{ number: 1, action: "start_project_review", label: "Start" }],
+      }),
+    ];
+
+    const applyDecisionReply = (): DecisionApplyResult => {
+      attempts += 1;
+      return { status: 200, payload: { ok: true } };
+    };
+
+    const applied = runYoloDecisionAutopilot({
+      getDecisionInboxItems,
+      applyDecisionReply,
+      maxSteps: 3,
+      shouldSkipItem: () => true,
+    });
+
+    expect(applied).toBe(0);
+    expect(attempts).toBe(0);
+  });
 });

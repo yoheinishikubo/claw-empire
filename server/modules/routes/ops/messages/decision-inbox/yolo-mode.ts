@@ -121,6 +121,7 @@ export function runYoloDecisionAutopilot(input: {
   getDecisionInboxItems: () => DecisionInboxRouteItem[];
   applyDecisionReply: (decisionId: string, body: Record<string, unknown>) => DecisionApplyResult;
   maxSteps?: number;
+  shouldSkipItem?: (item: DecisionInboxRouteItem) => boolean;
 }): number {
   const maxSteps = Math.max(1, Math.min(Math.trunc(input.maxSteps ?? 24), 120));
   const failedDecisionIds = new Set<string>();
@@ -131,7 +132,8 @@ export function runYoloDecisionAutopilot(input: {
       .getDecisionInboxItems()
       .slice()
       .sort((a, b) => a.created_at - b.created_at)
-      .filter((item) => !failedDecisionIds.has(item.id));
+      .filter((item) => !failedDecisionIds.has(item.id))
+      .filter((item) => !(input.shouldSkipItem?.(item) ?? false));
 
     let chosen: { id: string; payload: YoloDecisionReplyPayload } | null = null;
     for (const item of items) {
