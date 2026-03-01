@@ -13,7 +13,7 @@ type SubtaskSeedingDeps = {
     phase: "planned" | "review",
   ) => Promise<void>;
   findTeamLeader: (departmentId: string, candidateAgentIds?: string[] | null) => any;
-  getDeptName: (departmentId: string) => string;
+  getDeptName: (departmentId: string, workflowPackKey?: string | null) => string;
   getPreferredLanguage: () => Lang;
   resolveLang: (text: string) => Lang;
   l: (ko: string[], en: string[], ja: string[], zh: string[]) => any;
@@ -53,13 +53,13 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
     ).run(subId, taskId, title, parentAgent?.assigned_agent_id ?? null, toolUseId, nowMs());
 
     // Detect if this subtask belongs to a foreign department
-    const parentTaskDept = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(taskId) as
-      | { department_id: string | null }
+    const parentTaskDept = db.prepare("SELECT department_id, workflow_pack_key FROM tasks WHERE id = ?").get(taskId) as
+      | { department_id: string | null; workflow_pack_key: string | null }
       | undefined;
     const targetDeptId = analyzeSubtaskDepartment(title, parentTaskDept?.department_id ?? null);
 
     if (targetDeptId) {
-      const targetDeptName = getDeptName(targetDeptId);
+      const targetDeptName = getDeptName(targetDeptId, parentTaskDept?.workflow_pack_key ?? null);
       const lang = getPreferredLanguage();
       const blockedReason = pickL(
         l(
@@ -177,7 +177,7 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
       const titleCore = (afterColon || detail).slice(0, 56).trim();
       const clippedTitle = titleCore.length > 54 ? `${titleCore.slice(0, 53).trimEnd()}…` : titleCore;
       const targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
-      const targetDeptName = targetDeptId ? getDeptName(targetDeptId) : "";
+      const targetDeptName = targetDeptId ? getDeptName(targetDeptId, task.workflow_pack_key ?? null) : "";
       const targetLeader = targetDeptId ? findTeamLeader(targetDeptId, constrainedAgentIds) : null;
       if (targetDeptId && targetDeptId !== baseDeptId) {
         noteDetectedDeptSet.add(targetDeptId);
@@ -221,7 +221,7 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
 
     const relatedDepts = [...noteDetectedDeptSet];
     for (const deptId of relatedDepts) {
-      const deptName = getDeptName(deptId);
+      const deptName = getDeptName(deptId, task.workflow_pack_key ?? null);
       const crossLeader = findTeamLeader(deptId, constrainedAgentIds);
       items.push({
         title: pickL(
@@ -285,7 +285,7 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
     // video_preprod일 경우 최종 영상 렌더링 서브태스크 추가
     if (task.workflow_pack_key === "video_preprod") {
       const devLeader = findTeamLeader("dev", constrainedAgentIds);
-      const devDeptName = getDeptName("dev");
+      const devDeptName = getDeptName("dev", task.workflow_pack_key ?? null);
       items.push({
         title: "[VIDEO_FINAL_RENDER] 최종 영상 렌더링",
         description: [
@@ -422,7 +422,7 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
       const titleCore = (afterColon || detail).slice(0, 56).trim();
       const clippedTitle = titleCore.length > 54 ? `${titleCore.slice(0, 53).trimEnd()}…` : titleCore;
       const targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
-      const targetDeptName = targetDeptId ? getDeptName(targetDeptId) : "";
+      const targetDeptName = targetDeptId ? getDeptName(targetDeptId, task.workflow_pack_key ?? null) : "";
       const targetLeader = targetDeptId ? findTeamLeader(targetDeptId, constrainedAgentIds) : null;
 
       items.push({

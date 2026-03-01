@@ -17,7 +17,7 @@ interface PromptDeps {
   l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
   resolveLang: (text?: string, fallback?: Lang) => Lang;
-  getDeptName: (deptId: string) => string;
+  getDeptName: (deptId: string, workflowPackKey?: string | null) => string;
   getDeptRoleConstraint: (deptId: string, deptName: string) => string;
   getRecentConversationContext: (agentId: string, limit?: number) => string;
   getAgentDisplayName: (agent: AgentRow, lang: string) => string;
@@ -74,8 +74,8 @@ export function createSubtaskDelegationPromptBuilder(deps: PromptDeps) {
       .map((st) => {
         const icon = statusIcon[st.status] || "⏳";
         const dept = st.target_department_id
-          ? getDeptName(st.target_department_id)
-          : getDeptName(parentDept?.department_id ?? "");
+          ? getDeptName(st.target_department_id, parentDept?.workflow_pack_key ?? null)
+          : getDeptName(parentDept?.department_id ?? "", parentDept?.workflow_pack_key ?? null);
         const marker = assignedIds.has(st.id)
           ? pickL(l([" ← 당신의 담당"], [" <- assigned to you"], [" ← あなたの担당"], [" <- 你的负责项"]), lang)
           : "";
@@ -92,8 +92,8 @@ export function createSubtaskDelegationPromptBuilder(deps: PromptDeps) {
       const artifactSections: string[] = [];
       for (const sibling of completedSiblings) {
         const deptName = sibling.target_department_id
-          ? getDeptName(sibling.target_department_id)
-          : getDeptName(parentDept?.department_id ?? "");
+          ? getDeptName(sibling.target_department_id, parentDept?.workflow_pack_key ?? null)
+          : getDeptName(parentDept?.department_id ?? "", parentDept?.workflow_pack_key ?? null);
 
         if (sibling.delegated_task_id) {
           // Delegated subtask — collect logs from delegated task
@@ -147,7 +147,7 @@ export function createSubtaskDelegationPromptBuilder(deps: PromptDeps) {
         .reverse()
         .join("\n  ");
       if (parentLogSummary) {
-        const originDeptName = getDeptName(parentDept?.department_id ?? "");
+        const originDeptName = getDeptName(parentDept?.department_id ?? "", parentDept?.workflow_pack_key ?? null);
         artifactSections.unshift(
           `[${originDeptName}] ${parentTask.title} (origin task summary)\n  ${parentLogSummary}`,
         );

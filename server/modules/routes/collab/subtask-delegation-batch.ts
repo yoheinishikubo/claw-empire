@@ -33,7 +33,7 @@ interface BatchDeps {
   l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
   resolveLang: (text?: string, fallback?: Lang) => Lang;
-  getDeptName: (deptId: string) => string;
+  getDeptName: (deptId: string, workflowPackKey?: string | null) => string;
   getAgentDisplayName: (agent: AgentRow, lang: string) => string;
   findTeamLeader: (deptId: string | null, candidateAgentIds?: string[] | null) => AgentRow | null;
   findBestSubordinate: (deptId: string, excludeId: string, candidateAgentIds?: string[] | null) => AgentRow | null;
@@ -201,7 +201,7 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
     }
 
     const targetDeptId = subtasks[0].target_department_id!;
-    const targetDeptName = getDeptName(targetDeptId);
+    const targetDeptName = getDeptName(targetDeptId, parentTask.workflow_pack_key ?? null);
     const subtaskIds = subtasks.map((st) => st.id);
     const firstTitle = subtasks[0].title;
     const batchTitle = subtasks.length > 1 ? `${firstTitle} +${subtasks.length - 1}` : firstTitle;
@@ -326,7 +326,7 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
         l,
         pickL,
         lang,
-        sourceDeptName: getDeptName(parentTask.department_id ?? ""),
+        sourceDeptName: getDeptName(parentTask.department_id ?? "", parentTask.workflow_pack_key ?? null),
         parentSummary: parentTask.description || parentTask.title,
         delegatedChecklist,
       });

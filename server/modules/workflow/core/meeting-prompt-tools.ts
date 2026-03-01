@@ -2,7 +2,7 @@ import type { AgentRow, MeetingPromptOptions } from "./conversation-types.ts";
 import type { Lang } from "../../../types/lang.ts";
 
 type CreateMeetingPromptToolsDeps = {
-  getDeptName: (departmentId: string) => string;
+  getDeptName: (departmentId: string, workflowPackKey?: string | null) => string;
   getDeptRoleConstraint: (departmentId: string, departmentName?: string) => string;
   getRoleLabel: (role: string, lang: string) => string;
   getRecentConversationContext: (agentId: string, limit?: number) => string;
@@ -30,7 +30,7 @@ export function createMeetingPromptTools(deps: CreateMeetingPromptToolsDeps) {
 
   function buildMeetingPrompt(agent: AgentRow, opts: MeetingPromptOptions): string {
     const lang = normalizeMeetingLang(opts.lang);
-    const deptName = getDeptName(agent.department_id ?? "");
+    const deptName = getDeptName(agent.department_id ?? "", opts.workflowPackKey);
     const role = getRoleLabel(agent.role, lang);
     const deptConstraint = agent.department_id ? getDeptRoleConstraint(agent.department_id, deptName) : "";
     const recentCtx = getRecentConversationContext(agent.id, 8);

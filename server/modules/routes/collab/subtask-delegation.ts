@@ -12,7 +12,7 @@ interface SubtaskDelegationDeps {
   pickL: (pool: L10n, lang: Lang) => string;
   resolveLang: (text?: string, fallback?: Lang) => Lang;
   getPreferredLanguage: () => Lang;
-  getDeptName: (deptId: string) => string;
+  getDeptName: (deptId: string, workflowPackKey?: string | null) => string;
   getDeptRoleConstraint: (deptId: string, deptName: string) => string;
   getRecentConversationContext: (agentId: string, limit?: number) => string;
   getAgentDisplayName: (agent: AgentRow, lang: string) => string;
@@ -468,7 +468,7 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
             scheduleAutoResumeRetry(parentTaskId, `agent_busy:${assignedAgent.current_task_id}`);
           } else {
             const deptId = assignedAgent.department_id ?? parentTask.department_id ?? null;
-            const deptName = deptId ? getDeptName(deptId) : "Unassigned";
+            const deptName = deptId ? getDeptName(deptId, parentTask.workflow_pack_key ?? null) : "Unassigned";
             appendTaskLog(
               parentTaskId,
               "system",
