@@ -27,6 +27,13 @@ function normalizePositiveInt(value: unknown, fallback: number): number {
   return i >= 0 ? i : fallback;
 }
 
+function normalizeNullablePositiveInt(value: unknown): number | null {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const i = Math.trunc(num);
+  return i > 0 ? i : null;
+}
+
 function parseJsonSafe(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -49,6 +56,7 @@ type OfficePackProfileAgent = {
   cli_model: string | null;
   cli_reasoning_level: string | null;
   avatar_emoji: string;
+  sprite_number: number | null;
   personality: string | null;
   created_at: number;
 };
@@ -92,6 +100,7 @@ function normalizeOfficePackProfileAgent(raw: unknown, nowMs: number): OfficePac
     cli_model: normalizeOptionalText(obj.cli_model),
     cli_reasoning_level: normalizeOptionalText(obj.cli_reasoning_level),
     avatar_emoji: normalizeText(obj.avatar_emoji) || "🤖",
+    sprite_number: normalizeNullablePositiveInt(obj.sprite_number),
     personality: normalizeOptionalText(obj.personality),
     created_at: normalizePositiveInt(obj.created_at, nowMs),
   };
@@ -223,9 +232,9 @@ export function hydrateOfficePackAgentFromSettings(
       INSERT OR IGNORE INTO agents (
         id, name, name_ko, name_ja, name_zh, department_id, role,
         acts_as_planning_leader,
-        cli_provider, avatar_emoji, personality, status, current_task_id,
+        cli_provider, avatar_emoji, sprite_number, personality, status, current_task_id,
         stats_tasks_done, stats_xp, created_at, cli_model, cli_reasoning_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', NULL, 0, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', NULL, 0, 0, ?, ?, ?)
     `,
     ).run(
       found.agent.id,
@@ -238,6 +247,7 @@ export function hydrateOfficePackAgentFromSettings(
       found.agent.acts_as_planning_leader,
       found.agent.cli_provider,
       found.agent.avatar_emoji,
+      found.agent.sprite_number,
       found.agent.personality,
       found.agent.created_at,
       found.agent.cli_model,
@@ -265,9 +275,9 @@ function upsertOfficePackProfileAgent(
       INSERT INTO agents (
         id, name, name_ko, name_ja, name_zh, department_id, role,
         acts_as_planning_leader,
-        cli_provider, avatar_emoji, personality, status, current_task_id,
+        cli_provider, avatar_emoji, sprite_number, personality, status, current_task_id,
         stats_tasks_done, stats_xp, created_at, cli_model, cli_reasoning_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', NULL, 0, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', NULL, 0, 0, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         name_ko = excluded.name_ko,
@@ -278,6 +288,7 @@ function upsertOfficePackProfileAgent(
         acts_as_planning_leader = excluded.acts_as_planning_leader,
         cli_provider = excluded.cli_provider,
         avatar_emoji = excluded.avatar_emoji,
+        sprite_number = COALESCE(excluded.sprite_number, agents.sprite_number),
         personality = excluded.personality,
         cli_model = excluded.cli_model,
         cli_reasoning_level = excluded.cli_reasoning_level
@@ -294,6 +305,7 @@ function upsertOfficePackProfileAgent(
         agent.acts_as_planning_leader,
         agent.cli_provider,
         agent.avatar_emoji,
+        agent.sprite_number,
         agent.personality,
         agent.created_at,
         agent.cli_model,

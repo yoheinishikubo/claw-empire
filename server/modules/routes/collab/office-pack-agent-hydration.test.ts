@@ -96,6 +96,7 @@ describe("hydrateOfficePackAgentFromSettings", () => {
             cli_provider: "claude",
             cli_model: "claude-opus-4-6",
             avatar_emoji: "🎬",
+            sprite_number: 8,
             personality: "planning lead",
             created_at: 1700000000001,
           },
@@ -110,6 +111,7 @@ describe("hydrateOfficePackAgentFromSettings", () => {
     expect(hydrated?.department_id).toBe("planning");
     expect(hydrated?.cli_provider).toBe("claude");
     expect(hydrated?.cli_model).toBe("claude-opus-4-6");
+    expect((hydrated as unknown as { sprite_number?: number }).sprite_number).toBe(8);
     expect((hydrated as unknown as { acts_as_planning_leader?: number }).acts_as_planning_leader).toBe(1);
 
     const dept = db.prepare("SELECT id, name_ko FROM departments WHERE id = 'planning'").get() as

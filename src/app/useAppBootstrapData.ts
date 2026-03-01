@@ -53,12 +53,14 @@ export function useAppBootstrapData({
 }: UseAppBootstrapDataParams): void {
   const fetchAll = useCallback(async () => {
     try {
-      const [depts, ags, tks, sts, sett, subs, presence, decisionItems] = await Promise.all([
+      // Settings is loaded first because server-side /api/settings can trigger one-time
+      // office-pack hydration, and we want follow-up agent/department fetches to include it.
+      const sett = await api.getSettings();
+      const [depts, ags, tks, sts, subs, presence, decisionItems] = await Promise.all([
         api.getDepartments(),
         api.getAgents(),
         api.getTasks(),
         api.getStats(),
-        api.getSettings(),
         api.getActiveSubtasks(),
         api.getMeetingPresence().catch(() => []),
         api.getDecisionInbox().catch(() => []),

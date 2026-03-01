@@ -66,6 +66,7 @@ function setupDb(): DatabaseSync {
       stats_tasks_done INTEGER NOT NULL DEFAULT 0,
       stats_xp INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT 0,
+      sprite_number INTEGER,
       cli_model TEXT,
       cli_reasoning_level TEXT
     );
@@ -180,6 +181,54 @@ describe("ops settings seed init guard", () => {
       expect(totalAgents).toBe(1);
       expect(seedAgents).toBe(0);
       expect(initFlag?.value).toBe("true");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("GET /api/settings 시 활성 오피스팩 seed를 1회 hydrate한다", () => {
+    const db = setupDb();
+    try {
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(
+        "officePackProfiles",
+        JSON.stringify({
+          video_preprod: {
+            departments: [{ id: "planning", name: "Planning", name_ko: "기획팀", icon: "🎬", color: "#f59e0b" }],
+            agents: [
+              {
+                id: "video_preprod-seed-1",
+                name: "Rian",
+                name_ko: "리안",
+                department_id: "planning",
+                role: "team_leader",
+                cli_provider: "claude",
+                avatar_emoji: "🎬",
+                sprite_number: 6,
+              },
+            ],
+          },
+        }),
+      );
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run("officeWorkflowPack", JSON.stringify("video_preprod"));
+
+      const { getRoutes } = createHarness(db);
+      const getHandler = getRoutes.get("/api/settings");
+      expect(getHandler).toBeTypeOf("function");
+
+      const res = createFakeResponse();
+      getHandler?.({}, res);
+      expect(res.statusCode).toBe(200);
+
+      const seedAgent = db
+        .prepare("SELECT id, sprite_number FROM agents WHERE id = 'video_preprod-seed-1'")
+        .get() as { id?: string; sprite_number?: number } | undefined;
+      const hydratedPacks = db.prepare("SELECT value FROM settings WHERE key = 'officePackHydratedPacks'").get() as
+        | { value: string }
+        | undefined;
+
+      expect(seedAgent?.id).toBe("video_preprod-seed-1");
+      expect(seedAgent?.sprite_number).toBe(6);
+      expect(hydratedPacks?.value).toContain("video_preprod");
     } finally {
       db.close();
     }

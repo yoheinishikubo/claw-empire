@@ -186,10 +186,23 @@ export default function AppOverlays({
       )}
 
       {taskReport && (
-        <TaskReportPopup report={taskReport} agents={agents} uiLanguage={uiLanguage} onClose={onCloseTaskReport} />
+        <TaskReportPopup
+          report={taskReport}
+          agents={agents}
+          departments={departments}
+          uiLanguage={uiLanguage}
+          onClose={onCloseTaskReport}
+        />
       )}
 
-      {showReportHistory && <ReportHistory agents={agents} uiLanguage={uiLanguage} onClose={onCloseReportHistory} />}
+      {showReportHistory && (
+        <ReportHistory
+          agents={agents}
+          departments={departments}
+          uiLanguage={uiLanguage}
+          onClose={onCloseReportHistory}
+        />
+      )}
 
       {showAgentStatus && <AgentStatusPanel agents={agents} uiLanguage={uiLanguage} onClose={onCloseAgentStatus} />}
 

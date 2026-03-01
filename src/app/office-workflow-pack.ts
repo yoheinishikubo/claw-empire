@@ -18,7 +18,7 @@ type StaffPreset = {
 
 type SeedProfile = {
   nameOffset: number;
-  tone: string;
+  tone: Localized;
 };
 
 type PackPreset = {
@@ -115,23 +115,48 @@ const DEPARTMENT_PERSON_NAME_POOL: Partial<Record<string, Localized[]>> = {
 const PACK_SEED_PROFILE: Partial<Record<WorkflowPackKey, SeedProfile>> = {
   report: {
     nameOffset: 0,
-    tone: "근거와 문서 완성도를 최우선으로 판단합니다.",
+    tone: {
+      ko: "근거와 문서 완성도를 최우선으로 판단합니다.",
+      en: "Prioritizes evidence quality and document completeness.",
+      ja: "根拠の確かさと文書の完成度を最優先します。",
+      zh: "以证据质量与文档完整度为最高优先级。",
+    },
   },
   web_research_report: {
     nameOffset: 1,
-    tone: "출처 신뢰도와 사실 검증을 중심으로 움직입니다.",
+    tone: {
+      ko: "출처 신뢰도와 사실 검증을 중심으로 움직입니다.",
+      en: "Focused on source credibility and fact verification.",
+      ja: "情報源の信頼性と事実検証を中心に進めます。",
+      zh: "聚焦来源可信度与事实核验。",
+    },
   },
   novel: {
     nameOffset: 2,
-    tone: "서사 몰입도와 캐릭터 일관성을 가장 중시합니다.",
+    tone: {
+      ko: "서사 몰입도와 캐릭터 일관성을 가장 중시합니다.",
+      en: "Values narrative immersion and character consistency the most.",
+      ja: "物語への没入感とキャラクターの一貫性を最重視します。",
+      zh: "最重视叙事沉浸感与角色一致性。",
+    },
   },
   video_preprod: {
     nameOffset: 3,
-    tone: "콘티, 샷 구성, 제작 효율을 우선합니다.",
+    tone: {
+      ko: "콘티, 샷 구성, 제작 효율을 우선합니다.",
+      en: "Prioritizes storyboard quality, shot composition, and production efficiency.",
+      ja: "コンテ品質、ショット構成、制作効率を優先します。",
+      zh: "优先保证分镜质量、镜头构成与制作效率。",
+    },
   },
   roleplay: {
     nameOffset: 4,
-    tone: "캐릭터 몰입감과 대화 리듬을 우선합니다.",
+    tone: {
+      ko: "캐릭터 몰입감과 대화 리듬을 우선합니다.",
+      en: "Prioritizes character immersion and dialogue rhythm.",
+      ja: "キャラクター没入感と会話のテンポを優先します。",
+      zh: "优先保障角色沉浸感与对话节奏。",
+    },
   },
 };
 
@@ -494,22 +519,87 @@ function buildSeedPersonality(params: {
   packKey: WorkflowPackKey;
   deptId: string;
   role: AgentRole;
+  locale: UiLanguageLike;
   defaultPrefix: Localized;
   departmentName: { ko: string; en: string; ja: string; zh: string };
 }): string | null {
   if (params.packKey === "development") return null;
   const tone = PACK_SEED_PROFILE[params.packKey]?.tone;
   if (!tone) return null;
-  const roleKo =
-    params.role === "team_leader"
-      ? "팀 리드"
-      : params.role === "senior"
-        ? "시니어"
-        : params.role === "junior"
-          ? "주니어"
-          : "인턴";
-  const focus = params.defaultPrefix.ko?.trim() || `${params.departmentName.ko} 담당`;
-  return `${tone} ${focus} 역할의 ${roleKo}입니다.`;
+  const locale = params.locale;
+  const roleLabelMap: Record<UiLanguageLike, Record<AgentRole, string>> = {
+    ko: {
+      team_leader: "팀 리드",
+      senior: "시니어",
+      junior: "주니어",
+      intern: "인턴",
+    },
+    en: {
+      team_leader: "team lead",
+      senior: "senior member",
+      junior: "junior member",
+      intern: "intern",
+    },
+    ja: {
+      team_leader: "チームリーダー",
+      senior: "シニア",
+      junior: "ジュニア",
+      intern: "インターン",
+    },
+    zh: {
+      team_leader: "团队负责人",
+      senior: "高级成员",
+      junior: "初级成员",
+      intern: "实习成员",
+    },
+  };
+  const focusByLocale: Record<UiLanguageLike, string> = {
+    ko: params.defaultPrefix.ko?.trim() || `${params.departmentName.ko} 담당`,
+    en: params.defaultPrefix.en?.trim() || `${params.departmentName.en} coverage`,
+    ja: params.defaultPrefix.ja?.trim() || `${params.departmentName.ja}担当`,
+    zh: params.defaultPrefix.zh?.trim() || `${params.departmentName.zh}职责`,
+  };
+  const roleLabel = roleLabelMap[locale][params.role];
+  const focus = focusByLocale[locale];
+  const toneText = pickText(locale, tone);
+  if (locale === "ko") return `${toneText} ${focus} 역할의 ${roleLabel}입니다.`;
+  if (locale === "ja") return `${toneText} ${focus}を担当する${roleLabel}として動きます。`;
+  if (locale === "zh") return `${toneText} 作为负责${focus}的${roleLabel}推进工作。`;
+  return `${toneText} Serves as a ${roleLabel} focused on ${focus}.`;
+}
+
+function buildPackDepartmentDescription(params: {
+  locale: UiLanguageLike;
+  packSummary: Localized;
+  departmentName: Localized;
+}): string {
+  const { locale, packSummary, departmentName } = params;
+  const summary = pickText(locale, packSummary);
+  const deptName = pickText(locale, departmentName);
+  if (locale === "ko") return `${deptName}입니다. ${summary} 목표를 중심으로 협업합니다.`;
+  if (locale === "ja") return `${deptName}です。${summary}の目標達成に向けて連携します。`;
+  if (locale === "zh") return `${deptName}团队。围绕${summary}目标协作推进。`;
+  return `${deptName} team. Collaborates to deliver the ${summary.toLowerCase()} goal.`;
+}
+
+function buildPackDepartmentPrompt(params: {
+  locale: UiLanguageLike;
+  packSummary: Localized;
+  departmentName: Localized;
+}): string {
+  const { locale, packSummary, departmentName } = params;
+  const summary = pickText(locale, packSummary);
+  const deptName = pickText(locale, departmentName);
+  if (locale === "ko") {
+    return `[부서 역할] ${deptName}\n[업무 기준] ${summary}\n요청을 실행 가능한 단계로 나누고, 근거와 산출물을 명확히 제시하세요.`;
+  }
+  if (locale === "ja") {
+    return `[部署の役割] ${deptName}\n[業務基準] ${summary}\n依頼を実行可能なステップに分解し、根拠と成果物を明確に提示してください。`;
+  }
+  if (locale === "zh") {
+    return `[部门职责] ${deptName}\n[执行基准] ${summary}\n请将请求拆分为可执行步骤，并清晰提供依据与产出物。`;
+  }
+  return `[Department Role] ${deptName}\n[Execution Standard] ${summary}\nBreak requests into actionable steps and clearly provide rationale and deliverables.`;
 }
 
 export function getOfficePackMeta(packKey: WorkflowPackKey): { label: Localized; summary: Localized } {
@@ -545,7 +635,7 @@ export function buildOfficePackPresentation(params: {
   agents: Agent[];
   customRoomThemes: Record<string, RoomTheme>;
 }): OfficePackPresentation {
-  const { packKey, departments, agents, customRoomThemes } = params;
+  const { packKey, locale, departments, agents, customRoomThemes } = params;
   if (packKey === "development") {
     return {
       departments,
@@ -558,6 +648,12 @@ export function buildOfficePackPresentation(params: {
   const transformedDepartments = departments.map((dept) => {
     const deptPreset = preset.departments[dept.id];
     if (!deptPreset) return dept;
+    const localizedName: Localized = {
+      ko: deptPreset.name.ko || dept.name_ko || dept.name,
+      en: deptPreset.name.en || dept.name,
+      ja: deptPreset.name.ja || dept.name_ja || dept.name,
+      zh: deptPreset.name.zh || dept.name_zh || dept.name,
+    };
     return {
       ...dept,
       icon: deptPreset.icon,
@@ -565,6 +661,16 @@ export function buildOfficePackPresentation(params: {
       name_ko: deptPreset.name.ko,
       name_ja: deptPreset.name.ja,
       name_zh: deptPreset.name.zh,
+      description: buildPackDepartmentDescription({
+        locale,
+        packSummary: preset.summary,
+        departmentName: localizedName,
+      }),
+      prompt: buildPackDepartmentPrompt({
+        locale,
+        packSummary: preset.summary,
+        departmentName: localizedName,
+      }),
     };
   });
 
@@ -582,8 +688,10 @@ export function buildOfficePackStarterAgents(params: {
   packKey: WorkflowPackKey;
   departments: Department[];
   targetCount?: number;
+  locale?: UiLanguageLike;
 }): OfficePackStarterAgentDraft[] {
   const { packKey, departments } = params;
+  const locale = params.locale ?? "en";
   if (packKey === "development") return [];
   const preset = PACK_PRESETS[packKey] ?? PACK_PRESETS.development;
   const departmentById = new Map(departments.map((department) => [department.id, department]));
@@ -654,6 +762,7 @@ export function buildOfficePackStarterAgents(params: {
         packKey,
         deptId,
         role,
+        locale,
         defaultPrefix: prefix,
         departmentName: {
           ko: department?.name_ko || department?.name || deptId,

@@ -377,6 +377,7 @@ export interface CompanySettings {
   roomThemes?: Record<string, RoomTheme>;
   messengerChannels?: MessengerChannelsConfig;
   officePackProfiles?: OfficePackProfiles;
+  officePackHydratedPacks?: string[];
 }
 
 export const DEFAULT_SETTINGS: CompanySettings = {

@@ -104,6 +104,18 @@ export function registerOpsSettingsStatsRoutes(ctx: RuntimeContext): void {
   }
 
   app.get("/api/settings", (_req, res) => {
+    try {
+      const selectedPackRow = db.prepare("SELECT value FROM settings WHERE key = ? LIMIT 1").get("officeWorkflowPack") as
+        | { value?: unknown }
+        | undefined;
+      const profilesRow = db.prepare("SELECT value FROM settings WHERE key = ? LIMIT 1").get(OFFICE_PACK_PROFILES_KEY) as
+        | { value?: unknown }
+        | undefined;
+      maybeHydratePackOnFirstSelection(selectedPackRow?.value, profilesRow?.value);
+    } catch {
+      // best-effort hydration only
+    }
+
     const rows = db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
     const settings: Record<string, unknown> = {};
     for (const row of rows) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Agent } from "../types";
+import type { Agent, Department } from "../types";
 import type { TaskReportSummary, TaskReportDetail } from "../api";
 import type { UiLanguage } from "../i18n";
 import { pickLang } from "../i18n";
@@ -9,6 +9,7 @@ import TaskReportPopup from "./TaskReportPopup";
 
 interface ReportHistoryProps {
   agents: Agent[];
+  departments: Department[];
   uiLanguage: UiLanguage;
   onClose: () => void;
 }
@@ -32,7 +33,7 @@ function projectNameFromSummary(report: TaskReportSummary): string {
   return seg || "General";
 }
 
-export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHistoryProps) {
+export default function ReportHistory({ agents, departments, uiLanguage, onClose }: ReportHistoryProps) {
   const t = (text: { ko: string; en: string; ja?: string; zh?: string }) => pickLang(uiLanguage, text);
   const [reports, setReports] = useState<TaskReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +91,15 @@ export default function ReportHistory({ agents, uiLanguage, onClose }: ReportHis
 
   // 상세 보기가 열려 있으면 TaskReportPopup 표시
   if (detail) {
-    return <TaskReportPopup report={detail} agents={agents} uiLanguage={uiLanguage} onClose={() => setDetail(null)} />;
+    return (
+      <TaskReportPopup
+        report={detail}
+        agents={agents}
+        departments={departments}
+        uiLanguage={uiLanguage}
+        onClose={() => setDetail(null)}
+      />
+    );
   }
 
   return (

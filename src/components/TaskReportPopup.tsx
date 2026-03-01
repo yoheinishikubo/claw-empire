@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import type { Agent } from "../types";
+import type { Agent, Department } from "../types";
 import type { TaskReportDetail, TaskReportDocument, TaskReportTeamSection } from "../api";
 import { archiveTaskReport, getTaskReportDetail } from "../api";
 import type { UiLanguage } from "../i18n";
@@ -9,6 +9,7 @@ import AgentAvatar from "./AgentAvatar";
 interface TaskReportPopupProps {
   report: TaskReportDetail;
   agents: Agent[];
+  departments: Department[];
   uiLanguage: UiLanguage;
   onClose: () => void;
 }
@@ -45,7 +46,7 @@ function statusClass(status: string): string {
   return "bg-slate-700/70 text-slate-300";
 }
 
-export default function TaskReportPopup({ report, agents, uiLanguage, onClose }: TaskReportPopupProps) {
+export default function TaskReportPopup({ report, agents, departments, uiLanguage, onClose }: TaskReportPopupProps) {
   const t = (text: { ko: string; en: string; ja?: string; zh?: string }) => pickLang(uiLanguage, text);
 
   const [currentReport, setCurrentReport] = useState<TaskReportDetail>(report);
@@ -59,7 +60,7 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
   }, [report]);
 
   const rootTaskId = currentReport.project?.root_task_id || currentReport.task.id;
-  const teamReports = currentReport.team_reports ?? [];
+  const teamReports = useMemo(() => currentReport.team_reports ?? [], [currentReport.team_reports]);
   const projectName = currentReport.project?.project_name || projectNameFromPath(currentReport.task.project_path);
   const projectPath = currentReport.project?.project_path || currentReport.task.project_path;
   const planningSummary = currentReport.planning_summary;
@@ -85,14 +86,22 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
   }, [currentReport.task.id, currentReport.requested_task_id, teamReports.length]);
 
   const taskAgent = agents.find((a) => a.id === currentReport.task.assigned_agent_id);
+  const departmentById = useMemo(() => {
+    const map = new Map<string, Department>();
+    for (const department of departments) {
+      map.set(department.id, department);
+    }
+    return map;
+  }, [departments]);
+  const taskDeptFromMap = currentReport.task.department_id ? departmentById.get(currentReport.task.department_id) : undefined;
   const taskAgentName =
     uiLanguage === "ko"
       ? currentReport.task.agent_name_ko || currentReport.task.agent_name
       : currentReport.task.agent_name;
   const taskDeptName =
     uiLanguage === "ko"
-      ? currentReport.task.dept_name_ko || currentReport.task.dept_name
-      : currentReport.task.dept_name;
+      ? taskDeptFromMap?.name_ko || currentReport.task.dept_name_ko || currentReport.task.dept_name
+      : taskDeptFromMap?.name || currentReport.task.dept_name || currentReport.task.dept_name_ko;
 
   const selectedTeam = useMemo(() => {
     if (activeTab === "planning") return null;
@@ -238,7 +247,11 @@ export default function TaskReportPopup({ report, agents, uiLanguage, onClose }:
   );
 
   const renderTeamReport = (team: TaskReportTeamSection) => {
-    const teamName = uiLanguage === "ko" ? team.department_name_ko || team.department_name : team.department_name;
+    const teamDeptFromMap = team.department_id ? departmentById.get(team.department_id) : undefined;
+    const teamName =
+      uiLanguage === "ko"
+        ? teamDeptFromMap?.name_ko || team.department_name_ko || team.department_name
+        : teamDeptFromMap?.name || team.department_name || team.department_name_ko;
     const teamAgent = uiLanguage === "ko" ? team.agent_name_ko || team.agent_name : team.agent_name;
     const logs = team.logs ?? [];
     const keyLogs = logs.filter((lg) => lg.kind === "system" || lg.message.includes("Status")).slice(-20);
