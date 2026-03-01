@@ -63,6 +63,8 @@ export function buildWorkflowPackExecutionGuidance(
       "- 컷마다 카메라/레이아웃/텍스트 모션을 분리 설계해 템플릿 느낌을 피하고 리듬을 만드세요.",
       "- 시작 2~4초 구간에 마스코트/브랜드 캐릭터 이미지가 있으면 인트로 키비주얼로 활용하세요.",
       "- 자막/텍스트는 safe area(좌우 8%, 상하 10%) 안에 배치하고, 대비비율과 가독성(최소 2단 계층)을 보장하세요.",
+      "- 화면 텍스트 정제: `\\n`, `\\t`, 백틱, 마크다운 기호(`#`, `*`, `-`) 같은 원문 태그를 그대로 노출하지 마세요.",
+      "- 줄바꿈이 필요하면 이스케이프 문자열이 아닌 실제 줄바꿈/레이아웃 분리로 처리하세요.",
       "- 최종 리포트에 씬 타임라인(초 단위) + 품질 체크리스트 결과를 함께 남기세요.",
     ],
     en: [
@@ -98,6 +100,8 @@ export function buildWorkflowPackExecutionGuidance(
       "- Design motion per shot (camera/layout/text) to avoid template-like pacing.",
       "- If a mascot/brand character image exists, use it as the opening key visual for the first 2-4 seconds.",
       "- Keep subtitles/text within safe area (8% horizontal, 10% vertical) with clear hierarchy and contrast.",
+      "- On-screen text must be sanitized: never render raw escape sequences like `\\n`/`\\t`, backticks, or markdown tokens (`#`, `*`, `-`).",
+      "- If a line break is needed, use real layout line breaks, not escaped string literals.",
       "- In the final report, include a second-by-second scene timeline and a quality checklist result.",
     ],
     ja: [
@@ -133,6 +137,8 @@ export function buildWorkflowPackExecutionGuidance(
       "- カメラ/レイアウト/テキストのモーションをショット単位で設計し、テンプレ感を避けてください。",
       "- マスコット/ブランド画像がある場合、冒頭2〜4秒のキービジュアルとして活用してください。",
       "- 字幕/テキストは safe area（左右8%、上下10%）内に配置し、可読性と階層を担保してください。",
+      "- 画面テキストは正規化し、`\\n`/`\\t` やバッククォート、Markdown記号（`#`, `*`, `-`）をそのまま表示しないでください。",
+      "- 改行が必要な場合はエスケープ文字列ではなく、実レイアウト上の改行で処理してください。",
       "- 最終レポートには秒単位のシーンタイムラインと品質チェック結果を含めてください。",
     ],
     zh: [
@@ -168,6 +174,8 @@ export function buildWorkflowPackExecutionGuidance(
       "- 按镜头拆分设计相机/版式/文字动效，避免模板感。",
       "- 若存在吉祥物/品牌角色图片，前 2-4 秒必须作为开场关键视觉使用。",
       "- 字幕与文字需放在 safe area（横向8%、纵向10%）内，并保证层级与对比度。",
+      "- 屏幕文字必须做净化：禁止直接显示 `\\n`/`\\t`、反引号或 Markdown 符号（`#`, `*`, `-`）。",
+      "- 需要换行时请使用真实布局换行，不要输出转义字符串字面量。",
       "- 最终报告需附带按秒场景时间线与质量检查结果。",
     ],
   };

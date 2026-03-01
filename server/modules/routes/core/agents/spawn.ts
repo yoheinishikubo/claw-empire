@@ -10,6 +10,8 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
     app,
     db,
     logsDir,
+    createWorktree,
+    ensureClaudeMd,
     ensureTaskExecutionSession,
     buildTaskExecutionPrompt,
     hasExplicitWarningFixRequest,
@@ -156,6 +158,23 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
     const taskLang = resolveLang(task.description ?? task.title);
 
     const projectPath = task.project_path || process.cwd();
+    const worktreePath = createWorktree(projectPath, taskId, agent.name);
+    if (!worktreePath) {
+      appendTaskLog(
+        taskId,
+        "error",
+        `Execution blocked: isolated worktree creation failed for project path '${projectPath}'`,
+      );
+      return res.status(409).json({
+        error: "worktree_required",
+        message: "Isolated worktree creation failed. Task execution was blocked to protect the project root.",
+      });
+    }
+    const agentCwd = worktreePath;
+    appendTaskLog(taskId, "system", `Git worktree created: ${worktreePath} (branch: climpire/${taskId.slice(0, 8)})`);
+    if (provider === "claude") {
+      ensureClaudeMd(projectPath, worktreePath);
+    }
     const logPath = path.join(logsDir, `${taskId}.log`);
     const executionSession = ensureTaskExecutionSession(taskId, agent.id, provider);
     const availableSkillsPromptBlock = buildAvailableSkillsPromptBlock(provider);
@@ -187,6 +206,7 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
         `[Task] ${task.title}`,
         task.description ? `\n${task.description}` : "",
         workflowPackGuidance ? `\n[Workflow Pack Execution Rules]\n${workflowPackGuidance}` : "",
+        `NOTE: You are working in an isolated Git worktree branch (climpire/${taskId.slice(0, 8)}). Commit your changes normally.`,
         `Agent: ${agent.name} (${roleLabel}, ${agent.department_name || "Unassigned"})`,
         agent.personality ? `Personality: ${agent.personality}` : "",
         deptConstraint,
@@ -233,12 +253,12 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
         agent.api_provider_id ?? null,
         agent.api_model ?? null,
         prompt,
-        projectPath,
+        agentCwd,
         logPath,
         controller,
         fakePid,
       );
-      return res.json({ ok: true, pid: fakePid, logPath, cwd: projectPath });
+      return res.json({ ok: true, pid: fakePid, logPath, cwd: agentCwd });
     }
 
     if (provider === "copilot" || provider === "antigravity") {
@@ -258,16 +278,16 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
         taskId,
         provider,
         prompt,
-        projectPath,
+        agentCwd,
         logPath,
         controller,
         fakePid,
         agent.oauth_account_id ?? null,
       );
-      return res.json({ ok: true, pid: fakePid, logPath, cwd: projectPath });
+      return res.json({ ok: true, pid: fakePid, logPath, cwd: agentCwd });
     }
 
-    const child = spawnCliAgent(taskId, provider, prompt, projectPath, logPath, spawnModel, spawnReasoningLevel);
+    const child = spawnCliAgent(taskId, provider, prompt, agentCwd, logPath, spawnModel, spawnReasoningLevel);
     child.on("close", (code: number | null) => {
       handleTaskRunComplete(taskId, code ?? 1);
     });
@@ -284,6 +304,6 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
     broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
     notifyTaskStatus(taskId, task.title, "in_progress", taskLang);
 
-    res.json({ ok: true, pid: child.pid ?? null, logPath, cwd: projectPath });
+    res.json({ ok: true, pid: child.pid ?? null, logPath, cwd: agentCwd });
   });
 }

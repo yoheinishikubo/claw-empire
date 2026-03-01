@@ -299,16 +299,25 @@ export function registerTaskRunRoute(deps: TaskRunRouteDeps): void {
     const logPath = path.join(logsDir, `${id}.log`);
 
     const worktreePath = createWorktree(projectPath, id, agent.name);
-    const agentCwd = worktreePath || projectPath;
-
-    if (worktreePath) {
-      appendTaskLog(id, "system", `Git worktree created: ${worktreePath} (branch: climpire/${id.slice(0, 8)})`);
+    if (!worktreePath) {
+      appendTaskLog(
+        id,
+        "error",
+        `Execution blocked: isolated worktree creation failed for project path '${projectPath}'`,
+      );
+      return res.status(409).json({
+        error: "worktree_required",
+        message: "Isolated worktree creation failed. Task execution was blocked to protect the project root.",
+      });
     }
+    const agentCwd = worktreePath;
+
+    appendTaskLog(id, "system", `Git worktree created: ${worktreePath} (branch: climpire/${id.slice(0, 8)})`);
 
     const projectContext = generateProjectContext(projectPath);
     const recentChanges = getRecentChanges(projectPath, id);
 
-    if (worktreePath && provider === "claude") {
+    if (provider === "claude") {
       ensureClaudeMd(projectPath, worktreePath);
     }
 
@@ -462,9 +471,7 @@ Whenever you complete a subtask, report it in this format:
         agent.personality ? `Personality: ${agent.personality}` : "",
         deptConstraint,
         departmentPromptBlock,
-        worktreePath
-          ? `NOTE: You are working in an isolated Git worktree branch (climpire/${id.slice(0, 8)}). Commit your changes normally.`
-          : "",
+        `NOTE: You are working in an isolated Git worktree branch (climpire/${id.slice(0, 8)}). Commit your changes normally.`,
         interruptPromptBlock,
         subtaskInstruction,
         subModelHint,
@@ -508,17 +515,15 @@ Whenever you complete a subtask, report it in this format:
       notifyTaskStatus(id, task.title, "in_progress", taskLang);
 
       const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
-      const worktreeNote = worktreePath
-        ? pickL(
-            l(
-              [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
-              [` (isolated branch: climpire/${id.slice(0, 8)})`],
-              [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
-              [`（隔离分支: climpire/${id.slice(0, 8)}）`],
-            ),
-            taskLang,
-          )
-        : "";
+      const worktreeNote = pickL(
+        l(
+          [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+          [` (isolated branch: climpire/${id.slice(0, 8)})`],
+          [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+          [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+        ),
+        taskLang,
+      );
       notifyCeo(
         pickL(
           l(
@@ -567,17 +572,15 @@ Whenever you complete a subtask, report it in this format:
       notifyTaskStatus(id, task.title, "in_progress", taskLang);
 
       const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
-      const worktreeNote = worktreePath
-        ? pickL(
-            l(
-              [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
-              [` (isolated branch: climpire/${id.slice(0, 8)})`],
-              [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
-              [`（隔离分支: climpire/${id.slice(0, 8)}）`],
-            ),
-            taskLang,
-          )
-        : "";
+      const worktreeNote = pickL(
+        l(
+          [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+          [` (isolated branch: climpire/${id.slice(0, 8)})`],
+          [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+          [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+        ),
+        taskLang,
+      );
       notifyCeo(
         pickL(
           l(
@@ -619,17 +622,15 @@ Whenever you complete a subtask, report it in this format:
     notifyTaskStatus(id, task.title, "in_progress", taskLang);
 
     const assigneeName = getAgentDisplayName(agent as unknown as AgentRow, taskLang);
-    const worktreeNote = worktreePath
-      ? pickL(
-          l(
-            [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
-            [` (isolated branch: climpire/${id.slice(0, 8)})`],
-            [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
-            [`（隔离分支: climpire/${id.slice(0, 8)}）`],
-          ),
-          taskLang,
-        )
-      : "";
+    const worktreeNote = pickL(
+      l(
+        [` (격리 브랜치: climpire/${id.slice(0, 8)})`],
+        [` (isolated branch: climpire/${id.slice(0, 8)})`],
+        [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
+        [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+      ),
+      taskLang,
+    );
     notifyCeo(
       pickL(
         l(

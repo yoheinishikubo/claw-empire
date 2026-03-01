@@ -439,14 +439,19 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
           title: parentTask.title,
         });
         const worktreePath = createWorktree(projPath, delegatedTaskId, execAgent.name);
-        const agentCwd = worktreePath || projPath;
-        if (worktreePath) {
-          appendTaskLog(
-            delegatedTaskId,
-            "system",
-            `Git worktree created: ${worktreePath} (branch: climpire/${delegatedTaskId.slice(0, 8)})`,
+        if (!worktreePath) {
+          failDelegatedLaunch(
+            new Error(`worktree_required: isolated worktree creation failed for '${projPath}'`),
+            "worktree_required",
           );
+          return;
         }
+        const agentCwd = worktreePath;
+        appendTaskLog(
+          delegatedTaskId,
+          "system",
+          `Git worktree created: ${worktreePath} (branch: climpire/${delegatedTaskId.slice(0, 8)})`,
+        );
         const logFilePath = path.join(logsDir, `${delegatedTaskId}.log`);
         ensureVideoPreprodRemotionBestPracticesSkill({
           db: db as any,
@@ -458,9 +463,7 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
         });
         const spawnPrompt = buildSubtaskDelegationPrompt(parentTask, subtasks, execAgent, targetDeptId, targetDeptName);
         const executionSession = ensureTaskExecutionSession(delegatedTaskId, execAgent.id, execProvider);
-        const worktreeNote = worktreePath
-          ? `\nNOTE: You are working in an isolated Git worktree branch (climpire/${delegatedTaskId.slice(0, 8)}). Commit your changes normally.`
-          : "";
+        const worktreeNote = `\nNOTE: You are working in an isolated Git worktree branch (climpire/${delegatedTaskId.slice(0, 8)}). Commit your changes normally.`;
         const sessionPrompt = [
           `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
           "Task-scoped session: keep continuity only within this delegated task.",
@@ -468,7 +471,7 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
           worktreeNote,
         ].join("\n");
 
-        if (worktreePath && execProvider === "claude") {
+        if (execProvider === "claude") {
           ensureClaudeMd(projPath, worktreePath);
         }
 

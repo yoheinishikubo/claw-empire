@@ -128,10 +128,46 @@ export function createExecutionStartTaskTools(deps: CreateExecutionStartTaskTool
 
     const projPath = resolveProjectPath(taskData);
     const worktreePath = createWorktree(projPath, taskId, execAgent.name, taskData.base_branch ?? undefined);
-    const agentCwd = worktreePath || projPath;
-    if (worktreePath) {
-      appendTaskLog(taskId, "system", `Git worktree created: ${worktreePath} (branch: climpire/${taskId.slice(0, 8)})`);
+    if (!worktreePath) {
+      const rollbackAt = nowMs();
+      appendTaskLog(
+        taskId,
+        "error",
+        `Execution blocked: isolated worktree creation failed for project path '${projPath}'`,
+      );
+      db.prepare(
+        "UPDATE tasks SET status = 'pending', started_at = NULL, updated_at = ? WHERE id = ?",
+      ).run(rollbackAt, taskId);
+      db.prepare(
+        "UPDATE agents SET status = 'idle', current_task_id = CASE WHEN current_task_id = ? THEN NULL ELSE current_task_id END WHERE id = ?",
+      ).run(taskId, execAgent.id);
+      broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+      broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(execAgent.id));
+      notifyTaskStatus(taskId, taskData.title, "pending", taskLang);
+      notifyCeo(
+        pickL(
+          l(
+            [
+              `[WORKTREE REQUIRED] '${taskData.title}' 실행을 차단했습니다. 격리 worktree 생성에 실패해 프로젝트 루트 오염을 방지하기 위해 중단되었습니다.`,
+            ],
+            [
+              `[WORKTREE REQUIRED] Blocked execution for '${taskData.title}'. Isolated worktree creation failed, so run was aborted to protect the project root.`,
+            ],
+            [
+              `[WORKTREE REQUIRED] '${taskData.title}' の実行を停止しました。分離 worktree 作成に失敗したため、プロジェクトルート保護のため中断しました。`,
+            ],
+            [
+              `[WORKTREE REQUIRED] 已阻止 '${taskData.title}' 的执行。由于隔离 worktree 创建失败，为保护项目根目录已中止。`,
+            ],
+          ),
+          taskLang,
+        ),
+        taskId,
+      );
+      return;
     }
+    const agentCwd = worktreePath;
+    appendTaskLog(taskId, "system", `Git worktree created: ${worktreePath} (branch: climpire/${taskId.slice(0, 8)})`);
     const logFilePath = path.join(logsDir, `${taskId}.log`);
     const roleLabels: Record<string, string> = {
       team_leader: "Team Leader",
@@ -147,7 +183,7 @@ export function createExecutionStartTaskTools(deps: CreateExecutionStartTaskTool
     const conversationCtx = getRecentConversationContext(execAgent.id);
     const continuationCtx = getTaskContinuationContext(taskId);
     const recentChanges = getRecentChanges(projPath, taskId);
-    if (worktreePath && provider === "claude") {
+    if (provider === "claude") {
       ensureClaudeMd(projPath, worktreePath);
     }
     const continuationInstruction = continuationCtx
@@ -199,9 +235,7 @@ export function createExecutionStartTaskTools(deps: CreateExecutionStartTaskTool
         execAgent.personality ? `Personality: ${execAgent.personality}` : "",
         deptConstraint,
         deptPromptBlock,
-        worktreePath
-          ? `NOTE: You are working in an isolated Git worktree branch (climpire/${taskId.slice(0, 8)}). Commit your changes normally.`
-          : "",
+        `NOTE: You are working in an isolated Git worktree branch (climpire/${taskId.slice(0, 8)}). Commit your changes normally.`,
         interruptPromptBlock,
         continuationInstruction,
         runInstruction,
@@ -272,17 +306,15 @@ export function createExecutionStartTaskTools(deps: CreateExecutionStartTaskTool
       });
     }
 
-    const worktreeNote = worktreePath
-      ? pickL(
-          l(
-            [` (격리 브랜치: climpire/${taskId.slice(0, 8)})`],
-            [` (isolated branch: climpire/${taskId.slice(0, 8)})`],
-            [` (分離ブランチ: climpire/${taskId.slice(0, 8)})`],
-            [`（隔离分支: climpire/${taskId.slice(0, 8)}）`],
-          ),
-          taskLang,
-        )
-      : "";
+    const worktreeNote = pickL(
+      l(
+        [` (격리 브랜치: climpire/${taskId.slice(0, 8)})`],
+        [` (isolated branch: climpire/${taskId.slice(0, 8)})`],
+        [` (分離ブランチ: climpire/${taskId.slice(0, 8)})`],
+        [`（隔离分支: climpire/${taskId.slice(0, 8)}）`],
+      ),
+      taskLang,
+    );
     notifyCeo(
       pickL(
         l(
