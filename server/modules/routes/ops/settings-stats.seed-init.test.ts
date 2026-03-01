@@ -339,4 +339,76 @@ describe("ops settings seed init guard", () => {
       db.close();
     }
   });
+
+  it("이미 hydrate된 팩은 officePackProfiles와 함께 저장해도 재주입하지 않는다", () => {
+    const db = setupDb();
+    try {
+      db.prepare("INSERT INTO agents (id, name) VALUES (?, ?)").run("dev-leader", "Dev Leader");
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(
+        "officePackProfiles",
+        JSON.stringify({
+          video_preprod: {
+            departments: [{ id: "planning", name: "Planning", name_ko: "기획팀", icon: "🎬", color: "#f59e0b" }],
+            agents: [
+              {
+                id: "video_preprod-seed-1",
+                name: "Rian",
+                name_ko: "리안",
+                department_id: "planning",
+                role: "team_leader",
+                cli_provider: "claude",
+                avatar_emoji: "🎬",
+              },
+            ],
+          },
+        }),
+      );
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(
+        "officePackHydratedPacks",
+        JSON.stringify(["video_preprod"]),
+      );
+
+      const { putRoutes } = createHarness(db);
+      const putHandler = putRoutes.get("/api/settings");
+      expect(putHandler).toBeTypeOf("function");
+
+      // 이미 hydrate된 팩의 seed를 비운 상태를 가정
+      db.prepare("DELETE FROM agents WHERE id LIKE 'video_preprod-seed-%'").run();
+
+      const res = createFakeResponse();
+      putHandler?.(
+        {
+          body: {
+            officeWorkflowPack: "video_preprod",
+            officePackProfiles: {
+              video_preprod: {
+                departments: [{ id: "planning", name: "Planning", name_ko: "기획팀", icon: "🎬", color: "#f59e0b" }],
+                agents: [
+                  {
+                    id: "video_preprod-seed-1",
+                    name: "Rian",
+                    name_ko: "리안",
+                    department_id: "planning",
+                    role: "team_leader",
+                    cli_provider: "gemini",
+                    avatar_emoji: "🎬",
+                  },
+                ],
+              },
+            },
+          },
+        },
+        res,
+      );
+      expect(res.statusCode).toBe(200);
+
+      const seedAgentCount = (db.prepare("SELECT COUNT(*) AS c FROM agents WHERE id LIKE 'video_preprod-seed-%'").get() as {
+        c: number;
+      }).c;
+      expect(seedAgentCount).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
 });

@@ -7,6 +7,7 @@ export interface AgentManagerProps {
   departments: Department[];
   onAgentsChange: () => void;
   activeOfficeWorkflowPack: WorkflowPackKey;
+  dbBackedOfficePack?: boolean;
   onSaveOfficePackProfile: (packKey: WorkflowPackKey, profile: OfficePackProfile) => Promise<void>;
 }
 

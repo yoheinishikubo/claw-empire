@@ -287,12 +287,26 @@ export default function AppMainLayout({
     [agents, officePackKey, packProfileAgents],
   );
 
+  const isHydratedOfficePack = useMemo(() => {
+    if (officePackKey === "development") return false;
+    const hydrated = settings.officePackHydratedPacks;
+    if (!Array.isArray(hydrated)) return false;
+    return hydrated.map((value) => String(value ?? "").trim()).includes(officePackKey);
+  }, [officePackKey, settings.officePackHydratedPacks]);
+
   const managerDepartments =
     officePackKey === "development"
       ? departments
-      : activePackProfile?.departments ?? generatedOfficePresentation.departments;
+      : isHydratedOfficePack
+        ? displayDepartments
+        : activePackProfile?.departments ?? generatedOfficePresentation.departments;
 
-  const managerAgents = officePackKey === "development" ? agents : activePackProfile?.agents ?? seededPackAgents;
+  const managerAgents =
+    officePackKey === "development"
+      ? agents
+      : isHydratedOfficePack
+        ? officeScopedAgents
+        : activePackProfile?.agents ?? seededPackAgents;
 
   const officePresentation = useMemo(() => {
     if (officePackKey === "development") return generatedOfficePresentation;
@@ -506,6 +520,7 @@ export default function AppMainLayout({
                 departments={managerDepartments}
                 onAgentsChange={onAgentsChange}
                 activeOfficeWorkflowPack={officePackKey}
+                dbBackedOfficePack={isHydratedOfficePack}
                 onSaveOfficePackProfile={async (packKey, profile) => {
                   if (packKey === "development") return;
                   await onSaveSettings({
