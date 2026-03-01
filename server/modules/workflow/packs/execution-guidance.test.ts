@@ -10,6 +10,8 @@ describe("buildWorkflowPackExecutionGuidance", () => {
     expect(guidance).toContain("순서 고정");
     expect(guidance).toContain("remotion render");
     expect(guidance).toContain("pnpm exec remotion browser ensure");
+    expect(guidance).toContain("[High Quality Direction]");
+    expect(guidance).toContain("8~12개 이상 샷");
   });
 
   it("video_preprod 외 워크플로우 팩은 추가 규칙을 주지 않는다", () => {
