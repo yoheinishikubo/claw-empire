@@ -360,7 +360,6 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
             FROM subtasks
             WHERE task_id = ?
               AND title LIKE '%[VIDEO_FINAL_RENDER]%'
-              AND status IN ('pending', 'in_progress', 'blocked', 'review', 'inbox', 'done')
             ORDER BY created_at DESC
             LIMIT 1
           `,

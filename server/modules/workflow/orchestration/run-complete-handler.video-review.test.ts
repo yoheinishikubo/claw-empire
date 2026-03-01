@@ -241,4 +241,72 @@ describe("run complete handler - video preprod review transition", () => {
       db.close();
     }
   });
+
+  it("[VIDEO_FINAL_RENDER]는 렌더 산출물과 Remotion 증빙이 있으면 비정상 종료 코드도 성공으로 복구한다", () => {
+    const db = createDb();
+    const logsDir = fs.mkdtempSync(path.join(os.tmpdir(), "climpire-run-complete-"));
+    const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), "climpire-wt-"));
+    try {
+      const taskId = "task-final-render-recover";
+      const projectPath = "/tmp/project";
+      db.prepare(
+        `
+          INSERT INTO tasks (
+            id, title, description, status, workflow_pack_key, source_task_id, assigned_agent_id, department_id, project_id, project_path, updated_at
+          )
+          VALUES (?, ?, ?, 'in_progress', 'video_preprod', 'parent-task', ?, 'dev', 'project-1', ?, 1)
+        `,
+      ).run(
+        taskId,
+        "[VIDEO_FINAL_RENDER] 최종 영상 렌더링",
+        "최종 렌더링",
+        "video-preprod-seed-2",
+        projectPath,
+      );
+      db.prepare(
+        `
+          INSERT INTO agents (id, name, name_ko, status, current_task_id, department_id, stats_tasks_done, stats_xp)
+          VALUES ('video-preprod-seed-2', 'Liam', '리암', 'working', ?, 'dev', 0, 0)
+        `,
+      ).run(taskId);
+      fs.writeFileSync(
+        path.join(logsDir, `${taskId}.log`),
+        "pnpm exec remotion render src/index.ts Intro video_output/final.mp4 --log=verbose",
+        "utf8",
+      );
+      fs.mkdirSync(path.join(worktreeDir, "video_output"), { recursive: true });
+      fs.writeFileSync(path.join(worktreeDir, "video_output", "final.mp4"), "rendered-video", "utf8");
+      fs.mkdirSync(path.join(projectPath, "video_output"), { recursive: true });
+
+      const deps = createDeps(db, logsDir);
+      deps.taskWorktrees.set(taskId, { worktreePath: worktreeDir, projectPath, branchName: "climpire/test" });
+      deps.activeProcesses.set(taskId, { pid: 104 });
+      const { handleTaskRunComplete } = createRunCompleteHandler(deps);
+
+      handleTaskRunComplete(taskId, 1);
+
+      const updated = db.prepare("SELECT status FROM tasks WHERE id = ?").get(taskId) as { status: string };
+      expect(updated.status).toBe("review");
+      expect(
+        deps.appendTaskLog.mock.calls.some((call: any[]) =>
+          String(call[2] ?? "").includes("Final render recovery: detected valid Remotion output"),
+        ),
+      ).toBe(true);
+      expect(
+        deps.appendTaskLog.mock.calls.some((call: any[]) => String(call[2] ?? "").includes("RUN completed (exit code: 0)")),
+      ).toBe(true);
+    } finally {
+      try {
+        fs.rmSync(logsDir, { recursive: true, force: true });
+      } catch {
+        // best effort cleanup
+      }
+      try {
+        fs.rmSync(worktreeDir, { recursive: true, force: true });
+      } catch {
+        // best effort cleanup
+      }
+      db.close();
+    }
+  });
 });

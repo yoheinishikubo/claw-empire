@@ -410,12 +410,47 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
   ): void {
     const id = randomUUID();
     const t = nowMs();
-    db.prepare(
-      `
-    INSERT INTO messages (id, sender_type, sender_id, receiver_type, receiver_id, content, message_type, task_id, created_at)
-    VALUES (?, 'agent', ?, ?, ?, ?, ?, ?, ?)
-  `,
-    ).run(id, agent.id, receiverType, receiverId, content, messageType, taskId, t);
+    const taskExists = (idValue: string): boolean => {
+      try {
+        const row = db.prepare("SELECT 1 AS ok FROM tasks WHERE id = ?").get(idValue) as { ok?: number } | undefined;
+        return row?.ok === 1;
+      } catch {
+        return false;
+      }
+    };
+    const isForeignKeyError = (err: unknown): boolean => {
+      const msg = err instanceof Error ? err.message : String(err);
+      return /foreign key constraint failed/i.test(msg);
+    };
+    let persistedTaskId = taskId && taskExists(taskId) ? taskId : null;
+
+    try {
+      db.prepare(
+        `
+      INSERT INTO messages (id, sender_type, sender_id, receiver_type, receiver_id, content, message_type, task_id, created_at)
+      VALUES (?, 'agent', ?, ?, ?, ?, ?, ?, ?)
+    `,
+      ).run(id, agent.id, receiverType, receiverId, content, messageType, persistedTaskId, t);
+    } catch (err) {
+      if (persistedTaskId && isForeignKeyError(err)) {
+        // Task row can disappear between async timers and insert time; fall back to task-less message.
+        try {
+          persistedTaskId = null;
+          db.prepare(
+            `
+          INSERT INTO messages (id, sender_type, sender_id, receiver_type, receiver_id, content, message_type, task_id, created_at)
+          VALUES (?, 'agent', ?, ?, ?, ?, ?, ?, ?)
+        `,
+          ).run(id, agent.id, receiverType, receiverId, content, messageType, null, t);
+        } catch (fallbackErr) {
+          console.warn(`[sendAgentMessage] drop message after FK fallback failure: ${String(fallbackErr)}`);
+          return;
+        }
+      } else {
+        console.warn(`[sendAgentMessage] drop message due to insert failure: ${String(err)}`);
+        return;
+      }
+    }
 
     broadcast("new_message", {
       id,
@@ -425,16 +460,16 @@ export function registerRoutesPartB(ctx: RuntimeContext): RouteCollabExports {
       receiver_id: receiverId,
       content,
       message_type: messageType,
-      task_id: taskId,
+      task_id: persistedTaskId,
       created_at: t,
       sender_name: agent.name,
       sender_avatar: agent.avatar_emoji ?? "🤖",
     });
 
-    if (shouldRelayTaskBroadcastToMessenger(messageType, receiverType, taskId)) {
-      void relayTaskBroadcastToAssignedMessengerSessions(taskId, agent, messageType, content).catch((err) => {
+    if (shouldRelayTaskBroadcastToMessenger(messageType, receiverType, persistedTaskId)) {
+      void relayTaskBroadcastToAssignedMessengerSessions(persistedTaskId, agent, messageType, content).catch((err) => {
         console.warn(
-          `[messenger-relay] failed to relay task broadcast (task=${taskId}, type=${messageType}): ${String(err)}`,
+          `[messenger-relay] failed to relay task broadcast (task=${persistedTaskId}, type=${messageType}): ${String(err)}`,
         );
       });
     }

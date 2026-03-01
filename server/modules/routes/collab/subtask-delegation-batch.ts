@@ -284,6 +284,20 @@ export function createSubtaskDelegationBatch(deps: BatchDeps) {
 
     const ackDelay = 1500 + Math.random() * 1000;
     setTimeout(() => {
+      const latestParent = db
+        .prepare("SELECT status FROM tasks WHERE id = ?")
+        .get(parentTask.id) as { status?: string } | undefined;
+      const parentStatus = String(latestParent?.status ?? "").trim();
+      if (!latestParent || !["planned", "pending", "in_progress", "review"].includes(parentStatus)) {
+        appendTaskLog(
+          parentTask.id,
+          "system",
+          `Subtask delegation batch skipped: parent task is not active anymore (status=${parentStatus || "missing"})`,
+        );
+        onBatchDone?.();
+        return;
+      }
+
       const crossSubAtRun = manualScoped
         ? findBestSubordinate(targetDeptId, crossLeader.id, projectCandidateAgentIds)
         : findBestSubordinate(targetDeptId, crossLeader.id);
