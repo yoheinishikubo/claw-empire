@@ -344,20 +344,28 @@ export function handleProjectReviewDecisionReply(input: ProjectReviewReplyInput)
         if (blocked.reason !== "video_artifact_missing" && blocked.reason !== "unfinished_subtasks") continue;
         const taskRow = reviewTasks.find((task) => task.id === blocked.id);
         if (!taskRow || taskRow.workflow_pack_key !== "video_preprod") continue;
-        const existingActiveRenderSubtask = db
+        const existingRenderSubtask = db
           .prepare(
             `
             SELECT id
+                 , status
             FROM subtasks
             WHERE task_id = ?
               AND title LIKE '[VIDEO_FINAL_RENDER]%'
-              AND status IN ('pending', 'in_progress', 'blocked')
+              AND status IN ('pending', 'in_progress', 'blocked', 'done')
             ORDER BY created_at DESC
             LIMIT 1
           `,
           )
-          .get(taskRow.id) as { id?: string } | undefined;
-        if (existingActiveRenderSubtask?.id) continue;
+          .get(taskRow.id) as { id?: string; status?: string } | undefined;
+        if (existingRenderSubtask?.id) {
+          appendTaskLog(
+            taskRow.id,
+            "system",
+            `Decision inbox: skipped final render subtask auto-create (existing id=${existingRenderSubtask.id}, status=${existingRenderSubtask.status ?? "unknown"})`,
+          );
+          continue;
+        }
 
         const subtaskId = randomUUID();
         const createdAt = nowMs();
