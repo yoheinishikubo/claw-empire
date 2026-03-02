@@ -6,6 +6,7 @@ import {
   resolveVideoArtifactSpecForTask,
 } from "../packs/video-artifact.ts";
 import { evaluateRemotionOnlyGateFromLogFiles } from "../packs/video-render-engine-gate.ts";
+import { readYoloModeEnabled } from "../../routes/ops/messages/decision-inbox/yolo-mode.ts";
 import { reconcileVideoRenderDelegationState } from "./video-render-delegation-state.ts";
 
 type CreateReviewFinalizeToolsDeps = Record<string, any>;
@@ -94,8 +95,9 @@ export function createReviewFinalizeTools(deps: CreateReviewFinalizeToolsDeps) {
             "system",
             "All delegated subtasks completed after resume; retrying review completion",
           );
+          const yolo = readYoloModeEnabled(db);
           setTimeout(() => finishReview(parentTaskId, parent.title, {
-            bypassProjectDecisionGate: true,
+            bypassProjectDecisionGate: yolo,
             trigger: "delegated_subtask_completion",
           }), 1200);
         }

@@ -1,6 +1,7 @@
 import type { Lang } from "../../../types/lang.ts";
 import type { AgentRow } from "./direct-chat.ts";
 import { reconcileVideoRenderDelegationState } from "../../workflow/orchestration/video-render-delegation-state.ts";
+import { readYoloModeEnabled } from "../../routes/ops/messages/decision-inbox/yolo-mode.ts";
 import { createSubtaskDelegationBatch } from "./subtask-delegation-batch.ts";
 import { createSubtaskDelegationPromptBuilder } from "./subtask-delegation-prompt.ts";
 import { initializeSubtaskSummary, type SubtaskRow } from "./subtask-summary.ts";
@@ -504,8 +505,9 @@ export function initializeSubtaskDelegation(deps: SubtaskDelegationDeps) {
       parentTaskId,
     );
     if (parentTask.status === "review") {
+      const yolo = readYoloModeEnabled(db);
       setTimeout(() => finishReview(parentTaskId, parentTask.title, {
-        bypassProjectDecisionGate: true,
+        bypassProjectDecisionGate: yolo,
         trigger: "subtask_completion",
       }), 1200);
     }
