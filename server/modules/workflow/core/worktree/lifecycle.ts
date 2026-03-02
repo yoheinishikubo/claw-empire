@@ -204,6 +204,21 @@ export function createWorktreeLifecycleTools(deps: CreateWorktreeLifecycleToolsD
 
       if (!created) throw lastError instanceof Error ? lastError : new Error("worktree_add_failed");
 
+      // Propagate .claude/skills into the worktree so agents can resolve installed skills
+      try {
+        const serverSkillsDir = path.join(process.cwd(), ".claude", "skills");
+        if (fs.existsSync(serverSkillsDir)) {
+          const wtClaudeDir = path.join(selectedWorktreePath, ".claude");
+          const wtSkillsLink = path.join(wtClaudeDir, "skills");
+          if (!fs.existsSync(wtSkillsLink)) {
+            fs.mkdirSync(wtClaudeDir, { recursive: true });
+            fs.symlinkSync(serverSkillsDir, wtSkillsLink, "junction");
+          }
+        }
+      } catch {
+        // best effort — skill propagation failure should not block execution
+      }
+
       taskWorktrees.set(taskId, { worktreePath: selectedWorktreePath, branchName: selectedBranch, projectPath });
       console.log(
         `[Claw-Empire] Created worktree for task ${shortId}: ${selectedWorktreePath} (branch: ${selectedBranch}, agent: ${agentName})`,
