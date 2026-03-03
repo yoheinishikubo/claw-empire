@@ -137,26 +137,20 @@ export function createWorktreeLifecycleTools(deps: CreateWorktreeLifecycleToolsD
 
       // Get current branch/HEAD as base
       let base: string;
-      try {
-        if (baseBranch) {
-          try {
-            base = execFileSync("git", ["rev-parse", baseBranch], { cwd: projectPath, stdio: "pipe", timeout: 5000 })
-              .toString()
-              .trim();
-          } catch {
-            base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: projectPath, stdio: "pipe", timeout: 5000 })
-              .toString()
-              .trim();
-          }
-        } else {
+      if (baseBranch) {
+        try {
+          base = execFileSync("git", ["rev-parse", baseBranch], { cwd: projectPath, stdio: "pipe", timeout: 5000 })
+            .toString()
+            .trim();
+        } catch {
           base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: projectPath, stdio: "pipe", timeout: 5000 })
             .toString()
             .trim();
         }
-      } catch (baseErr) {
-        const stderr = (baseErr as any).stderr?.toString() || "";
-        appendTaskLog(taskId, "error", `Failed to resolve base branch (HEAD): ${stderr}`);
-        throw baseErr;
+      } else {
+        base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: projectPath, stdio: "pipe", timeout: 5000 })
+          .toString()
+          .trim();
       }
 
       const branchCandidates = [branchName, `${branchName}-1`, `${branchName}-2`, `${branchName}-3`];
@@ -172,10 +166,8 @@ export function createWorktreeLifecycleTools(deps: CreateWorktreeLifecycleToolsD
           if (fs.existsSync(candidatePath)) {
             fs.rmSync(candidatePath, { recursive: true, force: true });
           }
-        } catch (cleanupErr) {
-          console.warn(
-            `[Claw-Empire] Cleanup failed for ${candidatePath}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
+        } catch {
+          // best effort cleanup
         }
 
         const branchExists = (() => {
@@ -206,9 +198,6 @@ export function createWorktreeLifecycleTools(deps: CreateWorktreeLifecycleToolsD
           created = true;
           break;
         } catch (err: unknown) {
-          const stderr = (err as any).stderr?.toString() || "";
-          appendTaskLog(taskId, "error", `git worktree add failed (branch=${candidateBranch}): ${stderr}`);
-          console.error(`[Claw-Empire] git worktree add failed (branch=${candidateBranch}): ${stderr}`);
           lastError = err;
         }
       }

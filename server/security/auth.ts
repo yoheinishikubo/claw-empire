@@ -107,9 +107,9 @@ export function cookieToken(req: Request): string | null {
 
 export function isAuthenticated(req: Request): boolean {
   const bearer = bearerToken(req);
-  if (bearer && safeSecretEquals(bearer, SESSION_AUTH_TOKEN)) return true;
+  if (bearer && bearer === SESSION_AUTH_TOKEN) return true;
   const token = cookieToken(req);
-  return token ? safeSecretEquals(token, SESSION_AUTH_TOKEN) : false;
+  return token === SESSION_AUTH_TOKEN;
 }
 
 export function shouldUseSecureCookie(req: Request): boolean {
@@ -118,13 +118,12 @@ export function shouldUseSecureCookie(req: Request): boolean {
 }
 
 export function issueSessionCookie(req: Request, res: Response): void {
-  const existing = cookieToken(req);
-  if (existing && safeSecretEquals(existing, SESSION_AUTH_TOKEN)) return;
+  if (cookieToken(req) === SESSION_AUTH_TOKEN) return;
   const cookie = [
     `${SESSION_COOKIE_NAME}=${encodeURIComponent(SESSION_AUTH_TOKEN)}`,
     "Path=/",
     "HttpOnly",
-    "SameSite=Lax",
+    "SameSite=Strict",
   ];
   if (shouldUseSecureCookie(req)) cookie.push("Secure");
   res.append("Set-Cookie", cookie.join("; "));
@@ -165,9 +164,9 @@ export function incomingMessageCookieToken(req: IncomingMessage): string | null 
 
 export function isIncomingMessageAuthenticated(req: IncomingMessage): boolean {
   const bearer = incomingMessageBearerToken(req);
-  if (bearer && safeSecretEquals(bearer, SESSION_AUTH_TOKEN)) return true;
+  if (bearer && bearer === SESSION_AUTH_TOKEN) return true;
   const cookie = incomingMessageCookieToken(req);
-  return cookie ? safeSecretEquals(cookie, SESSION_AUTH_TOKEN) : false;
+  return cookie === SESSION_AUTH_TOKEN;
 }
 
 export function isIncomingMessageOriginTrusted(req: IncomingMessage): boolean {
@@ -202,11 +201,8 @@ export function installSecurityMiddleware(app: Express): void {
 
   app.get("/api/auth/session", (req, res) => {
     const bearer = bearerToken(req);
-    const hasBearerAuth = bearer && safeSecretEquals(bearer, SESSION_AUTH_TOKEN);
-    const cookie = cookieToken(req);
-    const hasCookieAuth = cookie && safeSecretEquals(cookie, SESSION_AUTH_TOKEN);
-
-    if (!isLoopbackRequest(req) && !hasBearerAuth && !hasCookieAuth) {
+    const hasBearerAuth = bearer === SESSION_AUTH_TOKEN;
+    if (!isLoopbackRequest(req) && !hasBearerAuth) {
       return res.status(401).json({ error: "unauthorized" });
     }
     issueSessionCookie(req, res);
