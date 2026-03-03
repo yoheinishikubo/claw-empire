@@ -1,0 +1,53 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8790
+    ports:
+      - "8790:8790"
+    networks:
+      - clawnet
+    volumes:
+      - ./config/opencode.json:/home/claw/.config/opencode/opencode.json:ro
+      - ./AGENTS.md:/usr/src/app/AGENTS.md:ro
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./tailscale/state:/var/lib/tailscale
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TAILSCALE_HOSTNAME: ${TAILSCALE_HOSTNAME:-claw-empire-app}
+      TS_STATE_DIR: ${TS_STATE_DIR:-/var/lib/tailscale}
+      TS_EXTRA_ARGS: --hostname=${TAILSCALE_HOSTNAME:-claw-empire-app}
+    command: >
+      sh -c "
+        tailscaled --state=${TS_STATE_DIR:-/var/lib/tailscale}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+        until tailscale status >/dev/null 2>&1; do sleep 0.5; done
+        tailscale up --authkey=${TS_AUTHKEY} ${TS_EXTRA_ARGS:-}
+        tailscale serve reset || true
+        tailscale serve --https=443 --set-path=/ --yes http://app:8790
+        tailscale serve status
+        tail -f /dev/null
+      "
+    networks:
+      - clawnet
+
+networks:
+  clawnet:
+    driver: bridge

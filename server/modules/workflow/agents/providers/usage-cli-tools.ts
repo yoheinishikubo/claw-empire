@@ -209,6 +209,13 @@ export function createUsageCliTools(deps: CreateUsageCliToolsDeps) {
           if (fileExistsNonEmpty(path.join(home, "Library", "Application Support", "opencode", "auth.json")))
             return true;
         }
+
+        // Also check if custom config is provided via XDG_CONFIG_HOME or ~/.config
+        const configPath = process.env.XDG_CONFIG_HOME
+          ? path.join(process.env.XDG_CONFIG_HOME, "opencode", "opencode.json")
+          : path.join(home, ".config", "opencode", "opencode.json");
+        if (fileExistsNonEmpty(configPath)) return true;
+
         return false;
       },
     },

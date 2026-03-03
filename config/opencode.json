@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "moonshotai/kimi-k2",
+  "provider": {
+    "moonshotai": {
+      "options": {
+        "apiKey": "{env:KIMI_API_KEY}"
+      }
+    }
+  }
+}

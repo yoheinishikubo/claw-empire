@@ -1,0 +1,11 @@
+{
+  "Web": {
+    "${TS_CERT_DOMAIN}:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://app:8790"
+        }
+      }
+    }
+  }
+}

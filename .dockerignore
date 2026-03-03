@@ -1,0 +1,17 @@
+node_modules
+dist
+build
+.env
+.env.*
+!.env.example
+.idea
+.vscode
+.DS_Store
+*.log
+tmp
+*.tmp
+.cache
+tests/__snapshots__
+.pnpm-debug.log
+.history
+*.swp

@@ -147,6 +147,32 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
     return null;
   }
 
+  function expandUserPath(raw: string): string {
+    if (raw === "~") return os.homedir();
+    if (raw.startsWith("~/") || raw.startsWith("~\\")) {
+      return path.join(os.homedir(), raw.slice(2));
+    }
+    return raw;
+  }
+
+  function resolveCandidatePath(raw?: string | null): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const detected = detectProjectPath(trimmed);
+    if (detected) return detected;
+    const expanded = expandUserPath(trimmed);
+    const absolute = path.isAbsolute(expanded) ? expanded : path.resolve(expanded);
+    try {
+      if (fs.statSync(absolute).isDirectory()) {
+        return absolute;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
   /**
    * Resolve project path (canonical-first):
    * 1) task.project_id -> projects.project_path
@@ -172,18 +198,13 @@ export function initializeCollabCoordination(ctx: RuntimeContext): any {
     `,
         )
         .get(projectId) as { project_path: string | null } | undefined;
-      const canonical = String(row?.project_path ?? "").trim();
-      if (canonical) {
-        const detectedCanonical = detectProjectPath(canonical);
-        return detectedCanonical || canonical;
-      }
+      const canonical = row?.project_path ?? null;
+      const resolvedCanonical = resolveCandidatePath(canonical);
+      if (resolvedCanonical) return resolvedCanonical;
     }
 
-    const taskProjectPath = String(task.project_path ?? "").trim();
-    if (taskProjectPath) {
-      const detectedTaskPath = detectProjectPath(taskProjectPath);
-      return detectedTaskPath || taskProjectPath;
-    }
+    const explicitPath = resolveCandidatePath(task.project_path ?? null);
+    if (explicitPath) return explicitPath;
 
     const detected = detectProjectPath(task.description || "") || detectProjectPath(task.title || "");
     return detected || process.cwd();

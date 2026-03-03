@@ -201,7 +201,7 @@ if [[ -n "${AGENTS_PATH}" ]]; then
 fi
 
 echo "[Claw-Empire] Installing AGENTS.md orchestration rules..."
-pnpm setup -- "${SETUP_ARGS[@]}"
+pnpm run setup -- "${SETUP_ARGS[@]}"
 
 echo
 echo "[Claw-Empire] Setup complete."
