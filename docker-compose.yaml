@@ -17,6 +17,16 @@ services:
     volumes:
       - ./config/opencode.json:/home/claw/.config/opencode/opencode.json:ro
       - ./AGENTS.md:/usr/src/app/AGENTS.md:ro
+      - ./projects:/usr/src/app/projects:rw
+      - ./github:/usr/src/app/github:rw
+      - ./.climpire-worktrees:/usr/src/app/.climpire-worktrees:rw
+      - ./claw-empire.sqlite:/usr/src/app/claw-empire.sqlite:rw
+      - ./claw-empire.sqlite-shm:/usr/src/app/claw-empire.sqlite-shm:rw
+      - ./claw-empire.sqlite-wal:/usr/src/app/claw-empire.sqlite-wal:rw
+      - ./logs:/usr/src/app/logs:rw
+
+
+
 
   tailscale:
     image: tailscale/tailscale:latest
@@ -32,9 +42,9 @@ services:
       - ./tailscale/state:/var/lib/tailscale
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY}
-      TAILSCALE_HOSTNAME: ${TAILSCALE_HOSTNAME:-claw-empire-app}
+      TS_HOSTNAME: ${TS_HOSTNAME:-claw-empire-app}
       TS_STATE_DIR: ${TS_STATE_DIR:-/var/lib/tailscale}
-      TS_EXTRA_ARGS: --hostname=${TAILSCALE_HOSTNAME:-claw-empire-app}
+      TS_EXTRA_ARGS: --hostname=${TS_HOSTNAME:-claw-empire-app}
     command: >
       sh -c "
         tailscaled --state=${TS_STATE_DIR:-/var/lib/tailscale}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
