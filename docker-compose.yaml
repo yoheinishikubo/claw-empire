@@ -34,6 +34,11 @@ services:
         target: /usr/src/app/db
         bind:
           create_host_path: false
+      - type: bind
+        source: ./.agents
+        target: /usr/src/app/.agents
+        bind:
+          create_host_path: false
       - ./logs:/usr/src/app/logs:rw
 
   tailscale:

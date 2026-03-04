@@ -67,3 +67,4 @@ Thumbs.db
 test-results/
 
 tailscale/state/
+.agents/

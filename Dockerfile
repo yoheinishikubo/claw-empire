@@ -30,5 +30,6 @@ EXPOSE 8790
 USER claw
 RUN mkdir -p /usr/src/app/db && chown claw:claw /usr/src/app/db
 RUN mkdir -p /usr/src/app/projects && chown claw:claw /usr/src/app/projects
+RUN mkdir -p /usr/src/app/.agents && chown claw:claw /usr/src/app/.agents
 
 CMD ["pnpm", "run", "start"]
