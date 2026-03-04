@@ -21,13 +21,19 @@ services:
       - clawnet
     volumes:
       - ./config/opencode.json:/home/claw/.config/opencode/opencode.json:ro
+      - ./.env:/usr/src/app/.env:rw
       - ./AGENTS.md:/usr/src/app/AGENTS.md:ro
-      - ./projects:/usr/src/app/projects:rw
-      - ./github:/usr/src/app/github:rw
-      - ./.climpire-worktrees:/usr/src/app/.climpire-worktrees:rw
-      - ./claw-empire.sqlite:/usr/src/app/claw-empire.sqlite:rw
-      - ./claw-empire.sqlite-shm:/usr/src/app/claw-empire.sqlite-shm:rw
-      - ./claw-empire.sqlite-wal:/usr/src/app/claw-empire.sqlite-wal:rw
+      # Avoid Docker daemon creating host paths as root; create them on host first.
+      - type: bind
+        source: ./projects
+        target: /usr/src/app/projects
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db
+        target: /usr/src/app/db
+        bind:
+          create_host_path: false
       - ./logs:/usr/src/app/logs:rw
 
   tailscale:

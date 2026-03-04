@@ -28,5 +28,7 @@ RUN chown claw:claw /usr/src/app
 ENV NODE_ENV=production
 EXPOSE 8790
 USER claw
+RUN mkdir -p /usr/src/app/db && chown claw:claw /usr/src/app/db
+RUN mkdir -p /usr/src/app/projects && chown claw:claw /usr/src/app/projects
 
 CMD ["pnpm", "run", "start"]

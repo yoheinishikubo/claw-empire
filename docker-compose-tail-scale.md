@@ -22,10 +22,11 @@
   - `TS_AUTHKEY`：TailScale サービスが `tailscale up` を通すための一時キー。TailScale 管理画面で発行し、期限切れが近づいたら再度取得して `.env` 上書きが必要です。
   - `TS_HOSTNAME`：TailScale 上で Claw-Empire を公開するホスト名。https://<TS_HOSTNAME> でアクセスされるので、組織の命名規則に合わせて設定してください。
 - **必要な操作（最小限）**
-  1. `docker compose up -d --build` → Claw-Empire 本体と TailScale をまとめてビルド＆起動（常用の開始コマンド）。
-  2. `docker compose down` → 停止して関連ネットワークやボリュームをクリーンにする。
-  3. `docker compose logs -f app` → サーバー起動後のログをリアルタイムで追う。
-  4. `docker compose exec tailscale tailscale status` → TailScale 状態（リレーや接続）を確認。必要に応じて `tailscale serve status` も使えます。
+  1. `mkdir -p db projects` → `db`/`projects` をホスト側で先に作成（Docker に root 所有で自動作成させないため）。
+  2. `docker compose up -d --build` → Claw-Empire 本体と TailScale をまとめてビルド＆起動（常用の開始コマンド）。
+  3. `docker compose down` → 停止して関連ネットワークやボリュームをクリーンにする。
+  4. `docker compose logs -f app` → サーバー起動後のログをリアルタイムで追う。
+  5. `docker compose exec tailscale tailscale status` → TailScale 状態（リレーや接続）を確認。必要に応じて `tailscale serve status` も使えます。
 
 ## 概要
 
