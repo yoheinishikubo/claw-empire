@@ -4,12 +4,17 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     env_file:
-      - path: .env
-        required: false
+      - .env
     environment:
       HOST: 0.0.0.0
       PORT: 8790
+      KIMI_API_KEY: ${KIMI_API_KEY}
+      HOME: /tmp
+      XDG_CONFIG_HOME: /home/claw/.config
+      XDG_DATA_HOME: /tmp/.local/share
+      XDG_STATE_HOME: /tmp/.local/state
     ports:
       - "8790:8790"
     networks:
@@ -24,9 +29,6 @@ services:
       - ./claw-empire.sqlite-shm:/usr/src/app/claw-empire.sqlite-shm:rw
       - ./claw-empire.sqlite-wal:/usr/src/app/claw-empire.sqlite-wal:rw
       - ./logs:/usr/src/app/logs:rw
-
-
-
 
   tailscale:
     image: tailscale/tailscale:latest

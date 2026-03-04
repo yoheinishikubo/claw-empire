@@ -95,6 +95,7 @@
 - **OpenCode 用の `config/opencode.json` にキーが入っていない**：`{env:KIMI_API_KEY}` プレースホルダーのままでは CLI 認証できないため、実際の `KIMI_API_KEY` を `.env` に定義し、`config/opencode.json` をホスト側で書き換えてリスタート。
 - **AGENTS.md を修正したが反映されない**：`app` コンテナは `AGENTS.md` を読み取り専用マウントしているので、ホスト側のファイルを上書き→`docker compose restart app`
 - **ポート 8790 が競合する**：他プロセスと重複している場合、`HOST`/`PORT` を `.env` で変更するか、利用中のプロセスを停止してから起動。
+- **`https://<TailScale ホスト名>` で 502 が出る**：まず `docker compose logs -f app`（サービス名は `app`）で再起動ループを確認します。`readonly database` / `EACCES` が出る場合は `.env` に `APP_UID` / `APP_GID`（例: `1000`）を設定し、`docker compose down && docker compose up -d --build` を再実行してください。
 
 ## 補足
 
