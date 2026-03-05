@@ -15,3 +15,6 @@ tests/__snapshots__
 .pnpm-debug.log
 .history
 *.swp
+# Runtime state mounted by docker compose; exclude from build context
+tailscale/state
+tailscale/state/**

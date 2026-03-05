@@ -16,19 +16,21 @@ RUN pnpm run build
 FROM node:22-bullseye-slim as runner
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git curl python jq && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
 
-RUN groupadd -r claw && useradd -r -g claw -d /home/claw -m -s /bin/bash claw
+ARG UID=1000
+ARG GID=1000
+ENV UID=${UID}
+ENV GID=${GID}
 
-COPY --chown=claw:claw --from=builder /usr/src/app .
-RUN chown claw:claw /usr/src/app
+COPY --from=builder /usr/src/app .
+RUN mkdir -p /home/claw /usr/src/app/db /usr/src/app/projects /usr/src/app/.agents \
+  && chown -R ${UID}:${GID} /usr/src/app /home/claw
 
 ENV NODE_ENV=production
+ENV HOME=/home/claw
 EXPOSE 8790
-USER claw
-RUN mkdir -p /usr/src/app/db && chown claw:claw /usr/src/app/db
-RUN mkdir -p /usr/src/app/projects && chown claw:claw /usr/src/app/projects
-RUN mkdir -p /usr/src/app/.agents && chown claw:claw /usr/src/app/.agents
+USER ${UID}:${GID}
 
 CMD ["pnpm", "run", "start"]

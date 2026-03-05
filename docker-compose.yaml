@@ -3,24 +3,27 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UID: ${APP_UID:-1000}
+        GID: ${APP_GID:-1000}
     restart: unless-stopped
-    user: "${UID}:${GID}"
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     env_file:
       - .env
     environment:
-      HOST: 0.0.0.0
-      PORT: 8790
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8790}
       KIMI_API_KEY: ${KIMI_API_KEY}
       HOME: /tmp
       XDG_CONFIG_HOME: /home/claw/.config
       XDG_DATA_HOME: /tmp/.local/share
       XDG_STATE_HOME: /tmp/.local/state
     ports:
-      - "8790:8790"
+      - "${PORT:-8790}:${PORT:-8790}"
     networks:
       - clawnet
     volumes:
-      - ./.env:/usr/src/app/.env:rw
+      - ./.env:/usr/src/app/.env:ro
       - ./AGENTS.md:/usr/src/app/AGENTS.md:ro
       # Avoid Docker daemon creating host paths as root; create them on host first.
       - type: bind
@@ -46,19 +49,24 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:
-      - ./tailscale/state:/var/lib/tailscale
+      - type: bind
+        source: ./tailscale/state
+        target: /var/lib/tailscale
+        bind:
+          create_host_path: false
     environment:
-      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_AUTHKEY: ${TS_AUTHKEY:?TS_AUTHKEY must be set in .env}
       TS_HOSTNAME: ${TS_HOSTNAME:-claw-empire-app}
       TS_STATE_DIR: ${TS_STATE_DIR:-/var/lib/tailscale}
-      TS_EXTRA_ARGS: --hostname=${TS_HOSTNAME:-claw-empire-app}
+      TS_EXTRA_ARGS: --hostname=${TS_HOSTNAME:-claw-empire-app} --accept-dns=false
     command: >
-      sh -c "
-        tailscaled --state=${TS_STATE_DIR:-/var/lib/tailscale}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
-        until tailscale status >/dev/null 2>&1; do sleep 0.5; done
-        tailscale up --authkey=${TS_AUTHKEY} ${TS_EXTRA_ARGS:-}
+      sh -ec "
+        tailscaled --state=$${TS_STATE_DIR:-/var/lib/tailscale}/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+        # Wait for local tailscaled socket, then authenticate once.
+        until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 0.5; done
+        tailscale up --authkey=$${TS_AUTHKEY} $${TS_EXTRA_ARGS:-}
         tailscale serve reset || true
-        tailscale serve --https=443 --set-path=/ --yes http://app:8790
+        tailscale serve --bg --https=443 --set-path=/ --yes http://app:$${PORT:-8790}
         tailscale serve status
         tail -f /dev/null
       "
