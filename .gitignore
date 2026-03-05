@@ -68,3 +68,9 @@ test-results/
 
 tailscale/state/
 .agents/
+.roo
+.opencode
+.gemini
+/projects/
+/claw/
+.tmp

@@ -47,7 +47,8 @@
     "openapi:sync": "node scripts/openapi-contract.mjs --write",
     "openapi:check": "node scripts/openapi-contract.mjs --check",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}\""
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}\"",
+    "docker:up": "mkdir -p db projects logs && docker compose up -d --build"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.429",

@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    user: "${UID}:${GID}"
     env_file:
       - .env
     environment:
@@ -20,7 +20,6 @@ services:
     networks:
       - clawnet
     volumes:
-      - ./config/opencode.json:/home/claw/.config/opencode/opencode.json:ro
       - ./.env:/usr/src/app/.env:rw
       - ./AGENTS.md:/usr/src/app/AGENTS.md:ro
       # Avoid Docker daemon creating host paths as root; create them on host first.
@@ -32,11 +31,6 @@ services:
       - type: bind
         source: ./db
         target: /usr/src/app/db
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ./.agents
-        target: /usr/src/app/.agents
         bind:
           create_host_path: false
       - ./logs:/usr/src/app/logs:rw

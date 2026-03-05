@@ -17,10 +17,9 @@ FROM node:22-bullseye-slim as runner
 WORKDIR /usr/src/app
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
-RUN npm install -g pnpm@10.30.1 opencode-ai
+RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
 
 RUN groupadd -r claw && useradd -r -g claw -d /home/claw -m -s /bin/bash claw
-RUN mkdir -p /home/claw/.config/opencode && chown -R claw:claw /home/claw/.config
 
 COPY --chown=claw:claw --from=builder /usr/src/app .
 RUN chown claw:claw /usr/src/app
