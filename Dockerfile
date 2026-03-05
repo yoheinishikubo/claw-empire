@@ -32,5 +32,8 @@ ENV NODE_ENV=production
 ENV HOME=/home/claw
 EXPOSE 8790
 USER ${UID}:${GID}
+ENV PATH="${HOME}/.local/bin:${PATH}"
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
 
 CMD ["pnpm", "run", "start"]
