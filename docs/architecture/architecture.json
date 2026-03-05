@@ -288,7 +288,7 @@
         {
           "name": "Clio",
           "role": "senior",
-          "cliProvider": "claude"
+          "cliProvider": "gemini"
         }
       ]
     },
@@ -300,7 +300,7 @@
         {
           "name": "Aria",
           "role": "team_leader",
-          "cliProvider": "claude"
+          "cliProvider": "gemini"
         },
         {
           "name": "Bolt",
@@ -310,7 +310,7 @@
         {
           "name": "Nova",
           "role": "junior",
-          "cliProvider": "claude"
+          "cliProvider": "gemini"
         }
       ]
     },
@@ -322,7 +322,7 @@
         {
           "name": "Pixel",
           "role": "team_leader",
-          "cliProvider": "claude"
+          "cliProvider": "gemini"
         },
         {
           "name": "Luna",
@@ -339,7 +339,7 @@
         {
           "name": "Hawk",
           "role": "team_leader",
-          "cliProvider": "claude"
+          "cliProvider": "gemini"
         },
         {
           "name": "Lint",
@@ -356,7 +356,7 @@
         {
           "name": "Vault",
           "role": "team_leader",
-          "cliProvider": "claude"
+          "cliProvider": "gemini"
         },
         {
           "name": "Pipe",
@@ -373,7 +373,7 @@
         {
           "name": "Atlas",
           "role": "team_leader",
-          "cliProvider": "claude"
+          "cliProvider": "gemini"
         },
         {
           "name": "Turbo",
