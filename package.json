@@ -48,7 +48,7 @@
     "openapi:check": "node scripts/openapi-contract.mjs --check",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,yml,yaml,css,scss,html}\"",
-    "docker:up": "mkdir -p db projects logs tailscale/state && env APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build",
+    "docker:up": "mkdir -p claw db projects logs tailscale/state && env APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:exec": "docker compose exec app"

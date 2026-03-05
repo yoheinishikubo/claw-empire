@@ -27,6 +27,11 @@ services:
       - ./AGENTS.md:/usr/src/app/AGENTS.md:ro
       # Avoid Docker daemon creating host paths as root; create them on host first.
       - type: bind
+        source: ./claw
+        target: /home/claw
+        bind:
+          create_host_path: false
+      - type: bind
         source: ./projects
         target: /usr/src/app/projects
         bind:
