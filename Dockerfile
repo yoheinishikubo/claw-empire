@@ -16,7 +16,7 @@ RUN pnpm run build
 FROM node:22-bullseye-slim as runner
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y git curl python jq && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git curl python jq ripgrep && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
 
 ARG UID=1000
