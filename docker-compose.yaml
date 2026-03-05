@@ -48,7 +48,6 @@ services:
       - NET_RAW
     devices:
       - /dev/net/tun:/dev/net/tun
-    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     volumes:
       - type: bind
         source: ./tailscale/state
