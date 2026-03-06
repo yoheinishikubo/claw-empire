@@ -52,10 +52,14 @@ npm run docker:up
 - 必要ディレクトリ作成（`db projects logs tailscale/state`）
 - 現在ユーザーの UID/GID を渡して `docker compose up -d --build`
 
+## 4. `npm run url`
+このコマンドでアクセス可能なURLを表示します。
+アクセスできない場合、TailScaleアプリのインストールとサインイン、機能のオンを確認してください。
+
 ## よく使う停止・確認コマンド
 
 ```bash
 npm run docker:down
 npm run docker:logs
-docker compose exec tailscale tailscale status
+npm run url
 ```
