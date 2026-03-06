@@ -50,14 +50,15 @@ RUN set -eux; \
   mkdir -p /home/claw /usr/src/app/db /usr/src/app/projects /usr/src/app/.agents; \
   chown -R claw:claw /usr/src/app /home/claw
 
+EXPOSE 8790
+USER claw
+SHELL ["/bin/bash", "-c"]
+
 ENV NODE_ENV=production
 ENV HOME=/home/claw
 ENV NVM_DIR=/home/claw/.nvm
 ENV NVM_SYMLINK_CURRENT=true
 
-EXPOSE 8790
-USER claw
-SHELL ["/bin/bash", "-c"]
 ENV PATH="${HOME}/.local/bin:${NVM_DIR}/current/bin:${PATH}"
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
 RUN source "${NVM_DIR}/nvm.sh" && nvm install node && npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex

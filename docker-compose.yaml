@@ -13,7 +13,6 @@ services:
     environment:
       HOST: ${HOST:-0.0.0.0}
       PORT: ${PORT:-8790}
-      KIMI_API_KEY: ${KIMI_API_KEY}
       HOME: /home/claw
       XDG_CONFIG_HOME: /home/claw/.config
       XDG_DATA_HOME: /home/claw/.local/share
