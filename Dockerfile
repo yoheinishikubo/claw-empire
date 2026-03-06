@@ -16,7 +16,7 @@ RUN pnpm run build
 FROM node:22-bullseye-slim as runner
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y git curl python jq ripgrep && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git curl python jq ripgrep libatomic1 && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10.30.1
 # RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
 
@@ -53,14 +53,15 @@ RUN set -eux; \
 ENV NODE_ENV=production
 ENV HOME=/home/claw
 ENV NVM_DIR=/home/claw/.nvm
+ENV NVM_SYMLINK_CURRENT=true
 
 EXPOSE 8790
 USER claw
-ENV PATH="${HOME}/.local/bin:${PATH}"
+ENV PATH="${HOME}/.local/bin:${NVM_DIR}/current/bin:${PATH}"
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
 RUN bash -lc 'source "${NVM_DIR}/nvm.sh" && nvm install node'
-RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
-RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN bash -lc 'npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex'
+RUN bash -lc 'curl -fsSL https://claude.ai/install.sh | bash'
 
 
 CMD ["pnpm", "run", "start"]
