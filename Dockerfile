@@ -57,10 +57,11 @@ ENV NVM_SYMLINK_CURRENT=true
 
 EXPOSE 8790
 USER claw
+SHELL ["/bin/bash", "-c"]
 ENV PATH="${HOME}/.local/bin:${NVM_DIR}/current/bin:${PATH}"
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-RUN bash -lc 'source "${NVM_DIR}/nvm.sh" && nvm install node && npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex'
-RUN bash -lc 'curl -fsSL https://claude.ai/install.sh | bash'
+RUN source "${NVM_DIR}/nvm.sh" && nvm install node && npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 
 CMD ["pnpm", "run", "start"]
