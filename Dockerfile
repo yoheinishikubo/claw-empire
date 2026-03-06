@@ -17,7 +17,8 @@ FROM node:22-bullseye-slim as runner
 WORKDIR /usr/src/app
 
 RUN apt-get update && apt-get install -y git curl python jq ripgrep && rm -rf /var/lib/apt/lists/*
-RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
+RUN npm install -g pnpm@10.30.1
+# RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
 
 ARG UID=1000
 ARG GID=1000
@@ -33,7 +34,7 @@ ENV HOME=/home/claw
 EXPOSE 8790
 USER ${UID}:${GID}
 ENV PATH="${HOME}/.local/bin:${PATH}"
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# RUN curl -fsSL https://claude.ai/install.sh | bash
 
 
 CMD ["pnpm", "run", "start"]
