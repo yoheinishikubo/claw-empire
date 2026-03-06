@@ -56,7 +56,7 @@ EXPOSE 8790
 USER claw
 ENV PATH="${HOME}/.local/bin:${PATH}"
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-RUN nvm install node
+RUN bash ~/.nvm/nvm.sh && nvm install node
 RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
