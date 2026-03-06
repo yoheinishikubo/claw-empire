@@ -1,10 +1,8 @@
-FROM node:22-bullseye-slim as builder
+FROM node:22-bullseye-slim AS builder
 WORKDIR /usr/src/app
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10.30.1
-
-
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
@@ -13,20 +11,32 @@ COPY . .
 RUN bash install.sh
 RUN pnpm run build
 
-FROM node:22-bullseye-slim as runner
+FROM node:22-bullseye-slim AS runner
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y git curl python jq ripgrep libatomic1 && rm -rf /var/lib/apt/lists/*
-RUN npm install -g pnpm@10.30.1
-# RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
+RUN apt-get update && apt-get install -y \
+  bash \
+  ca-certificates \
+  curl \
+  git \
+  jq \
+  libatomic1 \
+  python3 \
+  python-is-python3 \
+  ripgrep \
+  xz-utils \
+  && rm -rf /var/lib/apt/lists/*
 
 ARG UID=1000
 ARG GID=1000
 ENV UID=${UID}
 ENV GID=${GID}
 
-COPY --from=builder /usr/src/app .
-RUN set -eux; \
+COPY --from=builder /usr/src/app ./
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \
+  set -eux; \
   group_by_gid="$(getent group "${GID}" | cut -d: -f1 || true)"; \
   if [ -n "${group_by_gid}" ]; then \
     if [ "${group_by_gid}" != "claw" ]; then \
@@ -47,22 +57,23 @@ RUN set -eux; \
   else \
     useradd --uid "${UID}" --gid "${GID}" --create-home --home-dir /home/claw --shell /bin/bash claw; \
   fi; \
-  mkdir -p /home/claw /usr/src/app/db /usr/src/app/projects /usr/src/app/.agents; \
+  mkdir -p /home/claw /usr/src/app/db /usr/src/app/projects /usr/src/app/.agents /usr/src/app/logs; \
   chown -R claw:claw /usr/src/app /home/claw
-
-EXPOSE 8790
-USER claw
-SHELL ["/bin/bash", "-c"]
 
 ENV NODE_ENV=production
 ENV HOME=/home/claw
+ENV USER=claw
 ENV NVM_DIR=/home/claw/.nvm
 ENV NVM_SYMLINK_CURRENT=true
+ENV XDG_CONFIG_HOME=/home/claw/.config
+ENV XDG_DATA_HOME=/home/claw/.local/share
+ENV XDG_STATE_HOME=/home/claw/.local/state
+ENV XDG_CACHE_HOME=/home/claw/.cache
+ENV PNPM_HOME=/home/claw/.local/share/pnpm
+ENV COREPACK_HOME=/home/claw/.cache/node/corepack
+ENV PATH=/home/claw/.local/bin:/home/claw/.local/share/pnpm:/home/claw/.nvm/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-ENV PATH="${HOME}/.local/bin:${NVM_DIR}/current/bin:${PATH}"
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-RUN source "${NVM_DIR}/nvm.sh" && nvm install node && npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-
+EXPOSE 8790
+USER claw
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["pnpm", "run", "start"]

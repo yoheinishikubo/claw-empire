@@ -14,9 +14,15 @@ services:
       HOST: ${HOST:-0.0.0.0}
       PORT: ${PORT:-8790}
       HOME: /home/claw
+      USER: claw
+      NVM_DIR: /home/claw/.nvm
+      NVM_SYMLINK_CURRENT: "true"
       XDG_CONFIG_HOME: /home/claw/.config
       XDG_DATA_HOME: /home/claw/.local/share
       XDG_STATE_HOME: /home/claw/.local/state
+      XDG_CACHE_HOME: /home/claw/.cache
+      PNPM_HOME: /home/claw/.local/share/pnpm
+      COREPACK_HOME: /home/claw/.cache/node/corepack
     ports:
       - "${PORT:-8790}:${PORT:-8790}"
     networks:
