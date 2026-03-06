@@ -51,7 +51,8 @@
     "docker:up": "mkdir -p claw db projects logs tailscale/state && env APP_UID=$(id -u) APP_GID=$(id -g) docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "docker:exec": "docker compose exec app"
+    "docker:exec": "docker compose exec app",
+    "url": "docker compose exec tailscale tailscale serve status"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.429",
