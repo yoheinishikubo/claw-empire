@@ -52,11 +52,13 @@ RUN set -eux; \
 
 ENV NODE_ENV=production
 ENV HOME=/home/claw
+ENV NVM_DIR=/home/claw/.nvm
+
 EXPOSE 8790
 USER claw
 ENV PATH="${HOME}/.local/bin:${PATH}"
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-RUN bash ~/.nvm/nvm.sh && nvm install node
+RUN source ~/.nvm/nvm.sh && nvm install node
 RUN npm install -g pnpm@10.30.1 opencode-ai @google/gemini-cli @openai/codex
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
