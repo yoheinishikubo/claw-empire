@@ -24,7 +24,12 @@ git clone https://github.com/yoheinishikubo/claw-empire.git
 cd claw-empire
 ```
 
-その後、必要なら `.env` を作成して値を入れます（例: `TS_AUTHKEY`, `TS_HOSTNAME`）。
+その後、必要なら `.env` を作成して値を入れます（例: `TS_AUTHKEY`, `TS_HOSTNAME`, `API_AUTH_TOKEN`）。
+
+`API_AUTH_TOKEN` の設定:
+
+- 用途: 最初にアクセスした際に入力を求められるトークン。これがないとリモートからアクセスできない（ローカルホストからはアクセス可能）。
+- 推奨: TailScaleによって一定のセキュリティは担保されるので、覚えやすい簡単な文字列で問題ありません。
 
 `TS_AUTHKEY` の取得:
 
@@ -53,6 +58,7 @@ npm run docker:up
 - 現在ユーザーの UID/GID を渡して `docker compose up -d --build`
 
 ## 4. `npm run url`
+
 このコマンドでアクセス可能なURLを表示します。
 アクセスできない場合、TailScaleアプリのインストールとサインイン、機能のオンを確認してください。
 
