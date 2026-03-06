@@ -86,6 +86,7 @@ ensure_optional_clis() {
   local npm_packages=()
   command -v codex >/dev/null 2>&1 || npm_packages+=("@openai/codex")
   command -v gemini >/dev/null 2>&1 || npm_packages+=("@google/gemini-cli")
+  command -v gws >/dev/null 2>&1 || npm_packages+=("@googleworkspace/cli")
   command -v opencode >/dev/null 2>&1 || npm_packages+=("opencode-ai")
 
   if [[ "${#npm_packages[@]}" -gt 0 ]]; then

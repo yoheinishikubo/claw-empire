@@ -25,6 +25,8 @@ RUN apt-get update && apt-get install -y \
   python-is-python3 \
   ripgrep \
   xz-utils \
+  ca-certificates \
+  gnupg \
   && rm -rf /var/lib/apt/lists/*
 
 ARG UID=1000
