@@ -7,17 +7,17 @@ services:
         UID: ${APP_UID:-1000}
         GID: ${APP_GID:-1000}
     restart: unless-stopped
-    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    user: "claw"
     env_file:
       - .env
     environment:
       HOST: ${HOST:-0.0.0.0}
       PORT: ${PORT:-8790}
       KIMI_API_KEY: ${KIMI_API_KEY}
-      HOME: /tmp
+      HOME: /home/claw
       XDG_CONFIG_HOME: /home/claw/.config
-      XDG_DATA_HOME: /tmp/.local/share
-      XDG_STATE_HOME: /tmp/.local/state
+      XDG_DATA_HOME: /home/claw/.local/share
+      XDG_STATE_HOME: /home/claw/.local/state
     ports:
       - "${PORT:-8790}:${PORT:-8790}"
     networks:
