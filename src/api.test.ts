@@ -59,6 +59,29 @@ describe("api client", () => {
     expect(window.sessionStorage.getItem("claw_api_csrf_token")).toBe("csrf-new");
   });
 
+  it("mutation 요청이 csrf_token_invalid 응답을 받으면 bootstrap 후 재시도한다", async () => {
+    window.sessionStorage.setItem("claw_api_csrf_token", "stale-csrf-token");
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ error: "csrf_token_invalid" }, 403))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, csrf_token: "csrf-fresh" }, 200))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }, 200));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const api = await import("./api");
+    const result = await api.post("/api/tasks/task-1/resume", {});
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/tasks/task-1/resume");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/auth/session");
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/tasks/task-1/resume");
+    expect(window.sessionStorage.getItem("claw_api_csrf_token")).toBe("csrf-fresh");
+
+    const retriedHeaders = new Headers((fetchMock.mock.calls[2]?.[1] as RequestInit | undefined)?.headers);
+    expect(retriedHeaders.get("x-csrf-token")).toBe("csrf-fresh");
+  });
+
   it("createDepartment가 JSON body로 POST 요청을 보낸다", async () => {
     const fetchMock = vi.fn();
     fetchMock.mockResolvedValueOnce(
@@ -151,6 +174,32 @@ describe("api client", () => {
     expect(typeof headerKey).toBe("string");
     expect(headerKey).toBe(body.idempotency_key);
     expect(String(headerKey)).toMatch(/^ceo-message-/);
+  });
+
+  it("idempotent POST도 csrf_token_invalid 응답 시 bootstrap 후 재시도한다", async () => {
+    window.sessionStorage.setItem("claw_api_csrf_token", "stale-csrf-token");
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ error: "csrf_token_invalid" }, 403))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, csrf_token: "csrf-fresh" }, 200))
+      .mockResolvedValueOnce(jsonResponse({ message: { id: "msg-1" } }, 200));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const api = await import("./api");
+    const id = await api.sendMessage({
+      receiver_type: "all",
+      content: "hello",
+    });
+
+    expect(id).toBe("msg-1");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/messages");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/auth/session");
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/messages");
+    expect(window.sessionStorage.getItem("claw_api_csrf_token")).toBe("csrf-fresh");
+
+    const retriedHeaders = new Headers((fetchMock.mock.calls[2]?.[1] as RequestInit | undefined)?.headers);
+    expect(retriedHeaders.get("x-csrf-token")).toBe("csrf-fresh");
   });
 
   it("bootstrapSession은 401에서 prompt 입력 토큰으로 재시도한다", async () => {

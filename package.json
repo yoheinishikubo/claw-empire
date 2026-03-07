@@ -52,7 +52,8 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:exec": "docker compose exec app",
-    "url": "docker compose exec tailscale tailscale serve status"
+    "url": "docker compose exec tailscale tailscale serve status",
+    "cp": "docker compose cp ./src/. app:/usr/src/app/src"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.429",
