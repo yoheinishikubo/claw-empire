@@ -21,12 +21,24 @@ function clipHint(text: string, max = 160): string {
   return `${normalized.slice(0, max - 1).trimEnd()}…`;
 }
 
+const IGNORABLE_TOOL_RESULT_LINE_PATTERNS = [
+  /^Your glibc isn't compatible; trying static musl binary instead$/i,
+];
+
+function isIgnorableToolResultLine(line: string): boolean {
+  return IGNORABLE_TOOL_RESULT_LINE_PATTERNS.some((pattern) => pattern.test(line));
+}
+
 function pickFirstNonEmptyLine(value: string): string {
+  let fallback = "";
   for (const line of value.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (trimmed) return trimmed;
+    if (!trimmed) continue;
+    if (!fallback) fallback = trimmed;
+    if (isIgnorableToolResultLine(trimmed)) continue;
+    return trimmed;
   }
-  return "";
+  return fallback;
 }
 
 function extractPathLikeToken(text: string): string | null {
