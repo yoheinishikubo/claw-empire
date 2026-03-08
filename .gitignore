@@ -66,3 +66,14 @@ Thumbs.db
 
 # Playwright artifacts
 test-results/
+
+tailscale/state/
+.agents/
+.roo/
+.local/
+.config/
+/projects/
+/claw/
+.tmp/
+.gemini/
+.opencode
