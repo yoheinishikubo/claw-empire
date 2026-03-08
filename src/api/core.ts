@@ -140,18 +140,6 @@ function shouldRetryStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
-function shouldRetryAfterSessionBootstrap(
-  status: number,
-  errorCode: string | null,
-  method: string | undefined,
-  url: string,
-  canRetryAuth: boolean,
-): boolean {
-  if (!canRetryAuth || url === SESSION_BOOTSTRAP_PATH) return false;
-  if (status === 401) return true;
-  return status === 403 && errorCode === "csrf_token_invalid" && isMutationMethod(method);
-}
-
 function backoffDelayMs(attempt: number): number {
   const exponential = Math.min(POST_BACKOFF_BASE_MS * 2 ** attempt, POST_BACKOFF_MAX_MS);
   const jitter = Math.floor(Math.random() * 120);
@@ -184,16 +172,16 @@ export async function postWithIdempotency<T>(
         signal: controller.signal,
         credentials: "same-origin",
       });
+      if (r.status === 401 && canRetryAuth && url !== SESSION_BOOTSTRAP_PATH) {
+        await bootstrapSession({ force: true });
+        return postWithIdempotency<T>(url, body, idempotencyKey, false);
+      }
       if (r.ok) {
         return r.json();
       }
 
       const responseBody = await r.json().catch(() => null);
       const errCode = typeof responseBody?.error === "string" ? responseBody.error : null;
-      if (shouldRetryAfterSessionBootstrap(r.status, errCode, "POST", url, canRetryAuth)) {
-        await bootstrapSession({ force: true });
-        return postWithIdempotency<T>(url, body, idempotencyKey, false);
-      }
       const errMsg = errCode ?? responseBody?.message ?? `Request failed: ${r.status}`;
       if (attempt < POST_RETRY_LIMIT && shouldRetryStatus(r.status)) {
         await sleep(backoffDelayMs(attempt));
@@ -301,17 +289,17 @@ export async function request<T>(url: string, init?: RequestInit, canRetryAuth =
     ...init,
     headers,
   });
-  const responseBody = r.ok ? null : await r.json().catch(() => null);
-  const errorCode = typeof responseBody?.error === "string" ? responseBody.error : null;
-  if (shouldRetryAfterSessionBootstrap(r.status, errorCode, init?.method, url, canRetryAuth)) {
+  if (r.status === 401 && canRetryAuth && url !== SESSION_BOOTSTRAP_PATH) {
     await bootstrapSession({ force: true });
     return request<T>(url, init, false);
   }
   if (!r.ok) {
-    throw new ApiRequestError(errorCode ?? responseBody?.message ?? `Request failed: ${r.status}`, {
+    const body = await r.json().catch(() => null);
+    const errorCode = typeof body?.error === "string" ? body.error : null;
+    throw new ApiRequestError(errorCode ?? body?.message ?? `Request failed: ${r.status}`, {
       status: r.status,
       code: errorCode,
-      details: responseBody,
+      details: body,
       url: requestUrl,
     });
   }
